@@ -9,6 +9,7 @@
     "types": ["node"]
   },
   "include": [
+    "packages/*/src/**/*.fixture.ts",
     "packages/*/src/**/*.test.ts",
     "apps/*/src/**/*.test.ts",
     "apps/*/src/**/*.test.tsx",
