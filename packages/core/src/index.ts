@@ -10,6 +10,7 @@ export type {
   AccountId,
   CompanyId,
   DocumentId,
+  FeeScheduleId,
   IsoDate,
   PayoutId,
   TransactionFeeId,
@@ -46,10 +47,26 @@ export { TransactionFee } from './domain/transaction-fee';
 export type { DocumentProps, DocumentType } from './domain/document';
 export { Document } from './domain/document';
 
+export type { FeeBasis, FeeScheduleProps } from './domain/fee-schedule';
+export { FeeSchedule } from './domain/fee-schedule';
+
+export type {
+  DiscrepancyReason,
+  ExpectedFee,
+  FeeDiscrepancy,
+  FeeEngineOptions,
+} from './domain/fee-engine';
+export { compareToActual, expectedFees } from './domain/fee-engine';
+
+export * from './ports/index';
+
 export {
+  AmbiguousFeeScheduleError,
   CurrencyMismatchError,
   CurrencyNotAllowedError,
   DomainError,
+  InvalidFeeScheduleError,
+  UnresolvableFeeBasisError,
   InvalidBasisPointsError,
   InvalidCurrencyError,
   InvalidDecimalStringError,

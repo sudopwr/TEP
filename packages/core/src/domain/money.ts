@@ -279,6 +279,11 @@ export class Money {
     return this.#minor > 0n;
   }
 
+  /** Magnitude, for "how far off is this" without caring which way. */
+  abs(): Money {
+    return this.#minor < 0n ? new Money(-this.#minor, this.#currency) : this;
+  }
+
   /** Ordering within a currency. Across currencies there is no answer. */
   compare(other: Money): -1 | 0 | 1 {
     this.#assertSameCurrency(other, 'compare');

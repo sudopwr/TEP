@@ -406,6 +406,13 @@ describe('Money', () => {
       expect(Money.fromMinor(1n, INR).isNegative()).toBe(false);
     });
 
+    it('takes a magnitude, leaving a positive amount alone', () => {
+      expect(Money.fromMinor(-441732n, INR).abs().minor).toBe(441732n);
+      expect(Money.fromMinor(441732n, INR).abs().minor).toBe(441732n);
+      expect(Money.zero(INR).abs().minor).toBe(0n);
+      expect(Money.fromMinor(-1n, USDT).abs().currency.code).toBe('USDT');
+    });
+
     it('reports positive, and zero is not positive', () => {
       expect(Money.fromMinor(1n, INR).isPositive()).toBe(true);
       expect(Money.zero(INR).isPositive()).toBe(false);

@@ -11,6 +11,7 @@ export type AccountId = number;
 export type PayoutId = number;
 export type TransactionId = number;
 export type TransactionFeeId = number;
+export type FeeScheduleId = number;
 export type DocumentId = number;
 
 /**

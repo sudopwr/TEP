@@ -162,6 +162,55 @@ export class ParentPayoutMismatchError extends DomainError {
   }
 }
 
+/** A fee schedule that cannot describe a computable fee. */
+export class InvalidFeeScheduleError extends DomainError {
+  constructor(
+    readonly scheduleId: number,
+    readonly reason: string,
+  ) {
+    super(
+      'InvalidFeeScheduleError',
+      `Fee schedule ${scheduleId} is not usable: ${reason}.`,
+    );
+  }
+}
+
+/**
+ * A schedule whose basis is another fee that no applicable schedule produces.
+ * GST is 18% of the exchange fee; with no exchange fee there is nothing to
+ * take 18% of, and guessing zero would quietly under-report.
+ */
+export class UnresolvableFeeBasisError extends DomainError {
+  constructor(
+    readonly scheduleId: number,
+    readonly feeType: string,
+    readonly requires: string,
+  ) {
+    super(
+      'UnresolvableFeeBasisError',
+      `Fee schedule ${scheduleId} computes '${feeType}' from '${requires}', but no applicable schedule produces a '${requires}'.`,
+    );
+  }
+}
+
+/**
+ * Two schedules for the same account and fee type applying on the same date.
+ * The database has no constraint preventing overlapping effective periods, so
+ * the ambiguity has to be caught here rather than silently resolved.
+ */
+export class AmbiguousFeeScheduleError extends DomainError {
+  constructor(
+    readonly accountId: number,
+    readonly feeType: string,
+    readonly scheduleIds: readonly number[],
+  ) {
+    super(
+      'AmbiguousFeeScheduleError',
+      `Account ${accountId} has ${scheduleIds.length} overlapping '${feeType}' schedules (${scheduleIds.join(', ')}) in effect at once.`,
+    );
+  }
+}
+
 /** A payout that was looked up and does not exist. */
 export class PayoutNotFoundError extends DomainError {
   constructor(readonly payoutId: number) {
