@@ -218,6 +218,30 @@ export class PayoutNotFoundError extends DomainError {
   }
 }
 
+/** A company that was looked up and does not exist. */
+export class CompanyNotFoundError extends DomainError {
+  constructor(readonly companyId: number) {
+    super('CompanyNotFoundError', `No company with id ${companyId}.`);
+  }
+}
+
+/** An account that was looked up and does not exist. */
+export class AccountNotFoundError extends DomainError {
+  constructor(readonly accountId: number) {
+    super('AccountNotFoundError', `No account with id ${accountId}.`);
+  }
+}
+
+/** A transaction that was looked up and does not exist. */
+export class TransactionNotFoundError extends DomainError {
+  constructor(readonly transactionId: number) {
+    super(
+      'TransactionNotFoundError',
+      `No transaction with id ${transactionId}.`,
+    );
+  }
+}
+
 /** A currency code the registry does not know. */
 export class UnknownCurrencyError extends DomainError {
   constructor(readonly code: string) {

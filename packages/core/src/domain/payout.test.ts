@@ -86,6 +86,12 @@ describe('Payout', () => {
       expect(perLeg).toEqual(['4444.28', '4421.25', '4278.45', '72883.58']);
     });
 
+    it('counts only sale legs denominated in the settlement currency', () => {
+      // Asking for the USD view of a rupee settlement is not an error and
+      // not a currency mismatch — there are simply no USD proceeds.
+      expect(PAYOUT.grossProceeds(TRANSACTIONS, USD).isZero()).toBe(true);
+    });
+
     it('settles, because a sale leg reached the bank', () => {
       expect(PAYOUT.status(TRANSACTIONS, ACCOUNTS)).toBe('settled');
     });

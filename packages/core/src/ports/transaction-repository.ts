@@ -27,9 +27,14 @@ export interface TransactionRepository {
 
   listChildren(parentId: TransactionId): Promise<readonly Transaction[]>;
 
+  /** Every leg, across every payout. Balances are ledger-wide (F10). */
+  list(): Promise<readonly Transaction[]>;
+
   insert(draft: TransactionDraft): Promise<Transaction>;
 
   update(transaction: Transaction): Promise<Transaction>;
+
+  listFees(): Promise<readonly TransactionFee[]>;
 
   listFeesByPayout(payoutId: PayoutId): Promise<readonly TransactionFee[]>;
 

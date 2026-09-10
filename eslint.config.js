@@ -6,7 +6,6 @@ import prettier from 'eslint-config-prettier';
 import tseslint from 'typescript-eslint';
 
 const ROOT = path.dirname(fileURLToPath(import.meta.url));
-const CORE_SRC = path.join(ROOT, 'packages', 'core', 'src');
 
 /**
  * The dependency rule, mechanised.
@@ -34,6 +33,7 @@ const boundaries = {
             type: 'object',
             properties: {
               allow: { type: 'array', items: { type: 'string' } },
+              root: { type: 'string' },
             },
             additionalProperties: false,
           },
@@ -50,6 +50,10 @@ const boundaries = {
       create(context) {
         const dir = path.dirname(context.filename);
         const allow = new Set(context.options[0]?.allow ?? []);
+        const boundary = path.join(
+          ROOT,
+          ...(context.options[0]?.root ?? 'packages/core/src').split('/'),
+        );
 
         const check = (node, source) => {
           if (typeof source !== 'string' || source.length === 0) return;
@@ -61,7 +65,10 @@ const boundaries = {
           }
 
           const resolved = path.resolve(dir, source);
-          if (resolved !== CORE_SRC && !resolved.startsWith(CORE_SRC + path.sep)) {
+          if (
+            resolved !== boundary &&
+            !resolved.startsWith(boundary + path.sep)
+          ) {
             context.report({ node, messageId: 'escapes', data: { source } });
           }
         };
@@ -87,12 +94,7 @@ const boundaries = {
 
 export default tseslint.config(
   {
-    ignores: [
-      '**/node_modules/**',
-      '**/dist/**',
-      '**/coverage/**',
-      'data/**',
-    ],
+    ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'data/**'],
   },
 
   js.configs.recommended,
@@ -123,10 +125,10 @@ export default tseslint.config(
     },
   },
 
-  // The boundary. Build-breaking, by design.
+  // The boundary. Build-breaking, by design. Shipped code only.
   {
-    files: ['packages/core/**/*.ts'],
-    ignores: ['packages/core/**/*.test.ts'],
+    files: ['packages/core/src/**/*.ts'],
+    ignores: ['packages/core/src/**/*.test.ts'],
     plugins: { boundaries },
     rules: {
       'boundaries/core-is-self-contained': 'error',
@@ -134,13 +136,32 @@ export default tseslint.config(
   },
 
   // Core's own tests get exactly one exemption — the test runner, which is a
-  // devDependency and never ships. Everything else is still walled off: a
-  // test may not reach for fastify, sqlite, or anything under apps/.
+  // devDependency and never ships — and may reach the test doubles under
+  // packages/core/test. Everything else is still walled off: a test may not
+  // reach for fastify, sqlite, or anything under apps/.
   {
-    files: ['packages/core/**/*.test.ts'],
+    files: ['packages/core/src/**/*.test.ts'],
     plugins: { boundaries },
     rules: {
-      'boundaries/core-is-self-contained': ['error', { allow: ['vitest'] }],
+      'boundaries/core-is-self-contained': [
+        'error',
+        { root: 'packages/core', allow: ['vitest'] },
+      ],
+    },
+  },
+
+  // Test doubles under packages/core/test are still inside the package, so
+  // they may reach into src. They stand in for adapters, so they get the one
+  // thing an adapter has and core does not: a hash function. Nothing else —
+  // a fake still cannot import fastify, sqlite, or anything under apps/.
+  {
+    files: ['packages/core/test/**/*.ts'],
+    plugins: { boundaries },
+    rules: {
+      'boundaries/core-is-self-contained': [
+        'error',
+        { root: 'packages/core', allow: ['vitest', 'node:crypto'] },
+      ],
     },
   },
 

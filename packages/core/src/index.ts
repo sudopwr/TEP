@@ -59,12 +59,16 @@ export type {
 export { compareToActual, expectedFees } from './domain/fee-engine';
 
 export * from './ports/index';
+export * from './usecases/index';
 
 export {
+  AccountNotFoundError,
   AmbiguousFeeScheduleError,
+  CompanyNotFoundError,
   CurrencyMismatchError,
   CurrencyNotAllowedError,
   DomainError,
+  TransactionNotFoundError,
   InvalidFeeScheduleError,
   UnresolvableFeeBasisError,
   InvalidBasisPointsError,

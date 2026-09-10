@@ -120,7 +120,11 @@ export class Payout {
     rounding: RoundingMode = 'half-up',
   ): Money {
     return this.#ownLegs(transactions)
-      .filter((leg) => leg.isSale())
+      .filter(
+        (leg) =>
+          leg.isSale() &&
+          leg.toAmount.currency.code === settlementCurrency.code,
+      )
       .reduce(
         (total, sale) => total.add(sale.grossProceeds(rounding)),
         Money.zero(settlementCurrency),
