@@ -1,0 +1,12 @@
+{
+  "name": "@payout/web",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@payout/core": "*"
+  }
+}
