@@ -264,3 +264,72 @@ export class InvalidCurrencyError extends DomainError {
     );
   }
 }
+
+/**
+ * Sign-in failed. That is the whole message, deliberately.
+ *
+ * §5a: "One message for every sign-in failure — unknown username and wrong
+ * password give identical responses." The cause is carried as a field so the
+ * server can still tell them apart internally, but it is never rendered and
+ * never serialised: `message` is a constant.
+ */
+export class AuthenticationFailedError extends DomainError {
+  /** The single sentence every failed sign-in produces. */
+  static readonly MESSAGE = 'Incorrect username or password.';
+
+  /**
+   * Named `failure` rather than `cause`: `Error.cause` already exists in
+   * ES2022 and shadowing it with a different meaning is how a log line ends
+   * up saying `wrong_password` where a stack trace belongs.
+   */
+  constructor(readonly failure: 'unknown_username' | 'wrong_password') {
+    super('AuthenticationFailedError', AuthenticationFailedError.MESSAGE);
+  }
+}
+
+/** A session that cannot be used: never existed, expired, or was revoked. */
+export class SessionInvalidError extends DomainError {
+  constructor(readonly reason: 'unknown' | 'expired' | 'revoked') {
+    super('SessionInvalidError', `Session is not valid: ${reason}.`);
+  }
+}
+
+/**
+ * A candidate password that broke the policy.
+ *
+ * Carries the violation codes, not prose, so the UI decides the wording and a
+ * test asserts on a stable value. The candidate itself is never included —
+ * N9 puts a password out of reach of an error message.
+ */
+export class PasswordPolicyError extends DomainError {
+  constructor(readonly violations: readonly string[]) {
+    super(
+      'PasswordPolicyError',
+      `Password rejected by policy: ${violations.join(', ')}.`,
+    );
+  }
+}
+
+/** A username that already belongs to somebody. */
+export class UsernameTakenError extends DomainError {
+  constructor(readonly username: string) {
+    super('UsernameTakenError', `Username '${username}' is already in use.`);
+  }
+}
+
+/** A username that is not a username. */
+export class InvalidUsernameError extends DomainError {
+  constructor(
+    readonly username: string,
+    readonly reason: string,
+  ) {
+    super('InvalidUsernameError', `Invalid username: ${reason}.`);
+  }
+}
+
+/** A user that was looked up and does not exist. */
+export class UserNotFoundError extends DomainError {
+  constructor(readonly userId: number) {
+    super('UserNotFoundError', `No user with id ${userId}.`);
+  }
+}

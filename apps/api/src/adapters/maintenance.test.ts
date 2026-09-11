@@ -154,6 +154,6 @@ describe('countRows', () => {
   it('counts the migrations that have been applied', () => {
     database = openTestDatabase();
 
-    expect(countRows(database, 'schema_migrations')).toBe(2);
+    expect(countRows(database, 'schema_migrations')).toBe(3);
   });
 });

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { SqliteDatabase } from './connection';
+import { DEFAULT_SEEDS, type MigrationSeed } from './seeds';
 
 /** `001_initial.sql` — a zero-padded version, an underscore, a slug. */
 const MIGRATION_FILENAME = /^(\d+)_([A-Za-z0-9_-]+)\.sql$/;
@@ -124,10 +125,18 @@ export function loadMigrations(
  *
  * A migration whose contents changed after it was applied is an error rather
  * than a silent re-run. The file is a record of what the database already did.
+ *
+ * A migration may also carry a *seed* — code that runs after its statements
+ * and inside the same transaction. That exists for exactly one kind of row:
+ * one whose value cannot be written as SQL text. See `seeds.ts`; the admin
+ * credential is the case, because its salt must differ per installation.
+ * Seeds are matched by filename rather than version number so a throwaway
+ * migration directory in a test cannot collide with one.
  */
 export function migrate(
   database: SqliteDatabase,
   directory: string = defaultMigrationsDirectory(),
+  seeds: readonly MigrationSeed[] = DEFAULT_SEEDS,
 ): MigrateResult {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -167,8 +176,11 @@ export function migrate(
 
     const appliedAt = new Date().toISOString();
 
+    const seed = seeds.find((one) => one.filename === migration.filename);
+
     const run = database.transaction(() => {
       database.exec(migration.sql);
+      seed?.apply(database);
       recordApplied.run(
         migration.version,
         migration.name,

@@ -11,13 +11,14 @@
     "apps/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "tsx watch apps/api/src/main.ts",
     "build": "npm run lint && tsc -b tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
     "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json",
-    "import": "tsx apps/api/src/cli/import.ts"
+    "import": "tsx apps/api/src/cli/import.ts",
+    "start": "tsx apps/api/src/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",

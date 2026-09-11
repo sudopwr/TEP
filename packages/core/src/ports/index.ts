@@ -13,6 +13,9 @@ export type {
   FeeScheduleRepository,
 } from './fee-schedule-repository';
 export type { IdGenerator } from './id-generator';
+export type { PasswordHasher } from './password-hasher';
+export type { SessionRepository } from './session-repository';
+export type { UserDraft, UserRepository } from './user-repository';
 export type {
   DateRange,
   PayoutDraft,

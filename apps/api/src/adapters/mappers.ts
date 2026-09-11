@@ -5,8 +5,10 @@ import {
   FeeSchedule,
   Money,
   Payout,
+  Session,
   Transaction,
   TransactionFee,
+  User,
   type AccountType,
   type Currency,
   type CurrencyRegistry,
@@ -277,5 +279,47 @@ export function toFeeSchedule(
     flatAmount,
     effectiveFrom: row.effective_from,
     effectiveTo: row.effective_to,
+  });
+}
+
+// ---------- Authentication ----------
+
+export interface UserRow {
+  readonly id: bigint;
+  readonly username: string;
+  readonly password_hash: string;
+  /** SQLite has no boolean; the CHECK constrains it to 0 or 1. */
+  readonly must_change_password: bigint;
+  readonly created_at: string;
+  readonly password_changed_at: string | null;
+}
+
+export interface SessionRow {
+  /** TEXT, not INTEGER: a session id is a bearer secret, not a row number. */
+  readonly id: string;
+  readonly user_id: bigint;
+  readonly created_at: string;
+  readonly expires_at: string;
+  readonly revoked_at: string | null;
+}
+
+export function toUser(row: UserRow): User {
+  return User.create({
+    id: toId(row.id, 'users', 'id'),
+    username: row.username,
+    passwordHash: row.password_hash,
+    mustChangePassword: row.must_change_password !== 0n,
+    createdAt: row.created_at,
+    passwordChangedAt: row.password_changed_at,
+  });
+}
+
+export function toSession(row: SessionRow): Session {
+  return Session.create({
+    id: row.id,
+    userId: toId(row.user_id, 'sessions', 'user_id'),
+    createdAt: row.created_at,
+    expiresAt: row.expires_at,
+    revokedAt: row.revoked_at,
   });
 }

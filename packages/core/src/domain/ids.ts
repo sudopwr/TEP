@@ -22,3 +22,22 @@ export type DocumentId = number;
  * message needs to be friendlier.
  */
 export type IsoDate = string;
+
+export type UserId = number;
+
+/**
+ * A session identifier: 32 random bytes, base64url (§5a).
+ *
+ * A string rather than a number because it is a bearer secret, not a row
+ * number — it travels in a cookie and must be unguessable.
+ */
+export type SessionId = string;
+
+/**
+ * An instant as an ISO-8601 string in UTC, as `Date#toISOString` writes it.
+ *
+ * Distinct from `IsoDate`: a payout happens on a date, a session expires at a
+ * moment. Stored as TEXT so a lexicographic comparison is also a chronological
+ * one, which is what lets SQLite index `sessions(expires_at)` usefully.
+ */
+export type IsoInstant = string;

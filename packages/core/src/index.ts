@@ -12,9 +12,12 @@ export type {
   DocumentId,
   FeeScheduleId,
   IsoDate,
+  IsoInstant,
   PayoutId,
+  SessionId,
   TransactionFeeId,
   TransactionId,
+  UserId,
 } from './domain/ids';
 
 export type { Currency } from './domain/currency';
@@ -50,6 +53,23 @@ export { Document } from './domain/document';
 export type { FeeBasis, FeeScheduleProps } from './domain/fee-schedule';
 export { FeeSchedule } from './domain/fee-schedule';
 
+export type { UserProps } from './domain/user';
+export { User } from './domain/user';
+
+export type { SessionProps } from './domain/session';
+export { SESSION_LIFETIME_MS, Session } from './domain/session';
+
+export type {
+  PasswordPolicyContext,
+  PasswordPolicyResult,
+  PasswordPolicyViolation,
+} from './domain/password-policy';
+export {
+  MINIMUM_PASSWORD_LENGTH,
+  checkPasswordPolicy,
+  commonPasswords,
+} from './domain/password-policy';
+
 export type {
   DiscrepancyReason,
   ExpectedFee,
@@ -64,6 +84,12 @@ export * from './usecases/index';
 export {
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
+  AuthenticationFailedError,
+  InvalidUsernameError,
+  PasswordPolicyError,
+  SessionInvalidError,
+  UserNotFoundError,
+  UsernameTakenError,
   CompanyNotFoundError,
   CurrencyMismatchError,
   CurrencyNotAllowedError,

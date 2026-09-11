@@ -84,3 +84,31 @@ export type {
   SearchDocumentsDependencies,
 } from './search-documents';
 export { SearchDocuments } from './search-documents';
+
+export type {
+  AuthenticateSessionCommand,
+  AuthenticateSessionDependencies,
+  AuthenticatedSession,
+} from './authenticate-session';
+export { AuthenticateSession } from './authenticate-session';
+
+export type {
+  ChangeCredentialsCommand,
+  ChangeCredentialsDependencies,
+  ChangeCredentialsResult,
+} from './change-credentials';
+export { ChangeCredentials } from './change-credentials';
+
+export type {
+  SignInCommand,
+  SignInDependencies,
+  SignInResult,
+} from './sign-in';
+export { SignIn } from './sign-in';
+
+export type {
+  SignOutCommand,
+  SignOutDependencies,
+  SignOutResult,
+} from './sign-out';
+export { SignOut } from './sign-out';

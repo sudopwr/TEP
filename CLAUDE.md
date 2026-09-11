@@ -51,7 +51,7 @@ with something that enforces its own invariants.
 | N1 | Money is **never** a float. Integers in minor units, scale per currency |
 | N2 | Every list view responds in under 100ms on a few thousand rows |
 | N3 | Domain layer has zero runtime dependencies |
-| N4 | Every use case has a unit test; every route has an integration test; core journeys have an e2e test |
+| N4 | Every use case has a unit test; every route an integration test; core journeys an e2e test |
 | N5 | One command starts dev, one command builds, one command runs all tests |
 | N6 | Data lives in `data/` — `app.db` plus `files/`. Backup = copy that folder |
 | N7 | Server binds `127.0.0.1` only. Sign-in gates every route except `/health` and the auth endpoints |
@@ -97,22 +97,22 @@ reasons.
 **UC9 — SearchDocuments.** Given a query string, returns matching
 documents via FTS5.
 
-**UC11 — SignIn.** Given a username and password, verifies the argon2id
-hash and creates a session. Returns the session ID and the must-change
-flag. One generic error whether the username is unknown or the password
-wrong — and always run a hash comparison even for an unknown username, so
-timing does not reveal which failed.
+**UC11 — SignIn.** Verifies the argon2id hash, creates a session, returns
+it with the must-change flag. One generic error either way, and a hash
+comparison even for an unknown username so timing reveals nothing.
+Re-hashes a credential stored under weaker parameters — without clearing
+the flag, because a rehash is not a password change.
 
-**UC12 — AuthenticateSession.** Given a session ID, returns the user or
-rejects. Rejects expired and revoked sessions. Extends a session that is
-more than halfway to expiry.
+**UC12 — AuthenticateSession.** Session ID to user, or reject. Refuses
+expired and revoked (revoked wins when both). Extends past half-life.
 
-**UC13 — ChangeCredentials.** Given the current password and a new
-username or password: verifies, applies the policy, rehashes, clears the
-must-change flag, revokes every other session. Rejects reuse of the
-current password.
+**UC13 — ChangeCredentials.** Verifies the current password *first* (so it
+is not a free "is that username taken?" oracle), applies the policy against
+the *new* username, clears must-change only if the password actually
+changed, and revokes every session but the caller's.
 
-**UC14 — SignOut.** Revokes the session server-side. Idempotent.
+**UC14 — SignOut.** Revokes server-side. Idempotent, and says the same
+thing for a forged ID as a spent one.
 
 **UC10 — GenerateFinancialYearReport.** Given a date range, totals
 credited / TDS / fees, grouped by company.
@@ -168,9 +168,9 @@ Username and password, one account, no registration. There is nothing to
 sign up for — the app is for one person on one machine.
 
 **Storage.** argon2id via `@node-rs/argon2` at the library's recommended
-parameters. Never SHA-anything, never a homemade salt. `password_hash`
-holds the full encoded string including salt and parameters, so raising
-the cost later is a rehash-on-next-login, not a migration.
+parameters (m=19456, t=2, p=1). Never SHA-anything, never a homemade salt.
+`password_hash` holds the full encoded string including salt and parameters,
+so raising the cost later is a rehash-on-next-login, not a migration.
 
 ```
 users(id INTEGER PK, username TEXT UNIQUE NOT NULL,
@@ -182,37 +182,43 @@ sessions(id TEXT PK, user_id INTEGER NOT NULL REFERENCES users(id),
          revoked_at TEXT)
 ```
 
-**The default account.** Migration `002` inserts `admin` with the hash of
-`admin` and `must_change_password = 1`. This is a deliberate convenience
-with a deliberate cage around it:
+**The default account.** Migration `003_auth.sql` creates the tables; the
+hash is computed at migration time by `db/seeds.ts`, never written into the
+`.sql` file — a literal hash there means one shared salt in every install,
+in a file the checksum makes unchangeable. (This said `002` before
+`002_reference_currencies.sql` existed; renumbering applied history is what
+the checksum guard exists to prevent.)
 
-- every route except `/health`, `/auth/login`, `/auth/me`, `/auth/logout`
-  and `/auth/change-credentials` returns 403 while the flag is set
-- the server refuses to bind to anything other than `127.0.0.1` while the
-  flag is set, and says why
-- the UI routes straight to the change-password screen after sign-in and
-  offers no way past it
+A deliberate convenience with a deliberate cage: (1) every route except
+`/health`, `/auth/login`, `/auth/me`, `/auth/logout` and
+`/auth/change-credentials` returns 403 `password_change_required` while the
+flag is set; (2) the server refuses to bind anywhere but `127.0.0.1` while
+it is set, and says why; (3) the UI routes to the change screen with no way
+past — **not built; there is no web app yet**. The default is safe only
+because of all three; remove one and the default must go too.
 
-The shipped default is safe only because of those three. If any is
-removed, the default must go too.
+**Password policy.** 12 characters minimum; rejects the current password,
+the username, and a short embedded common list. No composition rules —
+length beats punctuation, and forced symbols produce `Password1!`. A pure
+function in `core/domain/password-policy.ts` returning every violation, not
+the first. Every common-list entry is itself 12+ characters, since anything
+shorter already dies on length. No *username* length rule: never specified,
+and `kd` is a fine name here.
 
-**Password policy.** Minimum 12 characters. Rejects the current password,
-the username, and a short embedded list of the most common passwords.
-No composition rules — length beats punctuation, and forced symbols push
-people toward `Password1!`.
+**Rehash is not a change**, nor is a rename: `must_change_password` clears
+only when a password is actually set.
 
 **Failure handling.** One message for every sign-in failure — unknown
-username and wrong password give identical responses and comparable
-timing. Rate-limit to 5 attempts per minute, then a short lockout. Never
-log an attempted password.
+username and wrong password give byte-identical responses, and an unknown
+username still runs a full argon2 verification against a per-process dummy
+hash so the timing matches. 5 attempts per minute on `/auth/login` only.
+Never log a password: `server.ts` carries the redaction paths.
 
 **Session.** ID is 32 random bytes, base64url, compared timing-safely.
-Cookie is `httpOnly`, `sameSite=lax`, `secure=false` (loopback has no
-TLS), `path=/`, 30-day expiry. The cookie holds the session ID only.
-Changing credentials revokes every other session.
-
-`SESSION_SECRET` lives in `.env`, gitignored, generated on first run if
-absent.
+Cookie: `httpOnly`, `sameSite=lax`, `secure=false` (loopback has no TLS),
+`path=/`, 30 days, session ID only. `SESSION_SECRET` lives in gitignored
+`.env`, generated on first run — it signs the cookie, so losing it only
+signs everyone out.
 
 ## 6. Money
 
@@ -329,45 +335,57 @@ balances:  Bank 84,642.93 INR
 Append here. Newest last. Never delete an entry — supersede it.
 
 - **Money as scaled integers, scale per currency.** One fixed scale breaks
-  either INR or USDT; floats break both, quietly.
-- **Fees as rows, not columns.** New fee types shouldn't need a migration,
-  and a fee carries its own currency — TDS is INR, the Rise withdrawal
-  fee is USD.
-- **Status and totals derived, never stored.** A stored status drifts
-  out of sync the first time a payment row is edited.
-- **`document_links` uses three nullable FKs with a CHECK summing to 1**
-  rather than polymorphic `entity_type`/`entity_id`, which throws away
-  referential integrity.
+  INR or USDT; floats break both, quietly.
+- **Fees as rows, not columns.** New types shouldn't need a migration, and a
+  fee carries its own currency — TDS is INR, the Rise fee USD.
+- **Status and totals derived, never stored**; a stored status drifts the
+  first time a row is edited.
+- **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
+  polymorphic `entity_type`/`entity_id`, which discards referential integrity.
 - **Addresses snapshotted on the transaction, normalized in
-  `account_identifiers`.** The FK says which account; the snapshot says
-  which address was used that day.
-- **Constraints for impossible states, views for suspicious ones.**
-  Enforcing "cross-currency implies a rate" would block entry before the
-  rate is known.
-- **`to_amount` on a sale is gross proceeds**, matching the exchange
-  statement. Fees are separate rows. Net is derived.
+  `account_identifiers`.** The FK says which account, the snapshot which
+  address was used that day.
+- **Constraints for impossible states, views for suspicious ones.** Enforcing
+  "cross-currency implies a rate" would block entry before the rate is known.
+- **`to_amount` on a sale is gross proceeds**, matching the statement. Fees
+  are separate rows; net is derived.
 - ~~**Google sign-in with a one-subject allow-list.**~~ Superseded: it
-  stored no credential, but needed a Google Cloud project, internet access
-  to sign in, and a hostname-bound redirect URI — three dependencies an
-  offline local tool should not carry.
-- **Username and password with a single account**, replacing the above.
-  The cost is that we now store a credential and own the hashing, the
-  timing, and the rate limiting. That cost is accepted; §5a is where it
-  is paid, and its rules are not optional.
-- **Ships with `admin` / `admin` and a must-change flag.** A default
-  credential is normally indefensible. It is defensible here only because
-  of the three constraints in §5a: data routes are 403 until it changes,
-  the server will not leave loopback until it changes, and the UI has no
-  path past the change screen. Removing any one of them means removing
-  the default.
+  stored no credential, but needed a Google Cloud project, internet access,
+  and a hostname-bound redirect URI — three dependencies an offline local
+  tool should not carry.
+- **Username and password with a single account**, replacing the above. The
+  cost is that we now own the hashing, the timing and the rate limiting.
+  Accepted; §5a is where it is paid, and its rules are not optional.
+- **Ships with `admin` / `admin` and a must-change flag.** Indefensible
+  except for §5a's three constraints. Remove any one and the default goes.
 - **Sessions are server-side rows, not JWTs.** Sign-out must actually
-  revoke, and a stateless token cannot be revoked without building the
-  very table a JWT was meant to avoid.
-- **Auth logic lives in `apps/api/auth/`, not in `core`.** Hashing and
-  cookies are infrastructure. `core` sees a `UserId` and a
-  `PasswordHasher` port, nothing more.
-- **Changing credentials revokes all other sessions.** The main reason
-  anyone changes a password is that they think it leaked.
+  revoke, and a stateless token cannot be without building this very table.
+- **Auth logic lives in `apps/api/auth/`, not `core`.** Hashing and cookies
+  are infrastructure; `core` sees a `PasswordHasher` port.
+- **Changing credentials revokes all other sessions** — including on a
+  username-only change. The reason anyone changes one is that they think it
+  leaked.
+- **Guards are global with an exemption list, never opt-in per route.** A
+  forgotten route must fail closed. `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT`
+  = §5a's five; `/auth/me` and `/auth/change-credentials` are in the second
+  list only, since both need to know who is asking and 401 when nobody is.
+- **Migrations can carry a seed running in their transaction**, for rows no
+  SQL text can express — so far one, the admin credential, whose salt must
+  differ per install. Keyed by filename so a test directory can't clash.
+- **`removeAdditional: false` on Fastify's ajv.** The default silently drops
+  an undeclared field, turning a typo'd `newPasword` into a 200 that changed
+  nothing while the person believes it did.
+- **Session-id compare is constant-time; the index probe isn't.** An honest
+  limit, not a fix — with a 256-bit id the residue is negligible. The rule
+  stays so nobody swaps in a 6-digit code and keeps the `===`.
+- **`cause` and `name` are taken on `Error`** — hence `.failure` on
+  `AuthenticationFailedError`, as `.migrationName` already worked around.
+- **`Algorithm.Argon2id` is an ambient `const enum`** `verbatimModuleSyntax`
+  won't inline; the literal `2` is used, pinned by a test on the `$argon2id$`
+  prefix.
+- **`.catch(e => e as E)` in a test is a bug** — it widens the type and passes
+  when the call *resolves*. Use `packages/core/test/rejection.ts`; vitest does
+  not typecheck, so `npm run typecheck` is the only net.
 
 ## 14. Task protocol
 
