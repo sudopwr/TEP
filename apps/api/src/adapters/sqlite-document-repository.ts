@@ -1,3 +1,9 @@
+import {
+  CompanyNotFoundError,
+  DocumentNotFoundError,
+  PayoutNotFoundError,
+  TransactionNotFoundError,
+} from '@payout/core';
 import type {
   Document,
   DocumentDraft,
@@ -164,7 +170,11 @@ export class SqliteDocumentRepository implements DocumentRepository {
     target: DocumentTarget,
     role: string | null,
   ): Promise<void> {
-    this.#link[target.kind].run(documentId, target.id, role);
+    try {
+      this.#link[target.kind].run(documentId, target.id, role);
+    } catch (error: unknown) {
+      throw this.#translateLinkFailure(error, documentId, target);
+    }
     return Promise.resolve();
   }
 
@@ -207,5 +217,50 @@ export class SqliteDocumentRepository implements DocumentRepository {
       throw new Error(`documents row ${String(id)} vanished after writing it`);
     }
     return Promise.resolve(toDocument(row));
+  }
+
+  /**
+   * A foreign-key refusal, said in the domain's words.
+   *
+   * §7 puts this invariant in the database and adds "do not duplicate it in
+   * application code unless the message needs to be friendlier". It does:
+   * `SQLITE_CONSTRAINT_FOREIGNKEY` reaching a route with no status attached
+   * is a 500, which tells the caller the server is broken when in fact they
+   * named a row that is not there.
+   *
+   * A `document_links` row has *two* foreign keys — the document and the
+   * target — and SQLite does not say which one failed. Blaming the target
+   * unconditionally would report a missing document as a missing payout, so
+   * the document is checked first. One extra query, only on the error path.
+   *
+   * Anything that is not a foreign-key failure is returned untouched: a disk
+   * error is not a missing row.
+   */
+  #translateLinkFailure(
+    error: unknown,
+    documentId: DocumentId,
+    target: DocumentTarget,
+  ): unknown {
+    const code =
+      typeof error === 'object' && error !== null && 'code' in error
+        ? (error as { code?: unknown }).code
+        : undefined;
+
+    if (code !== 'SQLITE_CONSTRAINT_FOREIGNKEY') {
+      return error;
+    }
+
+    if (this.#selectById.get(documentId) === undefined) {
+      return new DocumentNotFoundError(documentId);
+    }
+
+    switch (target.kind) {
+      case 'company':
+        return new CompanyNotFoundError(target.id);
+      case 'payout':
+        return new PayoutNotFoundError(target.id);
+      case 'transaction':
+        return new TransactionNotFoundError(target.id);
+    }
   }
 }

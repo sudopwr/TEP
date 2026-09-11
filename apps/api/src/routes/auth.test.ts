@@ -9,7 +9,7 @@ import {
 const NEW_PASSWORD = 'a quiet harbour lamp';
 
 /** A route that is on neither exemption list, so both guards apply to it. */
-const DATA_ROUTE = '/accounts/balances';
+const DATA_ROUTE = '/api/accounts/balances';
 
 describe('auth routes', () => {
   let server: TestServer;

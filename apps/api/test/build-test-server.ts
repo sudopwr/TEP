@@ -1,5 +1,12 @@
-import type { FastifyInstance } from 'fastify';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
+import type { FastifyInstance, InjectOptions } from 'fastify';
+
+import * as reference from '@core/domain/reference-payout.fixture';
+
+import { bulkLoad } from '../src/adapters/maintenance';
 import type { SqliteDatabase } from '../src/db/connection';
 import { buildServer } from '../src/server';
 
@@ -41,24 +48,44 @@ export interface TestServer {
   readonly app: FastifyInstance;
   readonly database: SqliteDatabase;
   readonly clock: ControllableClock;
+  readonly filesRoot: string;
   close(): Promise<void>;
 }
 
-/** The real server, the real schema, the real argon2 — an in-memory file. */
-export async function buildTestServer(): Promise<TestServer> {
+export interface BuildTestServerOptions {
+  /** Seed the reference payout so the read endpoints have something to read. */
+  readonly seed?: (database: SqliteDatabase) => void;
+}
+
+/**
+ * The real server, the real schema, the real argon2 — in memory.
+ *
+ * Nothing is mocked: `:memory:` SQLite with the migrations applied, the real
+ * container, the real guards, the real file store in a throwaway directory.
+ * The only substitutions are a clock a test can move and a database that
+ * disappears when the test ends.
+ */
+export async function buildTestServer(
+  options: BuildTestServerOptions = {},
+): Promise<TestServer> {
   const database = openTestDatabase();
+  options.seed?.(database);
+
   const clock = new ControllableClock();
+  const filesRoot = mkdtempSync(path.join(tmpdir(), 'payout-api-files-'));
 
   const app = await buildServer({
     database,
     sessionSecret: 'test-secret-not-a-real-one',
     clock,
+    filesRoot,
   });
 
   return {
     app,
     database,
     clock,
+    filesRoot,
     close: async () => {
       await app.close();
       database.close();
@@ -77,3 +104,91 @@ export function cookieFrom(
   }
   return `${name}=${found.value}`;
 }
+
+const NEW_PASSWORD = 'a quiet harbour lamp';
+
+/**
+ * Sign in and come back with a cookie that opens the data routes.
+ *
+ * Two steps, not one, and both are real. Signing in as `admin` gets a valid
+ * session — and a session that every `/api/*` route answers 403 to, because
+ * `must_change_password` is still set (§5a). So the helper also changes the
+ * password, through the real endpoint, with the real policy applied.
+ *
+ * Deliberately not a shortcut that writes a session row directly: a helper
+ * that bypassed sign-in would let a regression in sign-in, in the cookie
+ * signature, or in either guard sit undetected behind a green suite. Every
+ * authenticated test below pays for a real login, and that is the point.
+ */
+export async function authenticate(server: TestServer): Promise<string> {
+  const loggedIn = await server.app.inject({
+    method: 'POST',
+    url: '/auth/login',
+    payload: { username: 'admin', password: 'admin' },
+  });
+
+  const cookie = cookieFrom(loggedIn);
+  if (cookie === null) {
+    throw new Error('sign-in issued no session cookie');
+  }
+
+  const changed = await server.app.inject({
+    method: 'POST',
+    url: '/auth/change-credentials',
+    headers: { cookie },
+    payload: { currentPassword: 'admin', newPassword: NEW_PASSWORD },
+  });
+
+  if (changed.statusCode !== 200) {
+    throw new Error(
+      `could not clear the must-change flag: ${String(changed.statusCode)} ${changed.body}`,
+    );
+  }
+
+  return cookie;
+}
+
+/** A signed-in request. Every `/api` test goes through this. */
+export function asUser(
+  server: TestServer,
+  cookie: string,
+  options: InjectOptions,
+): Promise<Awaited<ReturnType<FastifyInstance['inject']>>> {
+  return server.app.inject({
+    ...options,
+    headers: { ...options.headers, cookie },
+  });
+}
+
+/**
+ * Seeds for `buildTestServer`, so the read endpoints have something to read.
+ *
+ * The reference payout is the §10 tree — the same fixture the domain tests
+ * assert ₹84,642.93 against. Using it here means the route tests are checking
+ * the numbers that actually left the database, not numbers invented for a
+ * route test.
+ */
+export const seedCounterparties = (database: SqliteDatabase): void => {
+  bulkLoad(database, {
+    companies: [reference.TRADEIFY, reference.RISE_CO],
+    accounts: [
+      reference.TRADEIFY_ACCOUNT,
+      reference.RISE,
+      reference.TRUSTWALLET,
+      reference.COINDCX,
+      reference.BANK,
+    ],
+    feeSchedules: [...reference.FEE_SCHEDULES],
+  });
+};
+
+export const seedReferencePayout = (database: SqliteDatabase): void => {
+  seedCounterparties(database);
+  bulkLoad(database, {
+    payouts: [reference.PAYOUT],
+    transactions: [...reference.TRANSACTIONS],
+    fees: [...reference.FEES],
+  });
+};
+
+export { reference };

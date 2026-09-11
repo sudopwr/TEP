@@ -3,8 +3,16 @@ import { NonPositiveAmountError } from './errors';
 import type { TransactionFeeId, TransactionId } from './ids';
 import type { Money } from './money';
 
-export type FeeType =
-  'tds' | 'exchange_fee' | 'gst' | 'network_fee' | 'platform_charge';
+/** The runtime list; the type is derived from it. See DOCUMENT_TYPES. */
+export const FEE_TYPES = [
+  'tds',
+  'exchange_fee',
+  'gst',
+  'network_fee',
+  'platform_charge',
+] as const;
+
+export type FeeType = (typeof FEE_TYPES)[number];
 
 export interface TransactionFeeProps {
   readonly id: TransactionFeeId;

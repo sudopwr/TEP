@@ -116,7 +116,29 @@ describe('SqliteDocumentRepository', () => {
 
       await expect(
         repository.link(document.id, { kind: 'payout', id: 999 }, null),
-      ).rejects.toMatchObject({ code: 'SQLITE_CONSTRAINT_FOREIGNKEY' });
+      ).rejects.toMatchObject({ name: 'PayoutNotFoundError', payoutId: 999 });
+    });
+
+    it('names the kind of target that was missing', async () => {
+      // The database says FOREIGN KEY; the caller needs to know *which*
+      // thing it named is not there. §7 allows duplicating a constraint
+      // when the message needs to be friendlier, and a 500 saying
+      // "SQLITE_CONSTRAINT_FOREIGNKEY" is not friendlier than anything.
+      const document = await repository.insert(draft());
+
+      await expect(
+        repository.link(document.id, { kind: 'company', id: 999 }, null),
+      ).rejects.toMatchObject({ name: 'CompanyNotFoundError' });
+      await expect(
+        repository.link(document.id, { kind: 'transaction', id: 999 }, null),
+      ).rejects.toMatchObject({ name: 'TransactionNotFoundError' });
+    });
+
+    it('lets an unrelated failure through untouched', async () => {
+      // A disk error is not a missing row, and must not be reported as one.
+      await expect(
+        repository.link(999, { kind: 'payout', id: 1 }, null),
+      ).rejects.toMatchObject({ name: 'DocumentNotFoundError' });
     });
   });
 

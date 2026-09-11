@@ -8,8 +8,16 @@ import {
 import type { AccountId, IsoDate, PayoutId, TransactionId } from './ids';
 import type { Money, RoundingMode } from './money';
 
-export type TransactionKind =
-  'payout_credit' | 'withdrawal' | 'transfer' | 'sale' | 'deposit';
+/** The runtime list; the type is derived from it. See DOCUMENT_TYPES. */
+export const TRANSACTION_KINDS = [
+  'payout_credit',
+  'withdrawal',
+  'transfer',
+  'sale',
+  'deposit',
+] as const;
+
+export type TransactionKind = (typeof TRANSACTION_KINDS)[number];
 
 export interface TransactionProps {
   readonly id: TransactionId;

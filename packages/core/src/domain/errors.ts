@@ -333,3 +333,33 @@ export class UserNotFoundError extends DomainError {
     super('UserNotFoundError', `No user with id ${userId}.`);
   }
 }
+
+/** A document that was looked up and does not exist. */
+export class DocumentNotFoundError extends DomainError {
+  constructor(readonly documentId: number) {
+    super('DocumentNotFoundError', `No document with id ${documentId}.`);
+  }
+}
+
+/** A company code that already belongs to another company. */
+export class CompanyCodeTakenError extends DomainError {
+  constructor(readonly code: string) {
+    super(
+      'CompanyCodeTakenError',
+      `A company with code '${code}' already exists.`,
+    );
+  }
+}
+
+/** A document whose bytes are missing from the store. */
+export class DocumentFileMissingError extends DomainError {
+  constructor(
+    readonly documentId: number,
+    readonly storedPath: string,
+  ) {
+    super(
+      'DocumentFileMissingError',
+      `Document ${documentId} refers to '${storedPath}', which is not in the file store.`,
+    );
+  }
+}

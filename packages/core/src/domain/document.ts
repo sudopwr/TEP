@@ -1,7 +1,22 @@
 import type { DocumentId, IsoDate } from './ids';
 
-export type DocumentType =
-  'agreement' | 'invoice' | 'receipt' | 'screenshot' | 'statement' | 'other';
+/**
+ * The runtime list, with the type derived from it rather than beside it.
+ *
+ * Written this way round so the validation layer at the edge cannot drift:
+ * a zod enum built from this array is the same set by construction, where a
+ * hand-copied list is the same set until somebody adds a member.
+ */
+export const DOCUMENT_TYPES = [
+  'agreement',
+  'invoice',
+  'receipt',
+  'screenshot',
+  'statement',
+  'other',
+] as const;
+
+export type DocumentType = (typeof DOCUMENT_TYPES)[number];
 
 export interface DocumentProps {
   readonly id: DocumentId;

@@ -1,15 +1,9 @@
 import path from 'node:path';
 import process from 'node:process';
 
-import { ImportLegacyCsv, type ImportLegacyCsvResult } from '@payout/core';
+import type { ImportLegacyCsvResult } from '@payout/core';
 
-import { loadCurrencyRegistry } from '../adapters/currency-registry';
-import { FileCsvReader } from '../adapters/file-csv-reader';
-import { SqliteAccountRepository } from '../adapters/sqlite-account-repository';
-import { SqliteCompanyRepository } from '../adapters/sqlite-company-repository';
-import { SqliteDocumentRepository } from '../adapters/sqlite-document-repository';
-import { SqlitePayoutRepository } from '../adapters/sqlite-payout-repository';
-import { SqliteTransactionRepository } from '../adapters/sqlite-transaction-repository';
+import { buildContainer } from '../container';
 import { openDatabase } from '../db/connection';
 import { migrate } from '../db/migrate';
 
@@ -78,17 +72,11 @@ export async function main(argv: readonly string[]): Promise<number> {
       );
     }
 
-    const currencies = loadCurrencyRegistry(database);
+    // The same wiring the server uses. §5 keeps adapter assembly in one file,
+    // and a CLI that built its own would be a second copy to keep in step.
+    const { importLegacyCsv } = buildContainer(database);
 
-    const result = await new ImportLegacyCsv({
-      csv: new FileCsvReader(),
-      companies: new SqliteCompanyRepository(database),
-      accounts: new SqliteAccountRepository(database),
-      payouts: new SqlitePayoutRepository(database, currencies),
-      transactions: new SqliteTransactionRepository(database, currencies),
-      documents: new SqliteDocumentRepository(database),
-      currencies,
-    }).execute({ location });
+    const result = await importLegacyCsv.execute({ location });
 
     process.stdout.write(`${describe(result)}\n`);
     return 0;

@@ -1,4 +1,5 @@
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import Fastify, { type FastifyInstance } from 'fastify';
 
@@ -7,9 +8,11 @@ import {
   registerSessionGuard,
 } from './auth/guards';
 import { buildContainer, type ContainerOptions } from './container';
+import type { DocumentFileSource, UseCases } from './decorators';
 import type { SqliteDatabase } from './db/connection';
-import { registerAccountRoutes } from './routes/accounts';
+import { registerApiRoutes } from './routes/api';
 import { registerAuthRoutes } from './routes/auth';
+import { registerErrorHandler } from './routes/errors';
 
 /**
  * Every field whose value could be a password, at every place a logger might
@@ -36,10 +39,16 @@ export const REDACTED_PATHS = [
   'res.headers["set-cookie"]',
 ];
 
+/** 25MB. A trading statement is a few hundred KB; a video is not a document. */
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
+
 export interface ServerOptions extends ContainerOptions {
   readonly database: SqliteDatabase;
   readonly sessionSecret: string;
   readonly logger?: boolean;
+  /** Swap in fakes without a database. Tests only; the container wins if absent. */
+  readonly useCases?: UseCases;
+  readonly documentFiles?: DocumentFileSource;
 }
 
 /**
@@ -49,15 +58,17 @@ export interface ServerOptions extends ContainerOptions {
  * load-bearing:
  *
  *   1. cookie, so a guard can read one;
- *   2. rate limiting, so a brute-force attempt is slowed before it is judged;
- *   3. the session guard;
- *   4. the must-change guard, which only ever runs on an authenticated
- *      request because (3) already returned for the others;
- *   5. routes.
+ *   2. multipart and rate limiting;
+ *   3. the error handler, before any route can throw;
+ *   4. the session guard;
+ *   5. the must-change guard, which only ever runs on an authenticated
+ *      request because (4) already returned for the others;
+ *   6. routes.
  *
  * Both guards are `addHook` on the root instance, so they apply to every
  * route registered on it — including routes added in a later stage, which
  * are protected the moment they exist without anyone remembering to say so.
+ * That is why `/api/*` needs no per-route annotation to be guarded.
  */
 export async function buildServer(
   options: ServerOptions,
@@ -72,6 +83,9 @@ export async function buildServer(
         // schema does not declare instead of rejecting it. On a credentials
         // endpoint that turns a typo'd `newPasword` into a 200 that changed
         // nothing, and the person believes their password has changed.
+        //
+        // The /api routes validate with zod and do not rely on this; the auth
+        // routes do.
         removeAdditional: false,
       },
     },
@@ -79,7 +93,17 @@ export async function buildServer(
 
   const container = buildContainer(options.database, options);
 
+  // Routes reach these through the instance and never import an adapter.
+  app.decorate('useCases', options.useCases ?? container.useCases);
+  app.decorate(
+    'documentFiles',
+    options.documentFiles ?? container.documentFiles,
+  );
+
   await app.register(cookie, { secret: options.sessionSecret });
+  await app.register(multipart, {
+    limits: { fileSize: MAX_UPLOAD_BYTES, files: 1 },
+  });
   await app.register(rateLimit, {
     global: false,
     // Loopback means one client, so a shared bucket would let a legitimate
@@ -89,13 +113,15 @@ export async function buildServer(
     timeWindow: '1 minute',
   });
 
-  registerSessionGuard(app, { authenticate: container.authenticate });
+  registerErrorHandler(app);
+
+  registerSessionGuard(app, { authenticate: app.useCases.authenticate });
   registerPasswordChangedGuard(app);
 
   app.get('/health', () => ({ status: 'ok' }));
 
-  registerAuthRoutes(app, container);
-  registerAccountRoutes(app, container);
+  registerAuthRoutes(app, app.useCases);
+  registerApiRoutes(app);
 
   return app;
 }

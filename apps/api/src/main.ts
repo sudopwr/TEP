@@ -34,6 +34,8 @@ export interface StartedServer {
 export async function start(
   options: BootstrapOptions = {},
 ): Promise<StartedServer> {
+  // N7: binds loopback by default, and `assertSafeBindAddress` below
+  // refuses anything else while the shipped password is still in place.
   const host = options.host ?? process.env['HOST'] ?? '127.0.0.1';
   const port = Number(options.port ?? process.env['PORT'] ?? 3000);
   const databasePath =

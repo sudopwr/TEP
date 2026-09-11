@@ -1,6 +1,8 @@
+import { createReadStream } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { Readable } from 'node:stream';
 
 import type { DocumentStore, StoredFile } from '@payout/core';
 
@@ -49,6 +51,22 @@ export class FileSystemDocumentStore implements DocumentStore {
 
   async remove(storedPath: string): Promise<void> {
     await rm(this.#resolve(storedPath), { force: true });
+  }
+
+  /**
+   * A stream of the file's bytes, for serving it without buffering it.
+   *
+   * Beyond the `DocumentStore` port on purpose: a `Readable` is `node:stream`,
+   * and core imports nothing. `DocumentFileSource` in `decorators.ts` names
+   * the shape this satisfies, so the route can stream without knowing a
+   * filesystem exists.
+   *
+   * The same `#resolve` guard applies, so a `stored_path` that has been
+   * tampered with cannot walk out of the store — which matters more here than
+   * anywhere else, since this one ends up on a socket.
+   */
+  openReadStream(storedPath: string): Readable {
+    return createReadStream(this.#resolve(storedPath));
   }
 
   /**

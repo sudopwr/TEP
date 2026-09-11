@@ -112,3 +112,30 @@ export type {
   SignOutResult,
 } from './sign-out';
 export { SignOut } from './sign-out';
+
+export type {
+  GetDocumentCommand,
+  GetDocumentDependencies,
+} from './get-document';
+export { GetDocument } from './get-document';
+
+export type { ListCompaniesDependencies } from './list-companies';
+export { ListCompanies } from './list-companies';
+
+export type {
+  ListPayoutsCommand,
+  ListPayoutsDependencies,
+} from './list-payouts';
+export { ListPayouts } from './list-payouts';
+
+export type {
+  ListTransactionsCommand,
+  ListTransactionsDependencies,
+} from './list-transactions';
+export { ListTransactions } from './list-transactions';
+
+export type {
+  RecordCompanyCommand,
+  RecordCompanyDependencies,
+} from './record-company';
+export { RecordCompany } from './record-company';

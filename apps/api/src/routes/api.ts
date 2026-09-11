@@ -1,0 +1,385 @@
+import type { FastifyInstance, FastifyRequest } from 'fastify';
+
+import type { DocumentTarget, DocumentType, RoundingMode } from '@payout/core';
+
+import * as out from './serialize';
+import {
+  attachDocumentFields,
+  balancesQuery,
+  createCompanyBody,
+  createPayoutBody,
+  createTransactionBody,
+  dataQualityQuery,
+  financialYearQuery,
+  idParam,
+  listPayoutsQuery,
+  listTransactionsQuery,
+  searchDocumentsQuery,
+  settlementQuery,
+} from './schemas';
+import { parseOrThrow } from './validate';
+
+/**
+ * The data routes (F1-F13), all under `/api`.
+ *
+ * Every handler is the same three lines with different nouns: parse the
+ * request with a zod schema, call exactly one use case, serialize the result.
+ * No handler reaches a repository, constructs a `Money`, or decides anything.
+ * If a route here ever needs an `if` about the domain, the `if` belongs in a
+ * use case and the route belongs unchanged.
+ *
+ * Use cases arrive on the instance via `fastify.decorate` (see
+ * `container.ts`), so this file imports no adapter and no container — which
+ * is also what lets a test swap in a fake by decorating the same name.
+ */
+export function registerApiRoutes(app: FastifyInstance): void {
+  // ---------- Companies (F1) ----------
+
+  app.get('/api/companies', async () => {
+    const companies = await app.useCases.listCompanies.execute();
+    return { companies: companies.map(out.company) };
+  });
+
+  app.post('/api/companies', async (request, reply) => {
+    const body = parseOrThrow(createCompanyBody, request.body, 'body');
+
+    const company = await app.useCases.recordCompany.execute({
+      code: body.code,
+      name: body.name,
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return reply.status(201).send({ company: out.company(company) });
+  });
+
+  // ---------- Payouts (F2, F8, F9) ----------
+
+  app.get('/api/payouts', async (request) => {
+    const query = parseOrThrow(listPayoutsQuery, request.query, 'query');
+
+    const payouts = await app.useCases.listPayouts.execute({
+      ...(query.companyId === undefined ? {} : { companyId: query.companyId }),
+      ...(query.from === undefined || query.to === undefined
+        ? {}
+        : { range: { from: query.from, to: query.to } }),
+    });
+
+    return { payouts: payouts.map(out.payout) };
+  });
+
+  app.post('/api/payouts', async (request, reply) => {
+    const body = parseOrThrow(createPayoutBody, request.body, 'body');
+
+    const payout = await app.useCases.recordPayout.execute({
+      code: body.code,
+      companyId: body.companyId,
+      grossAmount: body.grossAmount,
+      currencyCode: body.currencyCode,
+      ...(body.payoutDate === undefined ? {} : { payoutDate: body.payoutDate }),
+      ...(body.charges === undefined ? {} : { charges: body.charges }),
+      ...(body.reference === undefined ? {} : { reference: body.reference }),
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return reply.status(201).send({ payout: out.payout(payout) });
+  });
+
+  app.get('/api/payouts/:id/trail', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const trail = await app.useCases.getPayoutTrail.execute({ payoutId: id });
+
+    return out.payoutTrail(trail);
+  });
+
+  app.get('/api/payouts/:id/settlement', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+    const query = parseOrThrow(settlementQuery, request.query, 'query');
+
+    const settlement = await app.useCases.getSettlement.execute({
+      payoutId: id,
+      ...(query.currencyCode === undefined
+        ? {}
+        : { settlementCurrencyCode: query.currencyCode }),
+    });
+
+    return out.settlement(settlement);
+  });
+
+  // ---------- Transactions (F3, F4, F5) ----------
+
+  app.get('/api/transactions', async (request) => {
+    const query = parseOrThrow(listTransactionsQuery, request.query, 'query');
+
+    const transactions = await app.useCases.listTransactions.execute({
+      ...(query.payoutId === undefined ? {} : { payoutId: query.payoutId }),
+    });
+
+    return { transactions: transactions.map(out.transaction) };
+  });
+
+  /**
+   * One endpoint, two use cases, chosen by the body's own discriminator.
+   *
+   * The schema is a discriminated union on `kind`, so by the time the handler
+   * runs the decision has already been made by the parser — the branch below
+   * reads a tag, it does not weigh anything. A sale genuinely is a different
+   * command: gross proceeds come from the rate rather than the request (§13),
+   * the fee schedule applies, and TDS is accepted from the statement.
+   */
+  app.post('/api/transactions', async (request, reply) => {
+    const body = parseOrThrow(createTransactionBody, request.body, 'body');
+
+    if (body.kind === 'sale') {
+      const recorded = await app.useCases.recordSale.execute({
+        code: body.code,
+        payoutId: body.payoutId,
+        parentId: body.parentId ?? null,
+        txnDate: body.txnDate,
+        fromAccountId: body.fromAccountId,
+        toAccountId: body.toAccountId,
+        fromAmount: body.fromAmount,
+        fromCurrencyCode: body.fromCurrencyCode,
+        rate: body.rate,
+        settlementCurrencyCode: body.settlementCurrencyCode,
+        ...(body.tds === undefined ? {} : { tds: body.tds }),
+        ...(body.notes === undefined ? {} : { notes: body.notes }),
+        rounding: 'half-up' satisfies RoundingMode,
+      });
+
+      return reply.status(201).send({
+        transaction: out.transaction(recorded.transaction),
+        grossProceeds: out.money(recorded.grossProceeds),
+        fees: recorded.fees.map(out.transactionFee),
+        totalFees: out.money(recorded.totalFees),
+        netCredited: out.money(recorded.netCredited),
+      });
+    }
+
+    const transaction = await app.useCases.recordTransaction.execute({
+      code: body.code,
+      payoutId: body.payoutId,
+      parentId: body.parentId ?? null,
+      txnDate: body.txnDate,
+      kind: body.kind,
+      fromAccountId: body.fromAccountId,
+      toAccountId: body.toAccountId,
+      fromAmount: body.fromAmount,
+      fromCurrencyCode: body.fromCurrencyCode,
+      toAmount: body.toAmount,
+      toCurrencyCode: body.toCurrencyCode,
+      rate: body.rate ?? null,
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return reply
+      .status(201)
+      .send({ transaction: out.transaction(transaction) });
+  });
+
+  // ---------- Documents (F6, F7) ----------
+
+  /**
+   * Multipart upload, attached to a transaction (UC4).
+   *
+   * The file is buffered here rather than streamed, and that is not an
+   * oversight: UC4 dedupes on the SHA-256 of the whole file, so the whole file
+   * has to exist before anything can be decided about it. `@fastify/multipart`
+   * caps the size, so "buffer it" has a ceiling rather than being an invitation.
+   */
+  app.post('/api/transactions/:id/documents', async (request, reply) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const file = await readUploadedFile(request);
+
+    if (file === null) {
+      // 415 rather than 400: the body may be perfectly well-formed JSON, it
+      // is the media type this route cannot take. @fastify/multipart's own
+      // answer is 406, which says the *client* would not accept our reply —
+      // the opposite of what happened.
+      return reply.status(415).send({
+        code: 'unsupported_media_type',
+        message:
+          'Expected multipart/form-data with exactly one file field named "file".',
+      });
+    }
+
+    const bytes = await file.toBuffer();
+
+    // Multipart fields arrive as parts, not as a body object.
+    const fields = parseOrThrow(
+      attachDocumentFields,
+      textFieldsOf(file.fields),
+      'body',
+    );
+
+    const target: DocumentTarget = { kind: 'transaction', id };
+
+    const attached = await app.useCases.attachDocument.execute({
+      bytes: new Uint8Array(bytes),
+      filename: file.filename,
+      target,
+      mimeType: file.mimetype,
+      ...(fields.role === undefined ? {} : { role: fields.role }),
+      ...(fields.docType === undefined
+        ? {}
+        : { docType: fields.docType satisfies DocumentType | null }),
+      ...(fields.docDate === undefined ? {} : { docDate: fields.docDate }),
+    });
+
+    return reply.status(attached.created ? 201 : 200).send({
+      document: out.document(attached.document),
+      // False when the bytes were already on file and only a link was added.
+      created: attached.created,
+    });
+  });
+
+  /**
+   * Stream one document by id (F6).
+   *
+   * Served through a handler, never a static mount. A static mount on
+   * `data/files` would publish every file to anyone who can guess a
+   * content-addressed path, with no session check and no way to add one —
+   * and the paths are derivable from a hash that the search endpoint returns.
+   * Here, the guards have already run before this line.
+   *
+   * `Content-Disposition` is `inline` with the original filename, so a PDF
+   * opens in the browser and a download still gets the right name. The
+   * filename is quoted and stripped of quotes and control characters, because
+   * it came from an upload.
+   */
+  app.get('/api/documents/:id', async (request, reply) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const document = await app.useCases.getDocument.execute({ documentId: id });
+
+    return reply
+      .header('content-type', document.mimeType ?? 'application/octet-stream')
+      .header(
+        'content-disposition',
+        `inline; filename="${safeFilename(document.filename)}"`,
+      )
+      .header('x-content-type-options', 'nosniff')
+      .send(app.documentFiles.openReadStream(document.storedPath));
+  });
+
+  app.get('/api/documents/search', async (request) => {
+    const query = parseOrThrow(searchDocumentsQuery, request.query, 'query');
+
+    const documents = await app.useCases.searchDocuments.execute({
+      query: query.q,
+    });
+
+    return { documents: documents.map(out.document) };
+  });
+
+  // ---------- Balances, checks, reports (F10, F11, F13) ----------
+
+  app.get('/api/accounts/balances', async (request) => {
+    const query = parseOrThrow(balancesQuery, request.query, 'query');
+
+    const balances = await app.useCases.getAccountBalances.execute({
+      ...(query.payoutId === undefined ? {} : { payoutId: query.payoutId }),
+    });
+
+    return { balances: balances.map(out.accountBalance) };
+  });
+
+  app.get('/api/data-quality', async (request) => {
+    const query = parseOrThrow(dataQualityQuery, request.query, 'query');
+
+    const issues = await app.useCases.runDataQualityChecks.execute({
+      ...(query.payoutId === undefined ? {} : { payoutId: query.payoutId }),
+      ...(query.tolerancePct === undefined
+        ? {}
+        : { feeTolerancePct: query.tolerancePct }),
+    });
+
+    return { issues: issues.map(out.dataQualityIssue) };
+  });
+
+  app.get('/api/reports/financial-year', async (request) => {
+    const query = parseOrThrow(financialYearQuery, request.query, 'query');
+
+    const report = await app.useCases.generateFinancialYearReport.execute({
+      range: { from: query.from, to: query.to },
+      ...(query.currencyCode === undefined
+        ? {}
+        : { settlementCurrencyCode: query.currencyCode }),
+    });
+
+    return out.financialYearReport(report);
+  });
+}
+
+/**
+ * The uploaded file, or null when this was not a multipart request at all.
+ *
+ * `request.file()` throws rather than returning undefined when the content
+ * type is wrong, and that throw carries a 406 which would reach the client
+ * unchanged. Converting it here keeps the status honest.
+ */
+type UploadedFile = NonNullable<Awaited<ReturnType<FastifyRequest['file']>>>;
+
+async function readUploadedFile(
+  request: FastifyRequest,
+): Promise<UploadedFile | null> {
+  if (!request.isMultipart()) {
+    return null;
+  }
+
+  return (await request.file()) ?? null;
+}
+
+/** The text parts of a multipart body, as a plain object zod can parse. */
+function textFieldsOf(fields: unknown): Record<string, string> {
+  const result: Record<string, string> = {};
+
+  if (typeof fields !== 'object' || fields === null) {
+    return result;
+  }
+
+  for (const [name, part] of Object.entries(fields)) {
+    if (
+      typeof part === 'object' &&
+      part !== null &&
+      'value' in part &&
+      typeof (part as { value: unknown }).value === 'string'
+    ) {
+      result[name] = (part as { value: string }).value;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * A filename safe to put inside a quoted header value.
+ *
+ * A quote would end the field early and a newline would end the header —
+ * both are header injection, and the name came from whoever uploaded the
+ * file. Filtered by code point rather than by regex so the control
+ * characters being removed do not have to appear in the source to remove
+ * them.
+ */
+export function safeFilename(filename: string): string {
+  let safe = '';
+
+  for (const character of filename) {
+    const code = character.codePointAt(0) ?? 0;
+    const isControl = code < 0x20 || code === 0x7f;
+
+    if (
+      isControl ||
+      character === '"' ||
+      character === String.fromCharCode(92)
+    ) {
+      continue;
+    }
+
+    safe += character;
+  }
+
+  // A name made entirely of stripped characters would produce `filename=""`.
+  return safe.length > 0 ? safe : 'document';
+}

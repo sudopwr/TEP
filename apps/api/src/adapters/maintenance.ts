@@ -296,3 +296,34 @@ export function snapshot(
     ).map(toDocument),
   };
 }
+
+/**
+ * Replace the currency table wholesale.
+ *
+ * §6 puts the scale in the database, which means a test that wants to prove
+ * something reads it from there needs a way to change it. Here rather than in
+ * a test file because §12 keeps SQL in the adapter layer, and "except in
+ * tests" is how that rule stops meaning anything.
+ */
+export function replaceCurrencies(
+  database: SqliteDatabase,
+  rows: readonly {
+    code: string;
+    scale: number;
+    divisor: number;
+    kind: 'fiat' | 'crypto';
+    symbol: string | null;
+  }[],
+): void {
+  const clear = database.prepare('DELETE FROM currencies');
+  const insert = database.prepare(
+    'INSERT INTO currencies (code, scale, divisor, kind, symbol) VALUES (@code, @scale, @divisor, @kind, @symbol)',
+  );
+
+  database.transaction(() => {
+    clear.run();
+    for (const row of rows) {
+      insert.run(row);
+    }
+  })();
+}

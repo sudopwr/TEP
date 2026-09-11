@@ -42,13 +42,13 @@ export type { PayoutProps, PayoutStatus } from './domain/payout';
 export { Payout } from './domain/payout';
 
 export type { TransactionKind, TransactionProps } from './domain/transaction';
-export { Transaction } from './domain/transaction';
+export { TRANSACTION_KINDS, Transaction } from './domain/transaction';
 
 export type { FeeType, TransactionFeeProps } from './domain/transaction-fee';
-export { TransactionFee } from './domain/transaction-fee';
+export { FEE_TYPES, TransactionFee } from './domain/transaction-fee';
 
 export type { DocumentProps, DocumentType } from './domain/document';
-export { Document } from './domain/document';
+export { DOCUMENT_TYPES, Document } from './domain/document';
 
 export type { FeeBasis, FeeScheduleProps } from './domain/fee-schedule';
 export { FeeSchedule } from './domain/fee-schedule';
@@ -85,6 +85,9 @@ export {
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
   AuthenticationFailedError,
+  CompanyCodeTakenError,
+  DocumentFileMissingError,
+  DocumentNotFoundError,
   InvalidUsernameError,
   PasswordPolicyError,
   SessionInvalidError,
