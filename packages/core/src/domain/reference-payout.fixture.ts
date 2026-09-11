@@ -29,6 +29,7 @@
  */
 import { Account } from './account';
 import { Company } from './company';
+import { FeeSchedule } from './fee-schedule';
 import { INR, USD, USDT } from './currency';
 import type { AccountId } from './ids';
 import { Money } from './money';
@@ -39,6 +40,50 @@ import { TransactionFee } from './transaction-fee';
 const inr = (text: string): Money => Money.fromDecimalString(text, INR);
 const usd = (text: string): Money => Money.fromDecimalString(text, USD);
 const usdt = (text: string): Money => Money.fromDecimalString(text, USDT);
+
+// ---------- Fee schedules (CLAUDE.md §8) ----------
+//
+// Declared here rather than in a test helper so that the in-memory world and
+// the SQLite world are demonstrably running the same schedules.
+
+export const COINDCX_EXCHANGE_FEE = FeeSchedule.create({
+  id: 1,
+  accountId: 4,
+  feeType: 'exchange_fee',
+  basis: 'to_amount',
+  rateBps: 50,
+  flatAmount: null,
+  effectiveFrom: '2024-01-01',
+  effectiveTo: null,
+});
+
+export const COINDCX_GST = FeeSchedule.create({
+  id: 2,
+  accountId: 4,
+  feeType: 'gst',
+  basis: 'exchange_fee',
+  rateBps: 1800,
+  flatAmount: null,
+  effectiveFrom: '2024-01-01',
+  effectiveTo: null,
+});
+
+export const RISE_NETWORK_FEE = FeeSchedule.create({
+  id: 3,
+  accountId: 2,
+  feeType: 'network_fee',
+  basis: 'flat',
+  rateBps: null,
+  flatAmount: usd('4.00'),
+  effectiveFrom: '2024-01-01',
+  effectiveTo: null,
+});
+
+export const FEE_SCHEDULES: readonly FeeSchedule[] = [
+  COINDCX_EXCHANGE_FEE,
+  COINDCX_GST,
+  RISE_NETWORK_FEE,
+];
 
 // ---------- Counterparties ----------
 

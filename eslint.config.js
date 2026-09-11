@@ -92,6 +92,59 @@ const boundaries = {
   },
 };
 
+/**
+ * SQL belongs to the adapter layer.
+ *
+ * CLAUDE.md §12: "SQL lives in adapter files, never in routes or use cases."
+ * The shapes below need two keywords to match, so a UI string like "select a
+ * company" is not a false positive while `SELECT ... FROM` is.
+ *
+ * Two directories are exempt and no others: `adapters/`, which is the rule's
+ * subject, and `db/`, where the migration runner creates the one table it
+ * needs to track migrations and its test writes throwaway schemas.
+ */
+const SQL_SHAPES = [
+  /\bSELECT\b[\s\S]*\bFROM\b/i,
+  /\bINSERT\s+(OR\s+\w+\s+)?INTO\b/i,
+  /\bUPDATE\b[\s\S]*\bSET\b/i,
+  /\bDELETE\s+FROM\b/i,
+  /\bCREATE\s+(TEMP\s+|TEMPORARY\s+|VIRTUAL\s+)?(TABLE|VIEW|INDEX|TRIGGER)\b/i,
+  /\bALTER\s+TABLE\b/i,
+  /\bDROP\s+(TABLE|VIEW|INDEX|TRIGGER)\b/i,
+];
+
+const sqlBoundary = {
+  rules: {
+    'sql-stays-in-adapters': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'SQL may only appear in the adapter layer' },
+        schema: [],
+        messages: {
+          stray:
+            'SQL outside the adapter layer. Move the query into ' +
+            'apps/api/src/adapters and call it through a port.',
+        },
+      },
+      create(context) {
+        const check = (node, text) => {
+          if (
+            typeof text === 'string' &&
+            SQL_SHAPES.some((s) => s.test(text))
+          ) {
+            context.report({ node, messageId: 'stray' });
+          }
+        };
+
+        return {
+          Literal: (node) => check(node, node.value),
+          TemplateElement: (node) => check(node, node.value.raw),
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   {
     ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'data/**'],
@@ -162,6 +215,16 @@ export default tseslint.config(
         'error',
         { root: 'packages/core', allow: ['vitest', 'node:crypto'] },
       ],
+    },
+  },
+
+  // SQL stays in the adapter layer.
+  {
+    files: ['apps/**/*.{ts,tsx}', 'packages/**/*.ts'],
+    ignores: ['apps/api/src/adapters/**', 'apps/api/src/db/**'],
+    plugins: { sql: sqlBoundary },
+    rules: {
+      'sql/sql-stays-in-adapters': 'error',
     },
   },
 

@@ -114,10 +114,38 @@ describe('GetPayoutTrail (UC5)', () => {
 
   it('treats a leg whose parent is outside the payout as a root', async () => {
     const { world, useCase } = setup();
+
+    // The parent is a real leg of a different payout. An id pointing at
+    // nothing would be simpler to write and impossible to store: parent_id is
+    // a foreign key, so the database refuses it outright. "Outside this
+    // payout" is the reachable version of the same situation.
+    const other = await world.payouts.insert({
+      code: 'TradeifyPayout008',
+      companyId: 1,
+      payoutDate: '2025-03-21',
+      reference: null,
+      gross: reference.PAYOUT.gross,
+      charges: reference.PAYOUT.charges,
+      notes: null,
+    });
+
+    const foreignParent = await world.transactions.insert({
+      code: 'Transaction199',
+      payoutId: other.id,
+      parentId: null,
+      txnDate: '2025-03-21',
+      kind: 'transfer',
+      fromAccountId: 3,
+      toAccountId: 4,
+      fromAmount: reference.SALE_003.fromAmount,
+      toAmount: reference.SALE_003.fromAmount,
+      rate: null,
+    });
+
     await world.transactions.insert({
       code: 'Transaction200',
       payoutId: 1,
-      parentId: 9999,
+      parentId: foreignParent.id,
       txnDate: '2025-03-21',
       kind: 'deposit',
       fromAccountId: 4,

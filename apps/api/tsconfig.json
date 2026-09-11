@@ -7,6 +7,6 @@
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["dist"],
+  "exclude": ["dist", "**/*.test.ts"],
   "references": [{ "path": "../../packages/core" }]
 }

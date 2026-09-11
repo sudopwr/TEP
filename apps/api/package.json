@@ -8,6 +8,10 @@
     "build": "tsc -b"
   },
   "dependencies": {
-    "@payout/core": "*"
+    "@payout/core": "*",
+    "better-sqlite3": "^12.11.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13"
   }
 }
