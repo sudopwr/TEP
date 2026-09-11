@@ -1,5 +1,6 @@
 export type { AccountDraft, AccountRepository } from './account-repository';
 export type { Clock } from './clock';
+export type { CsvReader, CsvTable } from './csv-reader';
 export type { CompanyDraft, CompanyRepository } from './company-repository';
 export type {
   DocumentDraft,

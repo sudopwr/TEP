@@ -23,10 +23,24 @@ export interface TransactionProps {
   readonly fromAmount: Money;
   readonly toAmount: Money;
   readonly rate: bigint | null;
+  /**
+   * The platform's own reference for each side, always TEXT.
+   *
+   * CLAUDE.md §9 defect 3: Excel turned one of these into `1.43908E+19` and
+   * the digits are gone for good. Whatever survived is kept verbatim — a
+   * reference that has been through a float is still the only handle on that
+   * transfer, and re-parsing it as a number would finish the job.
+   */
+  readonly fromExternalRef?: string | null;
+  readonly toExternalRef?: string | null;
   readonly notes?: string | null;
 }
 
-type StoredProps = TransactionProps & { readonly notes: string | null };
+type StoredProps = TransactionProps & {
+  readonly fromExternalRef: string | null;
+  readonly toExternalRef: string | null;
+  readonly notes: string | null;
+};
 
 /**
  * One movement of value between two accounts, and a node in the payout tree.
@@ -76,7 +90,12 @@ export class Transaction {
       }
     }
 
-    return new Transaction({ ...props, notes: props.notes ?? null });
+    return new Transaction({
+      ...props,
+      fromExternalRef: props.fromExternalRef ?? null,
+      toExternalRef: props.toExternalRef ?? null,
+      notes: props.notes ?? null,
+    });
   }
 
   get id(): TransactionId {
@@ -121,6 +140,14 @@ export class Transaction {
 
   get rate(): bigint | null {
     return this.#props.rate;
+  }
+
+  get fromExternalRef(): string | null {
+    return this.#props.fromExternalRef;
+  }
+
+  get toExternalRef(): string | null {
+    return this.#props.toExternalRef;
   }
 
   get notes(): string | null {

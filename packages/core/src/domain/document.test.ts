@@ -69,6 +69,33 @@ describe('Document', () => {
     expect(changed.storedPath).toBe('9f/86/9f86d081.pdf');
   });
 
+  describe('a document whose bytes have not arrived', () => {
+    // The legacy sheet lists filenames and nothing else, so an imported
+    // document is a reference until UC4 attaches the real file.
+    const listed = () =>
+      Document.create({
+        id: 3,
+        filename: 'coindcx-march.pdf',
+        storedPath: 'legacy/coindcx-march.pdf',
+        mimeType: null,
+        byteSize: null,
+        sha256: null,
+        docType: null,
+        docDate: null,
+        extractedText: null,
+      });
+
+    it('is allowed to have no content hash', () => {
+      expect(listed().sha256).toBeNull();
+    });
+
+    it('never claims to match anything, including itself', () => {
+      expect(listed().hasSameContentAs(listed())).toBe(false);
+      expect(listed().hasSameContentAs(statement())).toBe(false);
+      expect(statement().hasSameContentAs(listed())).toBe(false);
+    });
+  });
+
   it('does not expose a setter for the hash', () => {
     const document = statement();
 

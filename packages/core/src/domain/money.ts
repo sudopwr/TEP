@@ -240,6 +240,37 @@ export class Money {
   }
 
   /**
+   * Convert back out of `target` at `rate` — the inverse of multiplyByRate.
+   *
+   * minor_from = minor_to x 1e8 x 10^scale_from / (10^scale_to x rate)
+   *
+   * This is what recovers a sale's from-amount when the sheet's own copy of
+   * it is wrong (CLAUDE.md §9, defect 1): the proceeds and the rate are
+   * trustworthy, so the quantity sold follows from them. Unlike multiplying,
+   * dividing rarely comes out exactly, which is why the rounding mode is the
+   * caller's to state.
+   */
+  divideByRate(
+    rate: bigint | number,
+    source: Currency,
+    rounding: RoundingMode,
+  ): Money {
+    const scaledRate = toWholeNumber(
+      rate,
+      (reason) => new InvalidRateError(rate, reason),
+    );
+
+    if (scaledRate <= 0n) {
+      throw new InvalidRateError(rate, 'a rate must be greater than zero');
+    }
+
+    const numerator = this.#minor * RATE_DIVISOR * tenToThe(source.scale);
+    const denominator = tenToThe(this.#currency.scale) * scaledRate;
+
+    return new Money(divideRounded(numerator, denominator, rounding), source);
+  }
+
+  /**
    * A share of this amount in basis points, staying in the same currency.
    * 50 bps is 0.50%, 1800 bps is 18% — the two rates in `fee_schedules`.
    */

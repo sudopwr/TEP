@@ -16,7 +16,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json"
+    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json",
+    "import": "tsx apps/api/src/cli/import.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
@@ -24,6 +25,7 @@
     "eslint": "^9.37.0",
     "eslint-config-prettier": "^10.1.8",
     "prettier": "^3.6.2",
+    "tsx": "^4.23.13",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.45.0",
     "vitest": "^3.2.4"

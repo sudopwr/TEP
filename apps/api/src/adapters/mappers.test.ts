@@ -123,6 +123,8 @@ describe('row mappers', () => {
       to_amount: 444428n,
       to_currency: 'INR',
       rate_applied: 9826120000n,
+      from_external_ref: 'CDX-ORD-9001',
+      to_external_ref: '1.43908E+19',
       notes: null,
     };
 
@@ -133,6 +135,14 @@ describe('row mappers', () => {
       expect(transaction.toAmount.toDecimalString()).toBe('4444.28');
       expect(transaction.rate).toBe(9826120000n);
       expect(transaction.parentId).toBe(7);
+    });
+
+    it('keeps both external references as text, whatever they look like', () => {
+      const transaction = toTransaction(row, currencies);
+
+      expect(transaction.fromExternalRef).toBe('CDX-ORD-9001');
+      // Already a float when it reached the sheet; still a string here.
+      expect(transaction.toExternalRef).toBe('1.43908E+19');
     });
 
     it('keeps the rate a bigint, never a float', () => {
@@ -204,12 +214,10 @@ describe('row mappers', () => {
       expect(document.docType).toBe('statement');
     });
 
-    it('refuses a row with no content hash', () => {
-      // The column is nullable in the schema; the entity requires it, because
-      // a document without a hash can be neither deduplicated nor verified.
-      expect(() => toDocument({ ...row, sha256: null })).toThrow(
-        RowMappingError,
-      );
+    it('maps a row with no content hash to a reference', () => {
+      // The column is nullable, and the legacy import uses that: a filename
+      // listed in the sheet becomes a document before its bytes exist.
+      expect(toDocument({ ...row, sha256: null }).sha256).toBeNull();
     });
 
     it('allows the optional columns to be null', () => {

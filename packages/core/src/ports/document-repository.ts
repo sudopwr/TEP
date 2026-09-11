@@ -23,6 +23,14 @@ export interface DocumentRepository {
   /** The dedupe lookup: same bytes, same row (UC4). */
   findBySha256(sha256: string): Promise<Document | null>;
 
+  /**
+   * The other unique handle on a document. UC4 dedupes on content, but the
+   * legacy import has only filenames, so it keys on the path it derives from
+   * one — which is what makes a second import a no-op rather than a
+   * duplicate.
+   */
+  findByStoredPath(storedPath: string): Promise<Document | null>;
+
   insert(draft: DocumentDraft): Promise<Document>;
 
   update(document: Document): Promise<Document>;

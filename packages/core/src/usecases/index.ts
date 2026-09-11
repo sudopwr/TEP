@@ -1,4 +1,18 @@
 export type {
+  AppliedCorrection,
+  ImportLegacyCsvCommand,
+  ImportLegacyCsvDependencies,
+  ImportLegacyCsvResult,
+  ImportTally,
+} from './import-legacy-csv';
+export {
+  ImportLegacyCsv,
+  LegacyCsvError,
+  toIsoDate,
+  toScaledRate,
+} from './import-legacy-csv';
+
+export type {
   AttachDocumentCommand,
   AttachDocumentDependencies,
   DocumentAttached,

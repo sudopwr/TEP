@@ -9,7 +9,12 @@ export interface DocumentProps {
   readonly storedPath: string;
   readonly mimeType: string | null;
   readonly byteSize: number | null;
-  readonly sha256: string;
+  /**
+   * The content hash, or null when the ledger names a file whose bytes have
+   * not been ingested. The legacy sheet lists filenames and nothing else, so
+   * an imported document is a reference until UC4 attaches the real thing.
+   */
+  readonly sha256: string | null;
   readonly docType: DocumentType | null;
   readonly docDate: IsoDate | null;
   readonly extractedText: string | null;
@@ -52,7 +57,7 @@ export class Document {
     return this.#props.byteSize;
   }
 
-  get sha256(): string {
+  get sha256(): string | null {
     return this.#props.sha256;
   }
 
@@ -70,7 +75,8 @@ export class Document {
 
   /** Content identity, which is the only identity that matters for dedupe. */
   hasSameContentAs(other: Document): boolean {
-    return this.#props.sha256 === other.sha256;
+    // Two documents whose content nobody has seen are not known to match.
+    return this.#props.sha256 !== null && this.#props.sha256 === other.sha256;
   }
 
   rename(filename: string): Document {

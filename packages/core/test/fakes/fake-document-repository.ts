@@ -41,6 +41,15 @@ export class FakeDocumentRepository implements DocumentRepository {
     return Promise.resolve(null);
   }
 
+  findByStoredPath(storedPath: string): Promise<Document | null> {
+    for (const document of this.#rows.values()) {
+      if (document.storedPath === storedPath) {
+        return Promise.resolve(document);
+      }
+    }
+    return Promise.resolve(null);
+  }
+
   insert(draft: DocumentDraft): Promise<Document> {
     const document = Document.create({ ...draft, id: this.#nextId });
     this.#nextId += 1;

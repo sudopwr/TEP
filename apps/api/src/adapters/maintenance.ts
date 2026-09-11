@@ -51,10 +51,12 @@ const SQL = {
       (@id, @code, @companyId, @payoutDate, @reference, @gross, @charges, @currencyCode, @notes)`,
   insertTransaction: `INSERT INTO transactions
       (id, code, payout_id, parent_id, txn_date, kind, from_account_id, to_account_id,
-       from_amount, from_currency, to_amount, to_currency, rate_applied, notes)
+       from_amount, from_currency, to_amount, to_currency, rate_applied,
+       from_external_ref, to_external_ref, notes)
     VALUES
       (@id, @code, @payoutId, @parentId, @txnDate, @kind, @fromAccountId, @toAccountId,
-       @fromAmount, @fromCurrency, @toAmount, @toCurrency, @rate, @notes)`,
+       @fromAmount, @fromCurrency, @toAmount, @toCurrency, @rate,
+       @fromExternalRef, @toExternalRef, @notes)`,
   insertFee: `INSERT INTO transaction_fees (id, transaction_id, fee_type, amount, currency_code)
     VALUES (@id, @transactionId, @feeType, @amount, @currencyCode)`,
   insertFeeSchedule: `INSERT INTO fee_schedules
@@ -150,6 +152,8 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
         toAmount: transaction.toAmount.minor,
         toCurrency: transaction.toAmount.currency.code,
         rate: transaction.rate,
+        fromExternalRef: transaction.fromExternalRef,
+        toExternalRef: transaction.toExternalRef,
         notes: transaction.notes,
       });
     }
@@ -276,7 +280,8 @@ export function snapshot(
     transactions: rows<TransactionRow>(
       `SELECT id, code, payout_id, parent_id, txn_date, kind, from_account_id,
               to_account_id, from_amount, from_currency, to_amount, to_currency,
-              rate_applied, notes FROM transactions ORDER BY id`,
+              rate_applied, from_external_ref, to_external_ref, notes
+         FROM transactions ORDER BY id`,
     ).map((row) => toTransaction(row, currencies)),
     fees: rows<TransactionFeeRow>(
       'SELECT id, transaction_id, fee_type, amount, currency_code FROM transaction_fees ORDER BY id',

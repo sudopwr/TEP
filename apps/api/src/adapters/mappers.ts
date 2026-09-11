@@ -83,6 +83,8 @@ export interface TransactionRow {
   readonly to_amount: bigint;
   readonly to_currency: string;
   readonly rate_applied: bigint | null;
+  readonly from_external_ref: string | null;
+  readonly to_external_ref: string | null;
   readonly notes: string | null;
 }
 
@@ -207,6 +209,8 @@ export function toTransaction(
     fromAmount: money(row.from_amount, row.from_currency, currencies),
     toAmount: money(row.to_amount, row.to_currency, currencies),
     rate: row.rate_applied,
+    fromExternalRef: row.from_external_ref,
+    toExternalRef: row.to_external_ref,
     notes: row.notes,
   });
 }
@@ -228,14 +232,6 @@ export function toTransactionFee(
 }
 
 export function toDocument(row: DocumentRow): Document {
-  if (row.sha256 === null) {
-    throw new RowMappingError(
-      'documents',
-      'sha256',
-      'a document with no content hash can be neither deduplicated nor verified',
-    );
-  }
-
   return Document.create({
     id: toId(row.id, 'documents', 'id'),
     filename: row.filename,

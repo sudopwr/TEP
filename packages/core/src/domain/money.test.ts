@@ -278,6 +278,74 @@ describe('Money', () => {
     });
   });
 
+  describe('divideByRate', () => {
+    // The importer's tool: proceeds and rate are trustworthy, the sheet's
+    // own from-amount is not (CLAUDE.md §9, defect 1).
+    const proceeds = () => Money.fromDecimalString('72873.99', INR);
+
+    it('recovers 741.72 USDT from proceeds and rate', () => {
+      const sold = proceeds().divideByRate(9825000000n, USDT, 'half-up');
+
+      expect(sold.toDecimalString()).toBe('741.72000000');
+      expect(sold.currency.code).toBe('USDT');
+    });
+
+    it('is the inverse of multiplyByRate when the division is exact', () => {
+      const sold = proceeds().divideByRate(9825000000n, USDT, 'half-up');
+
+      expect(
+        sold.multiplyByRate(9825000000n, INR, 'half-up').toDecimalString(),
+      ).toBe('72873.99');
+    });
+
+    it('rounds as told when the division does not come out', () => {
+      // 2.00 / 3 is 0.666666666..., which the two modes resolve differently.
+      const amount = Money.fromDecimalString('2.00', INR);
+
+      expect(
+        amount.divideByRate(300000000n, USDT, 'half-up').toDecimalString(),
+      ).toBe('0.66666667');
+      expect(
+        amount.divideByRate(300000000n, USDT, 'toward-zero').toDecimalString(),
+      ).toBe('0.66666666');
+    });
+
+    it('lands on the importer’s awkward leg exactly', () => {
+      // Transaction008: 4407.07 at 98.44483312 recovers 44.7669 USDT, which
+      // is what makes the CoinDCX dust come out at 14.0908 and not 14.09079.
+      expect(
+        Money.fromDecimalString('4407.07', INR)
+          .divideByRate(9844483312n, USDT, 'half-up')
+          .toDecimalString(),
+      ).toBe('44.76690000');
+    });
+
+    it('accepts a rate as a safe integer number', () => {
+      expect(proceeds().divideByRate(9825000000, USDT, 'half-up').minor).toBe(
+        74172000000n,
+      );
+    });
+
+    it('keeps precision a float64 would lose', () => {
+      // 72873.99 x 1e8 x 1e8 is ~7.3e20, well past 2^53.
+      expect(proceeds().divideByRate(9825000000n, USDT, 'half-up').minor).toBe(
+        74172000000n,
+      );
+    });
+
+    it('throws on a non-integer, zero or negative rate', () => {
+      expect(() => proceeds().divideByRate(98.25, USDT, 'half-up')).toThrow(
+        InvalidRateError,
+      );
+      expect(() => proceeds().divideByRate(0n, USDT, 'half-up')).toThrow(
+        InvalidRateError,
+      );
+      expect(() => proceeds().divideByRate(-1n, USDT, 'half-up')).toThrow(
+        InvalidRateError,
+      );
+    });
+  });
+
   describe('percentage', () => {
     it('takes 50 bps of ₹4,417.32 as ₹22.09', () => {
       // 4417.32 * 0.005 = 22.0866

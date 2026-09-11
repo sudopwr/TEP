@@ -44,9 +44,10 @@ describe('SqliteDocumentRepository', () => {
   it('finds by content hash, which is what dedupes an upload', async () => {
     const document = await repository.insert(draft());
 
-    await expect(repository.findBySha256(document.sha256)).resolves.toEqual(
+    await expect(repository.findBySha256('a'.repeat(64))).resolves.toEqual(
       document,
     );
+    expect(document.sha256).toBe('a'.repeat(64));
     await expect(repository.findBySha256('b'.repeat(64))).resolves.toBeNull();
   });
 

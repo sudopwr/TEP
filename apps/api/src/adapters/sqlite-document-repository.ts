@@ -19,6 +19,7 @@ const DOC_COLUMNS_D = `d.id, d.filename, d.stored_path, d.mime_type, d.byte_size
 const SQL = {
   selectById: `SELECT ${DOC_COLUMNS} FROM documents WHERE id = ?`,
   selectBySha: `SELECT ${DOC_COLUMNS} FROM documents WHERE sha256 = ?`,
+  selectByPath: `SELECT ${DOC_COLUMNS} FROM documents WHERE stored_path = ?`,
   insert: `INSERT INTO documents
              (filename, stored_path, mime_type, byte_size, sha256, doc_type, doc_date, extracted_text)
            VALUES
@@ -64,7 +65,7 @@ interface DocumentWrite {
   readonly storedPath: string;
   readonly mimeType: string | null;
   readonly byteSize: number | null;
-  readonly sha256: string;
+  readonly sha256: string | null;
   readonly docType: string | null;
   readonly docDate: string | null;
   readonly extractedText: string | null;
@@ -84,6 +85,7 @@ export function toFtsPhrase(query: string): string {
 export class SqliteDocumentRepository implements DocumentRepository {
   readonly #selectById;
   readonly #selectBySha;
+  readonly #selectByPath;
   readonly #insert;
   readonly #update;
   readonly #link;
@@ -95,6 +97,9 @@ export class SqliteDocumentRepository implements DocumentRepository {
     this.#selectById = database.prepare<[number], DocumentRow>(SQL.selectById);
     this.#selectBySha = database.prepare<[string], DocumentRow>(
       SQL.selectBySha,
+    );
+    this.#selectByPath = database.prepare<[string], DocumentRow>(
+      SQL.selectByPath,
     );
     this.#insert = database.prepare<DocumentWrite>(SQL.insert);
     this.#update = database.prepare<DocumentWrite & { id: number }>(SQL.update);
@@ -134,6 +139,11 @@ export class SqliteDocumentRepository implements DocumentRepository {
   async findBySha256(sha256: string): Promise<Document | null> {
     const row = this.#selectBySha.get(sha256);
     return Promise.resolve(row === undefined ? null : toDocument(row));
+  }
+
+  async findByStoredPath(storedPath: string): Promise<Document | null> {
+    const row = this.#selectByPath.get(storedPath);
+    return row === undefined ? null : toDocument(row);
   }
 
   async insert(draft: DocumentDraft): Promise<Document> {

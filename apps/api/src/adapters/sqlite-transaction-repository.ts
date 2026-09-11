@@ -24,7 +24,7 @@ import {
 
 const TXN_COLUMNS = `id, code, payout_id, parent_id, txn_date, kind,
   from_account_id, to_account_id, from_amount, from_currency,
-  to_amount, to_currency, rate_applied, notes`;
+  to_amount, to_currency, rate_applied, from_external_ref, to_external_ref, notes`;
 
 const FEE_COLUMNS = 'id, transaction_id, fee_type, amount, currency_code';
 
@@ -37,18 +37,21 @@ const SQL = {
   insert: `INSERT INTO transactions
              (code, payout_id, parent_id, txn_date, kind,
               from_account_id, to_account_id, from_amount, from_currency,
-              to_amount, to_currency, rate_applied, notes)
+              to_amount, to_currency, rate_applied,
+              from_external_ref, to_external_ref, notes)
            VALUES
              (@code, @payoutId, @parentId, @txnDate, @kind,
               @fromAccountId, @toAccountId, @fromAmount, @fromCurrency,
-              @toAmount, @toCurrency, @rate, @notes)`,
+              @toAmount, @toCurrency, @rate,
+              @fromExternalRef, @toExternalRef, @notes)`,
   update: `UPDATE transactions SET
              code = @code, payout_id = @payoutId, parent_id = @parentId,
              txn_date = @txnDate, kind = @kind,
              from_account_id = @fromAccountId, to_account_id = @toAccountId,
              from_amount = @fromAmount, from_currency = @fromCurrency,
              to_amount = @toAmount, to_currency = @toCurrency,
-             rate_applied = @rate, notes = @notes
+             rate_applied = @rate, from_external_ref = @fromExternalRef,
+             to_external_ref = @toExternalRef, notes = @notes
            WHERE id = @id`,
 
   selectAllFees: `SELECT ${FEE_COLUMNS} FROM transaction_fees ORDER BY id`,
@@ -98,6 +101,8 @@ interface TransactionWrite {
   readonly toAmount: bigint;
   readonly toCurrency: string;
   readonly rate: bigint | null;
+  readonly fromExternalRef: string | null;
+  readonly toExternalRef: string | null;
   readonly notes: string | null;
 }
 
@@ -267,6 +272,8 @@ export class SqliteTransactionRepository implements TransactionRepository {
       toAmount: transaction.toAmount.minor,
       toCurrency: transaction.toAmount.currency.code,
       rate: transaction.rate,
+      fromExternalRef: transaction.fromExternalRef ?? null,
+      toExternalRef: transaction.toExternalRef ?? null,
       notes: transaction.notes ?? null,
     };
   }
