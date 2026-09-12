@@ -1,0 +1,27 @@
+{
+  // The browser half of the test typecheck.
+  //
+  // Separate from tsconfig.tests.json because the two need opposite things:
+  // web tests need `jsx` and the DOM lib, and the Node tests must NOT have
+  // the DOM lib — with it, a typo like `document` in an adapter typechecks
+  // cleanly and fails at runtime.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client"]
+  },
+  "include": [
+    "apps/web/test/**/*.ts",
+    "apps/web/test/**/*.tsx",
+    "apps/web/src/**/*.test.ts",
+    "apps/web/src/**/*.test.tsx",
+    "apps/web/vite.config.ts"
+  ],
+  "references": [{ "path": "./apps/web" }]
+}

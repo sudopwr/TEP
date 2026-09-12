@@ -113,6 +113,9 @@ const SQL_SHAPES = [
   /\bDROP\s+(TABLE|VIEW|INDEX|TRIGGER)\b/i,
 ];
 
+/** #rgb / #rrggbb / #rrggbbaa, and the CSS colour functions. */
+const COLOUR = /#[0-9a-fA-F]{3,8}|(rgba?|hsla?|oklch|lab|color)\s*\(/;
+
 const sqlBoundary = {
   rules: {
     'sql-stays-in-adapters': {
@@ -145,9 +148,60 @@ const sqlBoundary = {
   },
 };
 
+/**
+ * The palette, mechanised.
+ *
+ * A design system that lives in a document is a suggestion; one that fails the
+ * build is a design system. Exactly one file under apps/web may contain a
+ * `#rrggbb`, and it is `shared/theme/palette.ts` — everything else asks the
+ * theme for a meaning (`negative.main`) rather than for a colour.
+ *
+ * The point is not tidiness. A hex pasted into a component is a colour nobody
+ * can find later, that no longer answers to the palette, and that quietly
+ * breaks the one rule this interface depends on: if a pixel is coloured, it
+ * means something.
+ */
+const design = {
+  rules: {
+    'no-raw-hex': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'Colours come from the theme, never from a hex' },
+        schema: [],
+        messages: {
+          hex: "Raw colour '{{value}}'. Ask the theme for a meaning instead, as in color: 'negative.main' — or add it to shared/theme/palette.ts if it is genuinely part of the palette.",
+        },
+      },
+      create(context) {
+        const check = (node, text) => {
+          if (typeof text !== 'string') return;
+
+          const found = COLOUR.exec(text);
+          if (found === null) return;
+
+          context.report({ node, messageId: 'hex', data: { value: found[0] } });
+        };
+
+        return {
+          Literal: (node) => check(node, node.value),
+          TemplateElement: (node) => check(node, node.value.raw),
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   {
-    ignores: ['**/node_modules/**', '**/dist/**', '**/coverage/**', 'data/**'],
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      // tsc's declaration output for apps/web. Generated, and linting it
+      // reports the compiler's own style choices as if they were ours.
+      '**/.tsbuild/**',
+      '**/coverage/**',
+      'data/**',
+    ],
   },
 
   js.configs.recommended,
@@ -215,6 +269,18 @@ export default tseslint.config(
         'error',
         { root: 'packages/core', allow: ['vitest', 'node:crypto'] },
       ],
+    },
+  },
+
+  // Colours come from the theme. One file is allowed to know a hex; the rest
+  // of the interface asks for a meaning. Tests are included on purpose — a
+  // test asserting on `#A3341F` is a second place the palette lives.
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/shared/theme/palette.ts'],
+    plugins: { design },
+    rules: {
+      'design/no-raw-hex': 'error',
     },
   },
 

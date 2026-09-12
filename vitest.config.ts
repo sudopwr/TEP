@@ -62,11 +62,24 @@ export default defineConfig({
         extends: true,
         test: {
           name: 'unit',
-          include: [
-            'packages/*/src/**/*.test.ts',
-            'apps/*/src/**/*.test.{ts,tsx}',
-          ],
+          include: ['packages/*/src/**/*.test.ts', 'apps/api/src/**/*.test.ts'],
           environment: 'node',
+        },
+      },
+      {
+        // The browser half. A separate project because it needs jsdom, and
+        // running the 1,200 node tests in jsdom would cost minutes for nothing.
+        extends: true,
+        test: {
+          name: 'web',
+          include: ['apps/web/src/**/*.test.{ts,tsx}'],
+          environment: 'happy-dom',
+          environmentOptions: {
+            happyDOM: { url: 'http://127.0.0.1:5173' },
+          },
+          setupFiles: ['apps/web/test/setup.ts'],
+          // MSW and jsdom both want real timers and a clean global per file.
+          restoreMocks: true,
         },
       },
       {

@@ -2,13 +2,16 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": "./src",
-    "outDir": "./dist",
-    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    // Not `dist`: that belongs to `vite build`, which empties it. tsc only
+    // typechecks and emits declarations for the solution build, so its output
+    // goes somewhere vite will not delete.
+    "outDir": "./.tsbuild",
+    "tsBuildInfoFile": "./.tsbuild/.tsbuildinfo",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
-    "types": []
+    "types": ["vite/client"]
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
-  "exclude": ["dist"],
+  "exclude": ["dist", ".tsbuild", "**/*.test.ts", "**/*.test.tsx"],
   "references": [{ "path": "../../packages/core" }]
 }

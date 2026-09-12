@@ -6,20 +6,24 @@
     "declaration": false,
     "declarationMap": false,
     "noEmit": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "packages/*/test/**/*.ts",
-    "apps/*/test/**/*.ts",
+    "apps/api/test/**/*.ts",
     "packages/*/src/**/*.fixture.ts",
     "packages/*/src/**/*.test.ts",
-    "apps/*/src/**/*.test.ts",
-    "apps/*/src/**/*.test.tsx",
+    "apps/api/src/**/*.test.ts",
     "vitest.config.ts"
   ],
   "references": [
-    { "path": "./packages/core" },
-    { "path": "./apps/api" },
-    { "path": "./apps/web" }
+    {
+      "path": "./packages/core"
+    },
+    {
+      "path": "./apps/api"
+    }
   ]
 }
