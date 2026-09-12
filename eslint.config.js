@@ -191,6 +191,142 @@ const design = {
   },
 };
 
+/**
+ * N8, mechanised: "UI components are independent and reusable — no feature
+ * imports another feature's components."
+ *
+ * Two rules, both aimed at the same failure. A shared component that reaches
+ * into `features/` is no longer shared; one that fetches cannot be rendered
+ * without a server, cannot be reused on a second screen, and has quietly
+ * become a feature with a misleading address.
+ */
+/** The feature directory a path sits in, or null if it is outside them. */
+function featureOf(file, featuresRoot) {
+  const relative = path.relative(featuresRoot, file);
+
+  if (relative.startsWith('..') || path.isAbsolute(relative)) return null;
+
+  const [feature] = relative.split(path.sep);
+  return feature === undefined || feature === '' ? null : feature;
+}
+
+const shared = {
+  rules: {
+    'no-feature-imports': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'shared/ may not import from features/' },
+        schema: [],
+        messages: {
+          leak:
+            "'{{source}}' reaches into features/. Anything in shared/ must work " +
+            'on a screen that does not exist yet — take what it needs as a prop.',
+        },
+      },
+      create(context) {
+        const check = (node, source) => {
+          if (typeof source === 'string' && /(^|\/)features\//.test(source)) {
+            context.report({ node, messageId: 'leak', data: { source } });
+          }
+        };
+
+        return {
+          ImportDeclaration: (node) => check(node, node.source.value),
+          ImportExpression: (node) => {
+            if (node.source.type === 'Literal') check(node, node.source.value);
+          },
+        };
+      },
+    },
+
+    /**
+     * N8's other half: "no feature imports another feature's components."
+     *
+     * Resolved against the filesystem rather than matched as a glob. A glob
+     * broad enough to catch `../other-feature/Thing` also catches
+     * `../../shared/components/MoneyDisplay`, which is the import features
+     * are supposed to use — so the rule would fire on correct code and get
+     * switched off within a week.
+     */
+    'no-cross-feature-imports': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'a feature may not import another feature' },
+        schema: [],
+        messages: {
+          crossed:
+            "'{{source}}' belongs to the '{{other}}' feature. Promote what is " +
+            'shared into shared/components rather than reaching sideways.',
+        },
+      },
+      create(context) {
+        const FEATURES = path.join(ROOT, 'apps', 'web', 'src', 'features');
+        const own = featureOf(context.filename, FEATURES);
+
+        if (own === null) return {};
+
+        return {
+          ImportDeclaration: (node) => {
+            const source = node.source.value;
+            if (typeof source !== 'string' || !source.startsWith('.')) return;
+
+            const resolved = path.resolve(
+              path.dirname(context.filename),
+              source,
+            );
+            const other = featureOf(resolved, FEATURES);
+
+            if (other !== null && other !== own) {
+              context.report({
+                node,
+                messageId: 'crossed',
+                data: { source, other },
+              });
+            }
+          },
+        };
+      },
+    },
+
+    'no-fetch-in-shared': {
+      meta: {
+        type: 'problem',
+        docs: { description: 'shared components do not talk to the network' },
+        schema: [],
+        messages: {
+          fetches:
+            'A shared component must not call the network. Take the data as a ' +
+            'prop and let a feature do the fetching.',
+        },
+      },
+      create(context) {
+        const NETWORK = new Set(['fetch', 'XMLHttpRequest', 'EventSource']);
+
+        return {
+          'CallExpression > Identifier': (node) => {
+            if (NETWORK.has(node.name)) {
+              context.report({ node, messageId: 'fetches' });
+            }
+          },
+          'NewExpression > Identifier': (node) => {
+            if (NETWORK.has(node.name)) {
+              context.report({ node, messageId: 'fetches' });
+            }
+          },
+          ImportDeclaration: (node) => {
+            if (
+              typeof node.source.value === 'string' &&
+              /shared\/api/.test(node.source.value)
+            ) {
+              context.report({ node, messageId: 'fetches' });
+            }
+          },
+        };
+      },
+    },
+  },
+};
+
 export default tseslint.config(
   {
     ignores: [
@@ -269,6 +405,27 @@ export default tseslint.config(
         'error',
         { root: 'packages/core', allow: ['vitest', 'node:crypto'] },
       ],
+    },
+  },
+
+  // N8. shared/ is reusable or it is not shared. `shared/api` is the one
+  // place allowed to touch the network, so it is exempt from the second rule.
+  {
+    files: ['apps/web/src/shared/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/shared/api/**'],
+    plugins: { shared },
+    rules: {
+      'shared/no-feature-imports': 'error',
+      'shared/no-fetch-in-shared': 'error',
+    },
+  },
+
+  // A feature may not import another feature's components (N8).
+  {
+    files: ['apps/web/src/features/**/*.{ts,tsx}'],
+    plugins: { shared },
+    rules: {
+      'shared/no-cross-feature-imports': 'error',
     },
   },
 

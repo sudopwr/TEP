@@ -10,7 +10,15 @@ import Typography from '@mui/material/Typography';
 import { useEffect, useState } from 'react';
 
 import { ApiError, request } from '../../shared/api/client';
-import { Amount, type MoneyJson } from '../../shared/components/Amount';
+import { CurrencyChip } from '../../shared/components/CurrencyChip';
+import { MoneyDisplay } from '../../shared/components/MoneyDisplay';
+
+/** Money as the API sends it: an integer in minor units, plus its currency. */
+interface MoneyJson {
+  readonly currency: string;
+  readonly minor: string;
+  readonly amount: string;
+}
 
 interface AccountJson {
   readonly id: number;
@@ -144,12 +152,14 @@ export function AccountBalances() {
               rupee figure and an eight-place USDT dust figure sit in a line.
             */}
             <TableCell align="right">
-              <Amount value={entry.balance} />
+              <MoneyDisplay
+                minor={entry.balance.minor}
+                currency={entry.balance.currency}
+                tone="auto"
+              />
             </TableCell>
             <TableCell>
-              <Typography variant="numeric" sx={{ color: 'muted.main' }}>
-                {entry.balance.currency}
-              </Typography>
+              <CurrencyChip code={entry.balance.currency} />
             </TableCell>
           </TableRow>
         ))}

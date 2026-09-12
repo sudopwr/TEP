@@ -64,6 +64,13 @@ export default defineConfig({
           name: 'unit',
           include: ['packages/*/src/**/*.test.ts', 'apps/api/src/**/*.test.ts'],
           environment: 'node',
+          // argon2 is deliberately expensive (19 MiB, two passes), and some
+          // of these tests hash several times and open a real socket. Under
+          // a fully parallel run that genuinely exceeds the 5s default —
+          // the work is slow on purpose, so the limit moves rather than the
+          // cost parameter.
+          testTimeout: 30_000,
+          hookTimeout: 30_000,
         },
       },
       {

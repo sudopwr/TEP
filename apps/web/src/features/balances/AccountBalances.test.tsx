@@ -27,7 +27,7 @@ describe('AccountBalances', () => {
   it('renders the §10 balances the server returned', async () => {
     render(<AccountBalances />);
 
-    expect(await screen.findByText('84642.93')).toBeInTheDocument();
+    expect(await screen.findByText('84,642.93')).toBeInTheDocument();
   });
 
   it('shows a loading state before the answer arrives', () => {
@@ -57,15 +57,20 @@ describe('AccountBalances', () => {
     expect(screen.getByText('1.33230000')).toBeInTheDocument();
   });
 
-  it('shows the amount exactly as the server formatted it', async () => {
-    // The server derived these from integer minor units using the currency's
-    // own scale (§6). Reformatting in the browser would be a second
-    // implementation of that, and the first disagreement would be silent.
+  it('formats from the integer minor units, not the server string', async () => {
+    // The server sends both `minor` and `amount`. The browser renders from
+    // `minor`, so grouping and locale are a presentation decision made here
+    // — but the *value* is still the server's integer, digit for digit.
     render(<AccountBalances />);
-    await screen.findByText('84642.93');
+    await screen.findByText('84,642.93');
 
     for (const entry of REFERENCE_BALANCES.balances) {
-      expect(screen.getByText(entry.balance.amount)).toBeInTheDocument();
+      const grouped = entry.balance.amount.replace(
+        /^(-?)(\d+)/,
+        (_all, sign: string, whole: string) =>
+          sign + Number(whole).toLocaleString('en-IN'),
+      );
+      expect(screen.getByText(grouped)).toBeInTheDocument();
     }
   });
 
@@ -74,7 +79,7 @@ describe('AccountBalances', () => {
       // This is what makes a column of figures a column. A proportional font
       // here looks almost right and misaligns by a fraction of a digit a row.
       render(<AccountBalances />);
-      const bank = await screen.findByText('84642.93');
+      const bank = await screen.findByText('84,642.93');
 
       const style = window.getComputedStyle(bank);
       expect(style.fontFamily).toBe(MONO_STACK);
@@ -106,12 +111,12 @@ describe('AccountBalances', () => {
       // statement by eye without translating it first.
       render(<AccountBalances />);
 
-      expect(await screen.findByText('-1008.01')).toBeInTheDocument();
+      expect(await screen.findByText('-1,008.01')).toBeInTheDocument();
     });
 
     it('colours it with the negative token, not a hard-coded red', async () => {
       render(<AccountBalances />);
-      const owed = await screen.findByText('-1008.01');
+      const owed = await screen.findByText('-1,008.01');
 
       // Compared against the token itself, not a colour written out again:
       // restating the hex here would just be a second place to change it.
@@ -120,7 +125,7 @@ describe('AccountBalances', () => {
 
     it('leaves a positive balance in ink, so colour stays meaningful', async () => {
       render(<AccountBalances />);
-      const bank = await screen.findByText('84642.93');
+      const bank = await screen.findByText('84,642.93');
 
       expect(computedColor(bank)).toBe(INK.toLowerCase());
     });
