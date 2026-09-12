@@ -3,15 +3,20 @@ import { describe, expect, it } from 'vitest';
 import { TestWorld } from '../../test/fakes/world';
 import { rejection } from '../../test/rejection';
 import {
+  AccountCodeTakenError,
   CompanyCodeTakenError,
+  CompanyNotFoundError,
   DocumentFileMissingError,
   DocumentNotFoundError,
+  UnknownCurrencyError,
 } from '../domain/errors';
 
 import { GetDocument } from './get-document';
+import { ListAccounts } from './list-accounts';
 import { ListCompanies } from './list-companies';
 import { ListPayouts } from './list-payouts';
 import { ListTransactions } from './list-transactions';
+import { RecordAccount } from './record-account';
 import { RecordCompany } from './record-company';
 
 /**
@@ -288,5 +293,217 @@ describe('GetDocument (F6)', () => {
 
     expect(error).toBeInstanceOf(DocumentFileMissingError);
     expect(error.storedPath).toBe('ab/cd/abcdef.pdf');
+  });
+});
+
+describe('RecordAccount (F1)', () => {
+  const setup = () => {
+    const world = new TestWorld();
+    return {
+      world,
+      useCase: new RecordAccount({
+        accounts: world.accounts,
+        companies: world.companies,
+        currencies: world.currencies,
+      }),
+    };
+  };
+
+  it('records an account and allocates an id', async () => {
+    const { useCase } = setup();
+
+    const account = await useCase.execute({
+      code: 'bank-hdfc',
+      name: 'HDFC',
+      type: 'bank',
+      allowedCurrencies: ['INR'],
+    });
+
+    expect(account.id).toBeGreaterThan(0);
+    expect(account.code).toBe('bank-hdfc');
+    expect(account.allowedCurrencies).toEqual(['INR']);
+  });
+
+  it('persists, rather than only returning', async () => {
+    const { world, useCase } = setup();
+
+    const account = await useCase.execute({
+      code: 'coindcx',
+      name: 'CoinDCX',
+      type: 'exchange',
+      allowedCurrencies: ['INR', 'USDT'],
+    });
+
+    await expect(world.accounts.findById(account.id)).resolves.toMatchObject({
+      code: 'coindcx',
+    });
+  });
+
+  it('treats an empty allow-list as multi-currency, not as none', async () => {
+    // `Account.allows` mirrors `v_data_quality`, which only checks accounts
+    // that have rows in `account_currencies` at all. So an empty list is a
+    // real choice, and the account must accept anything afterwards.
+    const { useCase } = setup();
+
+    const account = await useCase.execute({
+      code: 'wallet',
+      name: 'Trust Wallet',
+      type: 'wallet',
+    });
+
+    expect(account.allowedCurrencies).toEqual([]);
+    expect(account.allows('USDT')).toBe(true);
+  });
+
+  it('stores the allow-list as a set, in one canonical order', async () => {
+    /*
+      Two things at once. The composite primary key would accept a duplicate
+      and store one row fewer, so the account would read back differently from
+      the way it was written. And `account_currencies` is read back
+      `ORDER BY currency_code` while an in-memory repository returns insertion
+      order — so the use case sorts, and the two worlds agree.
+    */
+    const { useCase } = setup();
+
+    const account = await useCase.execute({
+      code: 'coindcx',
+      name: 'CoinDCX',
+      type: 'exchange',
+      allowedCurrencies: ['USDT', 'USDT', 'INR'],
+    });
+
+    expect(account.allowedCurrencies).toEqual(['INR', 'USDT']);
+  });
+
+  it('refuses a code that is already taken', async () => {
+    const { useCase } = setup();
+    await useCase.execute({ code: 'rise', name: 'Rise', type: 'processor' });
+
+    const error = await rejection<AccountCodeTakenError>(
+      useCase.execute({ code: 'rise', name: 'Someone Else', type: 'wallet' }),
+    );
+
+    expect(error).toBeInstanceOf(AccountCodeTakenError);
+    expect(error.message).toContain('rise');
+  });
+
+  it('links to a company when given one', async () => {
+    const { world, useCase } = setup();
+    const company = await world.companies.insert({
+      code: 'Rise001',
+      name: 'Rise',
+      notes: null,
+    });
+
+    const account = await useCase.execute({
+      code: 'rise',
+      name: 'Rise',
+      type: 'processor',
+      companyId: company.id,
+    });
+
+    expect(account.companyId).toBe(company.id);
+  });
+
+  it('refuses a company that does not exist', async () => {
+    // Otherwise the foreign key fails at insert time and a fixable mistake
+    // surfaces as a 500.
+    const { useCase } = setup();
+
+    await expect(
+      useCase.execute({
+        code: 'rise',
+        name: 'Rise',
+        type: 'processor',
+        companyId: 999,
+      }),
+    ).rejects.toBeInstanceOf(CompanyNotFoundError);
+  });
+
+  it('refuses a currency the ledger does not know', async () => {
+    // `account_currencies.currency_code` is an FK to `currencies`, so this
+    // would otherwise be a constraint violation rather than a sentence.
+    const { useCase } = setup();
+
+    await expect(
+      useCase.execute({
+        code: 'kraken',
+        name: 'Kraken',
+        type: 'exchange',
+        allowedCurrencies: ['XRP'],
+      }),
+    ).rejects.toBeInstanceOf(UnknownCurrencyError);
+  });
+
+  it('writes nothing when a currency is rejected', async () => {
+    const { world, useCase } = setup();
+
+    await expect(
+      useCase.execute({
+        code: 'kraken',
+        name: 'Kraken',
+        type: 'exchange',
+        allowedCurrencies: ['INR', 'XRP'],
+      }),
+    ).rejects.toBeInstanceOf(UnknownCurrencyError);
+
+    await expect(world.accounts.findByCode('kraken')).resolves.toBeNull();
+  });
+});
+
+describe('ListAccounts', () => {
+  it('returns nothing on an empty ledger', async () => {
+    const world = new TestWorld();
+
+    await expect(
+      new ListAccounts({ accounts: world.accounts }).execute(),
+    ).resolves.toEqual([]);
+  });
+
+  it('returns every account that has been recorded', async () => {
+    const world = TestWorld.withCounterparties();
+
+    const listed = await new ListAccounts({
+      accounts: world.accounts,
+    }).execute();
+
+    expect(listed.map((one) => one.code).sort()).toEqual([
+      'bank-hdfc',
+      'coindcx',
+      'rise',
+      'tradeify',
+      'trustwallet',
+    ]);
+  });
+
+  it('narrows to one type', async () => {
+    const world = TestWorld.withCounterparties();
+
+    const listed = await new ListAccounts({ accounts: world.accounts }).execute(
+      { type: 'bank' },
+    );
+
+    expect(listed.map((one) => one.code)).toEqual(['bank-hdfc']);
+  });
+
+  it('includes an account no money has ever moved through', async () => {
+    /*
+      The reason this use case exists next to `GetAccountBalances`. Balances
+      are derived from movements, so an account with none does not appear
+      there — which is right for a balance sheet and useless for a form
+      asking where money went.
+    */
+    const world = new TestWorld();
+    const recorded = await new RecordAccount({
+      accounts: world.accounts,
+      companies: world.companies,
+      currencies: world.currencies,
+    }).execute({ code: 'bank-new', name: 'New Bank', type: 'bank' });
+
+    const listed = await new ListAccounts({
+      accounts: world.accounts,
+    }).execute();
+
+    expect(listed.map((one) => one.id)).toContain(recorded.id);
   });
 });

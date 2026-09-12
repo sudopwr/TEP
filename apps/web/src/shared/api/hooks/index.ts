@@ -1,5 +1,6 @@
 export {
   useAccountBalances,
+  useAccounts,
   useCompanies,
   useDataQuality,
   useDocumentSearch,
@@ -12,6 +13,7 @@ export {
 
 export {
   useAttachDocument,
+  useRecordAccount,
   useRecordCompany,
   useRecordPayout,
   useRecordTransaction,

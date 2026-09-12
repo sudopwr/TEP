@@ -36,7 +36,7 @@ export type { CompanyProps } from './domain/company';
 export { Company } from './domain/company';
 
 export type { AccountProps, AccountType } from './domain/account';
-export { Account } from './domain/account';
+export { ACCOUNT_TYPES, Account } from './domain/account';
 
 export type { PayoutProps, PayoutStatus } from './domain/payout';
 export { Payout } from './domain/payout';
@@ -82,6 +82,7 @@ export * from './ports/index';
 export * from './usecases/index';
 
 export {
+  AccountCodeTakenError,
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
   AuthenticationFailedError,

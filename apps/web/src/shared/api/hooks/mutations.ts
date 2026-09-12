@@ -7,13 +7,16 @@ import {
 
 import {
   attachDocument,
+  createAccount,
   createCompany,
   createPayout,
   createTransaction,
 } from '../endpoints';
 import { cachesAffectedByTransaction, queryKeys } from '../keys';
 import type {
+  AccountJson,
   CompanyJson,
+  CreateAccountCommand,
   CreateCompanyCommand,
   CreatePayoutCommand,
   CreateSaleCommand,
@@ -57,6 +60,26 @@ export function useRecordCompany(): UseMutationResult<
   return useMutation({
     mutationFn: createCompany,
     onSuccess: () => invalidateAll(client, [queryKeys.companies.all()]),
+  });
+}
+
+/**
+ * F1 — a new account touches the account lists, and nothing else.
+ *
+ * Not the balances: those are derived from movements, and an account that has
+ * just been created has none. Invalidating them would refetch a figure that
+ * provably cannot have changed.
+ */
+export function useRecordAccount(): UseMutationResult<
+  { account: AccountJson },
+  Error,
+  CreateAccountCommand
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: createAccount,
+    onSuccess: () => invalidateAll(client, [queryKeys.accounts.all()]),
   });
 }
 

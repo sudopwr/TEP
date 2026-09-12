@@ -10,9 +10,11 @@ import {
   GetPayoutTrail,
   GetSettlement,
   ImportLegacyCsv,
+  ListAccounts,
   ListCompanies,
   ListPayouts,
   ListTransactions,
+  RecordAccount,
   RecordCompany,
   RecordPayout,
   RecordSale,
@@ -120,6 +122,9 @@ export function buildContainer(
   const useCases: UseCases = {
     recordCompany: new RecordCompany({ companies }),
     listCompanies: new ListCompanies({ companies }),
+
+    recordAccount: new RecordAccount({ accounts, companies, currencies }),
+    listAccounts: new ListAccounts({ accounts }),
 
     recordPayout: new RecordPayout({ payouts, companies, currencies, clock }),
     listPayouts: new ListPayouts({ payouts }),

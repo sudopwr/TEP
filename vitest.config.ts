@@ -85,8 +85,21 @@ export default defineConfig({
             happyDOM: { url: 'http://127.0.0.1:5173' },
           },
           setupFiles: ['apps/web/test/setup.ts'],
-          // MSW and jsdom both want real timers and a clean global per file.
+          // MSW and happy-dom both want real timers and a clean global per file.
           restoreMocks: true,
+          /*
+            Above the 5s default, for the same reason the `unit` project is
+            above it: the work is genuinely slow, so the limit moves rather
+            than the cost.
+
+            A form test types through `userEvent`, which dispatches real key
+            events one character at a time and waits for React to settle after
+            each. Ten fields is a few hundred renders, and on a machine that is
+            also running a build the three longest cross 5s — which fails as a
+            timeout and reads like a hang, when nothing is stuck at all.
+          */
+          testTimeout: 15_000,
+          hookTimeout: 15_000,
         },
       },
       {

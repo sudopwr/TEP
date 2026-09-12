@@ -9,9 +9,11 @@ import type {
   GetDocument,
   GetPayoutTrail,
   GetSettlement,
+  ListAccounts,
   ListCompanies,
   ListPayouts,
   ListTransactions,
+  RecordAccount,
   RecordCompany,
   RecordPayout,
   RecordSale,
@@ -56,6 +58,9 @@ export interface DocumentFileSource {
 export interface UseCases {
   readonly recordCompany: RecordCompany;
   readonly listCompanies: ListCompanies;
+
+  readonly recordAccount: RecordAccount;
+  readonly listAccounts: ListAccounts;
   readonly recordPayout: RecordPayout;
   readonly listPayouts: ListPayouts;
   readonly getPayoutTrail: GetPayoutTrail;

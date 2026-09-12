@@ -2,8 +2,23 @@ import type { Currency } from './currency';
 import { CurrencyNotAllowedError } from './errors';
 import type { AccountId, CompanyId } from './ids';
 
-export type AccountType =
-  'prop_firm' | 'processor' | 'exchange' | 'wallet' | 'bank';
+/**
+ * The five kinds of place money can sit, as a runtime array (§13).
+ *
+ * A hand-written union would be the same set as `accounts.type`'s CHECK
+ * constraint right up until somebody adds a sixth, and then the API's
+ * validator would silently disagree with the database. Deriving the type from
+ * the array means the edge and the domain cannot drift.
+ */
+export const ACCOUNT_TYPES = [
+  'prop_firm',
+  'processor',
+  'exchange',
+  'wallet',
+  'bank',
+] as const;
+
+export type AccountType = (typeof ACCOUNT_TYPES)[number];
 
 export interface AccountProps {
   readonly id: AccountId;

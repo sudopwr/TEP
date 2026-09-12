@@ -1,5 +1,6 @@
 import type {
   AccountBalanceJson,
+  AccountJson,
   CompanyJson,
   DataQualityIssueJson,
   DocumentJson,
@@ -54,6 +55,26 @@ export const OPEN_SETTLEMENT: SettlementJson = {
   ...REFERENCE_SETTLEMENT,
   status: 'open',
 };
+
+/**
+ * The five accounts, as `GET /api/accounts` serves them.
+ *
+ * Derived from the balances dump rather than written again, plus one account
+ * that has never taken part in a movement — which is the entire difference
+ * between this endpoint and `/api/accounts/balances`, and so has to be in the
+ * fixture or no test can see it.
+ */
+export const ACCOUNTS: readonly AccountJson[] = [
+  ...REFERENCE_ACCOUNT_BALANCES.map((entry) => entry.account),
+  {
+    id: 2,
+    code: 'rise',
+    name: 'Rise',
+    type: 'processor',
+    companyId: 2,
+    allowedCurrencies: ['USD', 'USDT'],
+  },
+];
 
 /** §10's balances, both dust figures and the negative prop-firm row. */
 export const BALANCES: readonly AccountBalanceJson[] =

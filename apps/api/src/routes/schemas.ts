@@ -1,4 +1,5 @@
 import {
+  ACCOUNT_TYPES,
   DOCUMENT_TYPES,
   TRANSACTION_KINDS,
   type TransactionKind,
@@ -112,6 +113,37 @@ export const createCompanyBody = z
     name: z.string().trim().min(1).max(256),
     notes: z.string().max(4096).nullish(),
   })
+  .strict();
+
+// ---------- Accounts ----------
+
+/**
+ * Built from the domain's own list, like every other union here.
+ *
+ * `accounts.type` has a CHECK constraint naming the same five, so a
+ * hand-written list would be the same set right up until somebody adds a
+ * sixth — at which point the API would reject it with a message that looks
+ * like the caller's fault.
+ */
+export const accountType = z.enum(ACCOUNT_TYPES);
+
+export const createAccountBody = z
+  .object({
+    code: z.string().trim().min(1).max(64),
+    name: z.string().trim().min(1).max(256),
+    type: accountType,
+    companyId: z.number().int().positive().nullish(),
+    /**
+     * Optional, and an empty array is not the same as omitting it — both mean
+     * "holds anything" to the domain, which is what `Account.allows` does with
+     * an empty allow-list, so there is nothing to distinguish.
+     */
+    allowedCurrencies: z.array(currencyCode).max(32).optional(),
+  })
+  .strict();
+
+export const listAccountsQuery = z
+  .object({ type: accountType.optional() })
   .strict();
 
 // ---------- Payouts ----------

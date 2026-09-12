@@ -351,6 +351,16 @@ export class CompanyCodeTakenError extends DomainError {
   }
 }
 
+/** An account code that already belongs to another account. */
+export class AccountCodeTakenError extends DomainError {
+  constructor(readonly code: string) {
+    super(
+      'AccountCodeTakenError',
+      `An account with code '${code}' already exists.`,
+    );
+  }
+}
+
 /** A document whose bytes are missing from the store. */
 export class DocumentFileMissingError extends DomainError {
   constructor(

@@ -4,10 +4,12 @@ import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useMemo, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
+
+import { Link as RouterLink } from 'react-router-dom';
 
 import {
-  useAccountBalances,
+  useAccounts,
   useRecordTransaction,
   useSettlePayout,
   useTransactions,
@@ -75,7 +77,7 @@ export function RecordTransactionForm({
   onRecorded,
   onCancel,
 }: RecordTransactionFormProps) {
-  const balances = useAccountBalances();
+  const accounts = useAccounts();
   const existing = useTransactions(payoutId);
   const recordMovement = useRecordTransaction();
   const recordSale = useSettlePayout();
@@ -95,21 +97,15 @@ export function RecordTransactionForm({
   const [tds, setTds] = useState('');
 
   /*
-    The accounts to choose from come from the balances endpoint, which is the
-    only one that enumerates accounts — there is no `GET /api/accounts` yet.
-    Unlike the tree, this list is genuinely incomplete: an account that has
-    never taken part in a movement has no balance and so cannot be picked
-    here. On a database built by the legacy import that is every account; on a
-    fresh one it is all of them, and the hint below says so rather than
-    presenting an empty select as if it were the truth.
+    `useAccounts`, not `useAccountBalances`. Balances are derived from
+    movements (UC7), so an account recorded a minute ago is absent from them —
+    and the commonest reason to be on this screen with a missing account is
+    that you have just created it.
   */
-  const accounts = useMemo(
-    () => (balances.data ?? []).map((entry) => entry.account),
-    [balances.data],
-  );
+  const options = accounts.data ?? [];
 
-  const from = accounts.find((one) => String(one.id) === fromAccountId);
-  const to = accounts.find((one) => String(one.id) === toAccountId);
+  const from = options.find((one) => String(one.id) === fromAccountId);
+  const to = options.find((one) => String(one.id) === toAccountId);
 
   const isSale = kind === 'sale';
   const mutation = isSale ? recordSale : recordMovement;
@@ -258,7 +254,7 @@ export function RecordTransactionForm({
             error={errors['fromAccountId'] !== undefined}
             helperText={errors['fromAccountId']}
           >
-            {accounts.map((account) => (
+            {options.map((account) => (
               <MenuItem key={account.id} value={String(account.id)}>
                 {account.name}
               </MenuItem>
@@ -279,7 +275,7 @@ export function RecordTransactionForm({
             error={errors['toAccountId'] !== undefined}
             helperText={errors['toAccountId']}
           >
-            {accounts.map((account) => (
+            {options.map((account) => (
               <MenuItem key={account.id} value={String(account.id)}>
                 {account.name}
               </MenuItem>
@@ -287,11 +283,11 @@ export function RecordTransactionForm({
           </TextField>
         </Box>
 
-        {accounts.length === 0 && !balances.isPending ? (
+        {options.length === 0 && !accounts.isPending ? (
           <Typography variant="body2" sx={{ color: 'flag.main', mt: 1 }}>
-            No accounts have any movements yet, so there is nothing to choose
-            from. Accounts arrive with the legacy import; there is no screen
-            that creates one.
+            There are no accounts yet, so there is nothing to move money
+            between.{' '}
+            <RouterLink to="/accounts/new">Record one first.</RouterLink>
           </Typography>
         ) : null}
 

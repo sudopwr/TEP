@@ -1,6 +1,7 @@
 import { HttpResponse, http } from 'msw';
 
 import {
+  ACCOUNTS,
   BALANCES,
   DOCUMENTS,
   ISSUES,
@@ -49,6 +50,11 @@ export const handlers = [
   ),
   http.post('/api/companies', () =>
     HttpResponse.json({ company: TRADEIFY }, { status: 201 }),
+  ),
+
+  http.get('/api/accounts', () => HttpResponse.json({ accounts: ACCOUNTS })),
+  http.post('/api/accounts', () =>
+    HttpResponse.json({ account: ACCOUNTS[0] }, { status: 201 }),
   ),
 
   http.get('/api/payouts', () => HttpResponse.json({ payouts: [PAYOUT] })),

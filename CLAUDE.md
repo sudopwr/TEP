@@ -9,9 +9,7 @@ wrong or this file is stale — say so, don't guess.
 A single-user local application for tracking trading-firm payouts from gross
 award to net rupees in the bank, with every supporting document attached and
 every fee accounted for. It runs on one machine, bound to `127.0.0.1`, and the
-user is the only user.
-
-**Problem it solves.** A payout arrives as USD on a prop firm platform and
+user is the only user. A payout arrives as USD on a prop firm platform and
 moves through a processor, crypto wallets and an exchange before landing as INR
 in a bank. Each hop has its own fee, rate, reference and document. That lived in
 a spreadsheet, where copy-paste silently destroyed four amounts and two fees.
@@ -62,15 +60,11 @@ Each maps to one class in `packages/core/src/usecases/`.
 **UC1 — RecordPayout.** Company, date, gross, currency, charges, reference;
 rejects gross <= 0 and an unknown company. **UC2 — RecordTransaction.** Rejects
 a same-account move, a rate on a same-currency move, a parent from another
-payout, and a currency the destination cannot hold.
-
-**UC3 — RecordSale.** The important one. A USDT amount and an INR rate -> gross
+payout, and a currency the destination cannot hold. **UC3 — RecordSale.** The important one. A USDT amount and an INR rate -> gross
 proceeds, the exchange's schedule applied for exchange fee and GST, a TDS
 amount accepted from the statement, net INR out. Where 0.5% and 18% live. **UC4
 — AttachDocument.** Hashes, stores, dedupes by hash, links; re-uploading links
-the existing document instead of duplicating it.
-
-**UC5 — GetPayoutTrail.** The tree, with amounts, fees and documents at each
+the existing document instead of duplicating it. **UC5 — GetPayoutTrail.** The tree, with amounts, fees and documents at each
 node. **UC6 — GetSettlement.** Gross proceeds, fees by type, net credited.
 **UC7 — GetAccountBalances.** Per account per currency, derived never stored.
 **UC8 — RunDataQualityChecks.** Flagged rows with reasons. **UC9 —
@@ -79,16 +73,17 @@ GenerateFinancialYearReport.** A date range: credited / TDS / fees by company.
 
 **UC11 — SignIn.** Verifies the hash, opens a session, reports the must-change
 flag. One generic error either way, and a hash comparison even for an unknown
-username so timing reveals nothing; re-hashes a weaker stored credential
-*without* clearing the flag. **UC12 — AuthenticateSession.** Session ID to
-user, or reject; revoked wins over expired; extends past half-life. **UC13 —
+username so timing reveals nothing; re-hashes a weaker credential *without*
+clearing the flag. **UC12 — AuthenticateSession.** Session ID to user, or
+reject; revoked wins over expired; extends past half-life. **UC13 —
 ChangeCredentials.** Verifies the current password *first* (so it is not a free
 "is that username taken?" oracle), applies the policy against the *new*
 username, clears must-change only if the password actually changed, and revokes
 every session but the caller's. **UC14 — SignOut.** Revokes server-side;
 idempotent, and identical for a forged ID as a spent one. **Not numbered**,
-because §3 assumed they existed: `RecordCompany`, `ListCompanies`,
-`ListPayouts`, `ListTransactions`, `GetDocument` and `ImportLegacyCsv`.
+because §3 assumed they existed: `RecordCompany`, `RecordAccount`,
+`ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
+`GetDocument` and `ImportLegacyCsv`.
 
 ## 4. Domain glossary
 
@@ -100,8 +95,7 @@ Use these words in code. Do not invent synonyms.
   A **transaction** is one movement between two accounts, with a `parent_id`.
 - **Kind** — `payout_credit` | `withdrawal` | `transfer` | `sale` | `deposit`.
 - **Sale** — the exchange → bank leg, and the only leg producing INR.
-- **Gross proceeds** — `from_amount × rate`, before fees. **Net credited** — that minus TDS, exchange fee and GST.
-- **Dust** — small crypto residue left in a wallet after a transfer.
+- **Gross proceeds** — `from_amount × rate`, before fees; **net credited** is that minus TDS, exchange fee and GST. **Dust** is the crypto residue a transfer leaves behind.
 - **Must-change** — the flag on the admin row blocking every data route until the default password is replaced.
 - **Session** — a server-side row keyed by a random 256-bit ID, behind a signed httpOnly cookie.
 
@@ -116,8 +110,7 @@ apps/api/             Fastify + better-sqlite3
   routes/             thin — parse (zod), call one use case, serialize
   auth/ db/           hashing, cookie, guards / pragmas, migrations, seeds
   container.ts        the only file importing both a use case and an adapter
-  decorators.ts server.ts main.ts   what a route may reach off the instance /
-                      plugin order and guards / migrate, check bind, listen
+  decorators.ts server.ts main.ts   instance types / plugin order and guards / migrate, check bind, listen
 
 apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/theme/       the ONE theme; only palette.ts may contain a hex
@@ -125,8 +118,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/api/         the only place that talks to the server: TanStack Query
                       v5, the queryKeys factory, the 401 and 403 rules
   shared/layout/ feedback/   the rail and page frame / the toast
-  features/           auth payouts transactions documents reports
-                      data-quality — no cross-imports
+  features/           one folder each, no cross-imports
   routes.tsx          the UI composition root: the one file that may build
                       a screen out of several features
 ```
@@ -135,9 +127,9 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
 `#FAF7F2`, plus three saturated colours, each a fact about money — `positive`
 (arrived), `negative` (left), `flag` (§7's "suspicious, not impossible");
 `muted` derives from ink. Colourless chrome is what lets colour *mean*
-something, and colour never carries meaning alone. IBM Plex Sans for the
-interface, Plex Mono for every number, self-hosted (offline); `numeric` carries
-`tabular-nums lining-nums slashed-zero`. Light only — read beside statements.
+something, and colour never carries meaning alone. Plex Sans for the interface,
+Plex Mono for every number, self-hosted; `numeric` carries `tabular-nums
+lining-nums slashed-zero`. Light only — read beside statements.
 
 **The dependency rule.** Dependencies point inward only; a runtime dependency
 in `packages/core/package.json` means something leaked. **Ports earn their
@@ -153,12 +145,11 @@ on one machine.
 (m=19456, t=2, p=1). Never SHA-anything, never a homemade salt. `password_hash`
 holds the full encoded string, salt and parameters included, so raising the cost
 later is a rehash-on-next-login. `003_auth.sql` is the authority on the tables.
-
-**The default account.** The admin hash is computed at migration time by
-`db/seeds.ts`, never written into the `.sql` — a literal hash there means one
-shared salt in every install, in a file the checksum makes unchangeable. (It was
-`002` until `002_reference_currencies.sql` existed: renumbering applied history
-is exactly what the checksum guard prevents.)
+The admin hash is computed at migration time by `db/seeds.ts`, never written
+into the `.sql` — a literal hash there means one shared salt in every install,
+in a file the checksum makes unchangeable. (It was `002` until
+`002_reference_currencies.sql` existed: renumbering applied history is exactly
+what the checksum guard prevents.)
 
 A deliberate convenience with a deliberate cage: (1) every route except
 `/health`, `/auth/login`, `/auth/me`, `/auth/logout` and
@@ -178,8 +169,7 @@ the browser runs the same one. **Rehash is not a change**, nor is a rename:
 
 **Failure handling.** One byte-identical message for every sign-in failure, and
 an unknown username still runs a full argon2 verification so the timing matches.
-5 attempts a minute on `/auth/login`. Never log a password.
-
+5 attempts a minute on `/auth/login`; never log a password.
 **Session.** ID is 32 random bytes, base64url, compared timing-safely. Cookie:
 `httpOnly`, `sameSite=lax`, `secure=false` (loopback has no TLS), `path=/`, 30
 days, session ID only. `SESSION_SECRET` lives in gitignored `.env`, generated
@@ -199,8 +189,8 @@ throws on a currency mismatch.
 
 ## 7. Invariants
 
-By database constraints; not duplicated in application code unless the message
-needs to be friendlier:
+By database constraints, not repeated in code unless the message needs to be
+friendlier:
 
 - `from_account_id <> to_account_id`
 - `rate_applied IS NULL` when `from_currency = to_currency`
@@ -248,13 +238,12 @@ The importer corrects these. Do not "fix" it to trust the sheet.
 
 ## 10. Verified reference figures
 
-From `TradeifyPayout001`. Any refactor must still produce these:
-
 ```
+From TradeifyPayout001. Any refactor must still produce these.
+
 payout gross    $1,008.01     gross proceeds  ₹86,027.56
 total fees      ₹ 1,384.63    net credited    ₹84,642.93
-TDS ₹868.88   exchange_fee ₹437.09   GST ₹78.66
-network_fee $16.31   platform_charge $100.79
+TDS ₹868.88  exchange_fee ₹437.09  GST ₹78.66  network_fee $16.31  charge $100.79
 balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 ```
 
@@ -265,9 +254,9 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
   order value, partial fills explain the spread and `fee_schedules.basis`
   becomes `from_amount`. Check one CoinDCX order.
 - Warn before a withdrawal below a threshold, given the flat $4 fee? Open.
-- Reached from outside this machine? If yes, Tailscale in front rather than
-  an exposed port, and revisit §5a: a single password over a LAN deserves a
-  second factor, and `secure=false` must become `true` behind TLS.
+- Reached from outside this machine? If so, Tailscale in front rather than an
+  exposed port, and revisit §5a: a single password over a LAN deserves a second
+  factor, and `secure=false` must become `true` behind TLS.
 
 ## 12. Conventions
 
@@ -288,8 +277,8 @@ Append here. Newest last. Never delete an entry — supersede it.
 
 - **Money as scaled integers, scale per currency**: one fixed scale breaks INR
   or USDT, floats break both quietly. **Fees as rows, not columns**, each in its
-  own currency — TDS is INR, the Rise fee USD. **Status and totals are derived,
-  never stored**: a stored status drifts the first time a row is edited.
+  own currency — TDS is INR, the Rise fee USD. **Status and totals are derived**;
+  a stored status drifts the first time a row is edited.
 - **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
   polymorphic `entity_type`/`entity_id`, which discards referential integrity.
   **Addresses are snapshotted on the leg and normalized in
@@ -298,13 +287,12 @@ Append here. Newest last. Never delete an entry — supersede it.
 - ~~**Google sign-in with a one-subject allow-list.**~~ Superseded by
   **username and password, one account**: it needed a Cloud project, internet
   and a hostname-bound redirect URI. §5a is the bill.
-- **Ships with `admin` / `admin` and a must-change flag** — indefensible except
-  for §5a's three constraints; remove one and the default goes. **Sessions are
-  server-side rows, not JWTs**: sign-out must actually revoke, which a stateless
-  token cannot without building this table. **Auth lives in `apps/api/auth/`,
-  not `core`** — `core` sees a `PasswordHasher` port. **Changing credentials
-  revokes all other sessions**, rename included, and **migrations can carry a
-  seed** for rows no SQL text can express.
+- **Ships with `admin` / `admin` and a must-change flag**, defensible only
+  because of §5a's three constraints. **Sessions are server-side rows, not
+  JWTs**: sign-out must actually revoke, which a stateless token cannot without
+  building this table. **Auth lives in `apps/api/auth/`, not `core`** — `core`
+  sees a `PasswordHasher` port. **Changing credentials revokes all other
+  sessions**, rename included, and **migrations can carry a seed**.
 - **Guards are global with an exemption list, never opt-in per route** — a
   forgotten route must fail closed. `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` =
   §5a's five; `/auth/me` and `/auth/change-credentials` are in the second only,
@@ -319,11 +307,14 @@ Append here. Newest last. Never delete an entry — supersede it.
   => e as E)` widens the type *and* passes when the call resolves; after
   `.then` it swallows what the success path throws. `Date.parse('2025-02-30')`
   rolls to 2 March. Fastify's ajv deletes undeclared fields. `fetch('/api/x')`
-  throws outside a browser. MUI peer-accepts React 19, so npm hoisted 19 while
+  throws outside a browser. MUI peer-accepts React 19, so npm hoisted it while
   apps/web had 18 — a root `overrides` pins one. `\b` through a non-raw string
   is a *backspace*, and has now silently killed a lint regex and a test regex
   (`no-control-regex` caught both). Vitest does not typecheck: `npm run
-  typecheck` is the only net for half of these.
+  typecheck` is the only net for half of these. **Test timeouts move, the cost
+  does not**: `unit` is 30s for argon2, `web` 15s because `userEvent` waits for
+  React after every keystroke — both cross 5s only on a loaded machine, where
+  a timeout reads like a hang and nothing is stuck.
 - **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal
   *string* and a rate transformed to a 1e8 bigint are a refinement and a
   transform, neither of which survives JSON Schema. **Money leaves as two
@@ -341,8 +332,8 @@ Append here. Newest last. Never delete an entry — supersede it.
 - **One composition root per process**: `container.ts` on the server (the F12
   CLI wired its own adapters until `container.test.ts` caught it) and
   `routes.tsx` in the browser — the payout screen wants a header, a settlement
-  and a tree from three features, and `payouts/` importing `transactions/` would
-  leave neither readable or testable alone. **The palette is a lint rule**: `design/no-raw-hex`
+  and a tree from three features, and `payouts/` importing `transactions/`
+  would leave neither readable alone. **The palette is a lint rule**: `design/no-raw-hex`
   fails the build for a hex anywhere under apps/web but
   `shared/theme/palette.ts`. **N8 is three more**: `no-feature-imports`,
   `no-fetch-in-shared`, `no-cross-feature-imports` — the last resolves paths,
@@ -362,8 +353,7 @@ Append here. Newest last. Never delete an entry — supersede it.
   on its integer — as text, `9.00` sorts after `84,642.93`. Absent values pin
   to the bottom in *both* directions: the nullish check sits outside the
   direction multiplier. **`TreeView` splits each row** into an indented label
-  and an un-indented aside; nesting would indent the amounts too, turning
-  §10's four-deep trail into a staircase.
+  and an un-indented aside; nesting would turn §10's trail into a staircase.
 - **Cache keys come from `queryKeys`, never inline.** Typed at two call sites
   they become two caches holding one fact: a mutation invalidates one spelling,
   the screen reads the other, the number is stale. The hierarchy makes precise
@@ -380,7 +370,7 @@ Append here. Newest last. Never delete an entry — supersede it.
   **Signed-in state is that one `useQuery`** — a second `user` in React state
   disagrees the moment a session is revoked elsewhere.
 - **F15's 403 routes by writing the auth cache, not by calling `navigate`.**
-  It sets `mustChangePassword` on `auth.me`; `RequireAuth` reads that, so a
+  It sets `mustChangePassword` on `auth.me` and `RequireAuth` reads that, so a
   stale tab cannot sit on a data screen. No rail, no skip, no dismissal (§5a).
 - **There is no "mark settled" endpoint**, and should not be: status is derived.
   Settling a payout *is* recording the sale that reaches a bank, which is what
@@ -388,6 +378,16 @@ Append here. Newest last. Never delete an entry — supersede it.
   consequence the browser can be sure of, the figures left to the server.
 - **Web fixtures come from the API's own test server**, never invented —
   §10's thirteen-leg tree as the routes serialise it, in `reference-payout.ts`.
+- **`/api/accounts` and `/api/accounts/balances` answer two questions.** A
+  balance is derived from movements (UC7), so an account recorded a minute ago
+  is absent from it — right for a balance sheet, useless for a form asking
+  where money went. Until `RecordAccount`, accounts arrived only with the
+  legacy import and a fresh database had nowhere to move money between. An
+  allow-list is a **set**: `RecordAccount` sorts it, because SQLite reads it
+  back ordered and a fake does not — the contract run caught that.
+- **The bundle's size warning is raised, not obeyed.** 500kB is advice about
+  download cost to somebody who might leave; this is read off local disk by
+  somebody who already opened it, and splitting it would make §11 worse.
 
 ## 14. Task protocol
 

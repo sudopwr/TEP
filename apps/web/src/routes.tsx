@@ -10,6 +10,7 @@ import {
   useParams,
 } from 'react-router-dom';
 
+import { AccountList, RecordAccountForm } from './features/accounts';
 import {
   AccountSettings,
   ChangePasswordScreen,
@@ -51,6 +52,7 @@ import { AppShell, type Destination } from './shared/layout';
 
 const DESTINATIONS: readonly Destination[] = [
   { label: 'Payouts', to: '/payouts' },
+  { label: 'Accounts', to: '/accounts' },
   { label: 'Balances', to: '/balances' },
   { label: 'Documents', to: '/documents' },
   { label: 'Data quality', to: '/data-quality' },
@@ -263,6 +265,8 @@ export function AppRoutes() {
           path="/payouts/:payoutId/transactions/new"
           element={<RecordTransactionPage />}
         />
+        <Route path="/accounts" element={<AccountList />} />
+        <Route path="/accounts/new" element={<RecordAccountForm />} />
         <Route path="/balances" element={<BalancesPage />} />
         <Route path="/documents" element={<DocumentSearch />} />
         <Route path="/data-quality" element={<DataQualityScreen />} />

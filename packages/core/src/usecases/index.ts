@@ -31,6 +31,18 @@ export {
 } from './generate-financial-year-report';
 
 export type {
+  ListAccountsCommand,
+  ListAccountsDependencies,
+} from './list-accounts';
+export { ListAccounts } from './list-accounts';
+
+export type {
+  RecordAccountCommand,
+  RecordAccountDependencies,
+} from './record-account';
+export { RecordAccount } from './record-account';
+
+export type {
   AccountBalance,
   GetAccountBalancesCommand,
   GetAccountBalancesDependencies,

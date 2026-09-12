@@ -6,12 +6,14 @@ import * as out from './serialize';
 import {
   attachDocumentFields,
   balancesQuery,
+  createAccountBody,
   createCompanyBody,
   createPayoutBody,
   createTransactionBody,
   dataQualityQuery,
   financialYearQuery,
   idParam,
+  listAccountsQuery,
   listPayoutsQuery,
   listTransactionsQuery,
   searchDocumentsQuery,
@@ -50,6 +52,43 @@ export function registerApiRoutes(app: FastifyInstance): void {
     });
 
     return reply.status(201).send({ company: out.company(company) });
+  });
+
+  // ---------- Accounts (F1) ----------
+
+  /*
+    Every account, not only the ones money has moved through.
+
+    `/api/accounts/balances` is the other account endpoint and answers a
+    different question: it is derived from movements (UC7), so an account
+    that has never taken part in one is absent from it. That is right for a
+    balance sheet and wrong for a form asking where money went — which is why
+    both exist, and why this one is not a filter over that one.
+  */
+  app.get('/api/accounts', async (request) => {
+    const query = parseOrThrow(listAccountsQuery, request.query, 'query');
+
+    const accounts = await app.useCases.listAccounts.execute(
+      query.type === undefined ? {} : { type: query.type },
+    );
+
+    return { accounts: accounts.map(out.account) };
+  });
+
+  app.post('/api/accounts', async (request, reply) => {
+    const body = parseOrThrow(createAccountBody, request.body, 'body');
+
+    const account = await app.useCases.recordAccount.execute({
+      code: body.code,
+      name: body.name,
+      type: body.type,
+      ...(body.companyId === undefined ? {} : { companyId: body.companyId }),
+      ...(body.allowedCurrencies === undefined
+        ? {}
+        : { allowedCurrencies: body.allowedCurrencies }),
+    });
+
+    return reply.status(201).send({ account: out.account(account) });
   });
 
   // ---------- Payouts (F2, F8, F9) ----------

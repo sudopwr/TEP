@@ -1,9 +1,12 @@
 import { request } from './client';
 import type {
+  AccountJson,
+  AccountsResponse,
   BalancesResponse,
   ChangeCredentialsCommand,
   CompaniesResponse,
   CompanyJson,
+  CreateAccountCommand,
   CreateCompanyCommand,
   CreatePayoutCommand,
   CreateSaleCommand,
@@ -107,6 +110,27 @@ export function createCompany(
   command: CreateCompanyCommand,
 ): Promise<{ company: CompanyJson }> {
   return request<{ company: CompanyJson }>('/api/companies', {
+    method: 'POST',
+    body: command,
+  });
+}
+
+// ---------- Accounts ----------
+
+export function fetchAccounts(
+  type?: string,
+  signal?: AbortSignal,
+): Promise<AccountsResponse> {
+  return request<AccountsResponse>(
+    `/api/accounts${queryString({ type })}`,
+    wrapSignal(signal),
+  );
+}
+
+export function createAccount(
+  command: CreateAccountCommand,
+): Promise<{ account: AccountJson }> {
+  return request<{ account: AccountJson }>('/api/accounts', {
     method: 'POST',
     body: command,
   });

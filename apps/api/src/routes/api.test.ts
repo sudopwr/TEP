@@ -62,6 +62,7 @@ describe('/api routes', () => {
 
     const EVERY_ROUTE = [
       '/api/companies',
+      '/api/accounts',
       '/api/payouts',
       '/api/payouts/1/trail',
       '/api/payouts/1/settlement',
@@ -185,6 +186,201 @@ describe('/api routes', () => {
       });
 
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('accounts (F1)', () => {
+    beforeEach(async () => {
+      await withSeed();
+    });
+
+    it('starts empty', async () => {
+      const response = await get('/api/accounts');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ accounts: [] });
+    });
+
+    it('records one and returns 201 with the allocated id', async () => {
+      const response = await post('/api/accounts', {
+        code: 'bank-hdfc',
+        name: 'HDFC',
+        type: 'bank',
+        allowedCurrencies: ['INR'],
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json().account).toMatchObject({
+        id: 1,
+        code: 'bank-hdfc',
+        name: 'HDFC',
+        type: 'bank',
+        companyId: null,
+        allowedCurrencies: ['INR'],
+      });
+    });
+
+    it('lists an account no money has ever moved through', async () => {
+      /*
+        The whole reason this route exists next to `/api/accounts/balances`.
+        Balances are derived from movements, so a brand-new account is absent
+        from them — and a form asking where money went would have nothing to
+        offer.
+      */
+      await post('/api/accounts', {
+        code: 'bank-hdfc',
+        name: 'HDFC',
+        type: 'bank',
+      });
+
+      const listed = await get('/api/accounts');
+      const balances = await get('/api/accounts/balances');
+
+      expect(listed.json().accounts).toHaveLength(1);
+      expect(balances.json().balances).toEqual([]);
+    });
+
+    it('narrows by type', async () => {
+      await post('/api/accounts', { code: 'b', name: 'Bank', type: 'bank' });
+      await post('/api/accounts', { code: 'w', name: 'Wallet', type: 'wallet' });
+
+      const response = await get('/api/accounts?type=bank');
+
+      expect(response.json().accounts).toHaveLength(1);
+      expect(response.json().accounts[0].code).toBe('b');
+    });
+
+    it('links to a company', async () => {
+      await post('/api/companies', { code: 'Rise001', name: 'Rise' });
+
+      const response = await post('/api/accounts', {
+        code: 'rise',
+        name: 'Rise',
+        type: 'processor',
+        companyId: 1,
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json().account.companyId).toBe(1);
+    });
+
+    it('404s a company that does not exist, rather than a 500', async () => {
+      // The FK would otherwise fail at insert time and surface as a server
+      // fault, which is not what a wrong id is.
+      const response = await post('/api/accounts', {
+        code: 'rise',
+        name: 'Rise',
+        type: 'processor',
+        companyId: 99,
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toMatchObject({ code: 'company_not_found' });
+    });
+
+    it('400s a currency the ledger does not know', async () => {
+      // `account_currencies.currency_code` is an FK to `currencies`.
+      const response = await post('/api/accounts', {
+        code: 'kraken',
+        name: 'Kraken',
+        type: 'exchange',
+        allowedCurrencies: ['XRP'],
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json()).toMatchObject({ code: 'unknown_currency' });
+    });
+
+    it('409s a duplicate code, with the code in the detail', async () => {
+      await post('/api/accounts', { code: 'a', name: 'A', type: 'wallet' });
+
+      const response = await post('/api/accounts', {
+        code: 'a',
+        name: 'Again',
+        type: 'bank',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json()).toMatchObject({
+        code: 'account_code_taken',
+        details: { code: 'a' },
+      });
+    });
+
+    it('400s a type the domain does not have', async () => {
+      const response = await post('/api/accounts', {
+        code: 'a',
+        name: 'A',
+        type: 'vault',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().details.issues[0].path).toBe('type');
+    });
+
+    it('treats an omitted allow-list as holding anything', async () => {
+      const response = await post('/api/accounts', {
+        code: 'multi',
+        name: 'Multi',
+        type: 'exchange',
+      });
+
+      expect(response.json().account.allowedCurrencies).toEqual([]);
+    });
+
+    it('400s an unexpected field rather than dropping it', async () => {
+      const response = await post('/api/accounts', {
+        code: 'a',
+        name: 'A',
+        type: 'bank',
+        isMine: true,
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('records a leg between two accounts it just created', async () => {
+      /*
+        The gap this route closes, end to end: on a fresh database, record a
+        company, a payout, two accounts, and then a movement between them.
+        Before this existed the last step was impossible without the legacy
+        import.
+      */
+      await post('/api/companies', { code: 'Tradeify001', name: 'Tradeify' });
+      await post('/api/accounts', {
+        code: 'tradeify',
+        name: 'Tradeify',
+        type: 'prop_firm',
+        companyId: 1,
+        allowedCurrencies: ['USD'],
+      });
+      await post('/api/accounts', {
+        code: 'rise',
+        name: 'Rise',
+        type: 'processor',
+        allowedCurrencies: ['USD'],
+      });
+      await post('/api/payouts', {
+        code: 'P1',
+        companyId: 1,
+        grossAmount: '1008.01',
+        currencyCode: 'USD',
+      });
+
+      const response = await post('/api/transactions', {
+        kind: 'payout_credit',
+        code: 'T1',
+        payoutId: 1,
+        txnDate: '2025-03-10',
+        fromAccountId: 1,
+        toAccountId: 2,
+        fromAmount: '1008.01',
+        fromCurrencyCode: 'USD',
+        toAmount: '907.22',
+        toCurrencyCode: 'USD',
+      });
+
+      expect(response.statusCode).toBe(201);
     });
   });
 

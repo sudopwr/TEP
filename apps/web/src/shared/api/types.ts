@@ -184,6 +184,9 @@ export interface PayoutsResponse {
 export interface TransactionsResponse {
   readonly transactions: readonly TransactionJson[];
 }
+export interface AccountsResponse {
+  readonly accounts: readonly AccountJson[];
+}
 export interface BalancesResponse {
   readonly balances: readonly AccountBalanceJson[];
 }
@@ -200,6 +203,15 @@ export interface CreateCompanyCommand {
   readonly code: string;
   readonly name: string;
   readonly notes?: string | null;
+}
+
+export interface CreateAccountCommand {
+  readonly code: string;
+  readonly name: string;
+  readonly type: AccountType;
+  readonly companyId?: number | null;
+  /** Omitted or empty both mean "holds anything" — see `Account.allows`. */
+  readonly allowedCurrencies?: readonly string[];
 }
 
 export interface CreatePayoutCommand {

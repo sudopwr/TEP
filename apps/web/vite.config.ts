@@ -41,5 +41,22 @@ export default defineConfig({
     // A financial tool that is being audited benefits from a stack trace that
     // points at real lines. Nothing here is secret — it ships to one machine.
     sourcemap: true,
+
+    /*
+      Raised rather than obeyed, deliberately.
+
+      The default 500kB warning is advice about *download* cost, and it is
+      good advice for a page served over a network to people who may leave.
+      This bundle is read from the local disk by one person who has already
+      decided to open it: a 533kB file is a few milliseconds, and the fix the
+      warning suggests — splitting into chunks fetched on navigation — would
+      turn one instant read into several, add a loading state to every screen
+      that does not need one, and leave the offline story (§11) worse.
+
+      So the number is set where it becomes news again. If the bundle doubles,
+      something has been added that is worth looking at, and the warning
+      should fire then.
+    */
+    chunkSizeWarningLimit: 1000,
   },
 });

@@ -18,6 +18,7 @@ import type { FinancialYearFilter, PayoutFilter } from './types';
  * ```
  * ['auth', 'me']
  * ['companies', 'list']
+ * ['accounts', 'list', type]
  * ['payouts', 'list', filter]
  * ['payouts', 7]                 <- prefix for everything about payout 7
  * ['payouts', 7, 'trail']
@@ -39,6 +40,18 @@ export const queryKeys = {
   companies: {
     all: () => ['companies'] as const,
     list: () => ['companies', 'list'] as const,
+  },
+
+  /**
+   * Every account, whether or not money has moved through it.
+   *
+   * Deliberately its own tree rather than a branch of `balances`: the two
+   * answer different questions, and a mutation that adds an account must not
+   * invalidate a derived balance that cannot have changed.
+   */
+  accounts: {
+    all: () => ['accounts'] as const,
+    list: (type?: string) => ['accounts', 'list', type ?? null] as const,
   },
 
   payouts: {

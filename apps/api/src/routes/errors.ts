@@ -53,6 +53,7 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   // 409 — the request is fine, the world disagrees with it.
   ['UsernameTakenError', 409],
   ['CompanyCodeTakenError', 409],
+  ['AccountCodeTakenError', 409],
 
   // 422 — the data on file cannot answer this, and no request can fix it.
   ['AmbiguousFeeScheduleError', 422],

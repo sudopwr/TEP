@@ -369,14 +369,13 @@ describe('RecordTransactionForm', () => {
     expect(await screen.findByText('Transaction recorded')).toBeInTheDocument();
   });
 
-  it('says so when there are no accounts to choose from', async () => {
+  it('sends somebody with no accounts to the screen that makes one', async () => {
     /*
-      Honest about a real gap rather than presenting an empty select as the
-      truth: accounts arrive with the legacy import and there is no
-      `POST /api/accounts`, so on a fresh database this form cannot be
-      completed at all.
+      This used to say, accurately, that accounts arrived only with the legacy
+      import and there was no way to make one — which left a fresh database
+      stuck after its first payout. Now it is a link.
     */
-    server.use(answering('/api/accounts/balances', { balances: [] }));
+    server.use(answering('/api/accounts', { accounts: [] }));
 
     renderFeature(
       <RecordTransactionForm
@@ -386,8 +385,9 @@ describe('RecordTransactionForm', () => {
       />,
     );
 
+    expect(await screen.findByText(/no accounts yet/i)).toBeInTheDocument();
     expect(
-      await screen.findByText(/there is no screen that creates one/i),
-    ).toBeInTheDocument();
+      screen.getByRole('link', { name: 'Record one first.' }),
+    ).toHaveAttribute('href', '/accounts/new');
   });
 });

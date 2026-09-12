@@ -1,6 +1,7 @@
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import {
+  fetchAccounts,
   fetchBalances,
   fetchCompanies,
   fetchDataQuality,
@@ -14,6 +15,7 @@ import {
 import { queryKeys } from '../keys';
 import type {
   AccountBalanceJson,
+  AccountJson,
   CompanyJson,
   DataQualityIssueJson,
   DocumentJson,
@@ -43,6 +45,21 @@ export function useCompanies(): UseQueryResult<readonly CompanyJson[]> {
     queryKey: queryKeys.companies.list(),
     queryFn: ({ signal }) => fetchCompanies(signal),
     select: (data) => data.companies,
+  });
+}
+
+/**
+ * F1 — every account, including ones no money has moved through.
+ *
+ * Not `useAccountBalances`. That one is derived from movements (UC7), so an
+ * account recorded a minute ago is absent from it — which is right for a
+ * balance sheet and useless for a form that has to offer it as a destination.
+ */
+export function useAccounts(type?: string): UseQueryResult<readonly AccountJson[]> {
+  return useQuery({
+    queryKey: queryKeys.accounts.list(type),
+    queryFn: ({ signal }) => fetchAccounts(type, signal),
+    select: (data) => data.accounts,
   });
 }
 
