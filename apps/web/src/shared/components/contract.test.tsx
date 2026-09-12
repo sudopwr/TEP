@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '../../../test/render';
 
 import {
+  AmountField,
   ConfirmDialog,
   CurrencyChip,
   DataTable,
@@ -109,6 +110,10 @@ describe('minimum required props', () => {
 
   const cases: readonly [string, () => JSX.Element][] = [
     ['MoneyDisplay', () => <MoneyDisplay minor="0" currency="INR" />],
+    [
+      'AmountField',
+      () => <AmountField label="Amount" value="" onChange={noop} />,
+    ],
     ['CurrencyChip', () => <CurrencyChip code="INR" />],
     ['EmptyState', () => <EmptyState message="Nothing here." />],
     ['ErrorState', () => <ErrorState message="It broke." />],

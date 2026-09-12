@@ -1,21 +1,46 @@
-import Box from '@mui/material/Box';
-import Typography from '@mui/material/Typography';
+import type { QueryClient } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { BrowserRouter } from 'react-router-dom';
 
-import { AccountBalances } from './features/balances/AccountBalances';
-import { AppShell } from './shared/layout/AppShell';
+import { AppRoutes } from './routes';
+import { QueryProvider } from './shared/api/QueryProvider';
+import { ToastProvider } from './shared/feedback';
+import { AppTheme } from './shared/theme/AppTheme';
+
+/**
+ * The providers, in the order they depend on each other.
+ *
+ * `QueryProvider` contains `AuthProvider`, because signed-in state *is* a
+ * query — the one on `/auth/me`. The toast sits inside both so a confirmation
+ * raised by a mutation survives the screen that raised it navigating away.
+ *
+ * Separated from `App` so a test can mount the real provider stack around a
+ * `MemoryRouter` and drive the application by URL. Duplicating this list in a
+ * test helper would mean testing a stack that is not the one that ships.
+ */
+export function AppProviders({
+  children,
+  client,
+}: {
+  readonly children: ReactNode;
+  /** Supplied by a test that wants to inspect the cache; production builds one. */
+  readonly client?: QueryClient;
+}) {
+  return (
+    <AppTheme>
+      <QueryProvider {...(client === undefined ? {} : { client })}>
+        <ToastProvider>{children}</ToastProvider>
+      </QueryProvider>
+    </AppTheme>
+  );
+}
 
 export function App() {
   return (
-    <AppShell>
-      <Typography variant="h1" sx={{ mb: 0.5 }}>
-        Balances
-      </Typography>
-      <Typography sx={{ color: 'muted.main', mb: 3 }}>
-        Derived from movements every time, never stored.
-      </Typography>
-      <Box component="section">
-        <AccountBalances />
-      </Box>
-    </AppShell>
+    <AppProviders>
+      <BrowserRouter>
+        <AppRoutes />
+      </BrowserRouter>
+    </AppProviders>
   );
 }

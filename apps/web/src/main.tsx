@@ -2,8 +2,6 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 import { App } from './App';
-import { QueryProvider } from './shared/api/QueryProvider';
-import { AppTheme } from './shared/theme/AppTheme';
 
 const container = document.getElementById('root');
 
@@ -13,10 +11,6 @@ if (container === null) {
 
 createRoot(container).render(
   <StrictMode>
-    <AppTheme>
-      <QueryProvider>
-        <App />
-      </QueryProvider>
-    </AppTheme>
+    <App />
   </StrictMode>,
 );

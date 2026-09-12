@@ -84,17 +84,31 @@ describe('query hooks', () => {
 
     expect(result.current.data?.netCredited.amount).toBe('84642.93');
     expect(result.current.data?.totalFees.amount).toBe('1384.63');
-    expect(result.current.data?.status).toBe('open');
+    // Derived, never stored: a sale leg reached the bank, so it is settled.
+    expect(result.current.data?.status).toBe('settled');
   });
 
-  it('usePayoutTrail returns a nested tree', async () => {
+  it('usePayoutTrail returns the whole nested tree', async () => {
     const { result } = renderHookWithClient(() => usePayoutTrail(1));
 
     await waitFor(() => {
       expect(result.current.isSuccess).toBe(true);
     });
 
-    expect(result.current.data?.roots[0]?.children).toHaveLength(1);
+    // §10's tree is four levels deep: one credit at the root, four
+    // withdrawals under it, a transfer under each of those, and a sale under
+    // each transfer.
+    const roots = result.current.data?.roots;
+    expect(roots).toHaveLength(1);
+    expect(roots?.[0]?.transaction.kind).toBe('payout_credit');
+    expect(roots?.[0]?.children).toHaveLength(4);
+    expect(roots?.[0]?.children[0]?.transaction.kind).toBe('withdrawal');
+    expect(roots?.[0]?.children[0]?.children[0]?.transaction.kind).toBe(
+      'transfer',
+    );
+    expect(
+      roots?.[0]?.children[0]?.children[0]?.children[0]?.transaction.kind,
+    ).toBe('sale');
   });
 
   it('useAccountBalances keeps both dust figures', async () => {
@@ -109,7 +123,7 @@ describe('query hooks', () => {
     const { result } = renderHookWithClient(() => useTransactions(1));
 
     await waitFor(() => {
-      expect(result.current.data).toHaveLength(2);
+      expect(result.current.data).toHaveLength(13);
     });
   });
 

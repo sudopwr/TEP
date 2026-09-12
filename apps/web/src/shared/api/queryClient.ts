@@ -2,6 +2,7 @@ import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 
 import { ApiError } from './client';
 import { queryKeys } from './keys';
+import type { SessionUserJson } from './types';
 
 /**
  * Thirty seconds.
@@ -57,20 +58,64 @@ function createUnauthenticatedHandler(
   };
 }
 
+/**
+ * F15's 403, handled in the same one place, and by the same mechanism.
+ *
+ * `password_change_required` means the shipped password is still in place and
+ * every data route is shut until it changes (§5a). The browser learns this
+ * from any route at any time — a tab left open while the flag was cleared
+ * elsewhere, or a session that started before the cage was noticed.
+ *
+ * Rather than calling a navigation function, this writes the fact onto the
+ * auth cache entry, exactly as the 401 path seeds `null` there. The redirect
+ * follows because `RequireAuth` reads that entry and sends anyone with the
+ * flag set to the change screen — so there is one source of truth for "must
+ * this person change their password", and the router is downstream of it
+ * rather than a second copy of the answer.
+ *
+ * The server's 403 is authoritative for this, so there is nothing to refetch.
+ * An absent or null entry is left alone: nobody is signed in, and inventing a
+ * user here would render a change-password screen for a stranger.
+ */
+function createPasswordCageHandler(client: () => QueryClient) {
+  return (error: unknown): void => {
+    if (!(error instanceof ApiError) || !error.needsPasswordChange) return;
+
+    const current = client().getQueryData<SessionUserJson | null>(
+      queryKeys.auth.me(),
+    );
+
+    if (current === undefined || current === null) {
+      // Nothing cached to correct — which happens when a data route answers
+      // before the auth probe does. Ask again rather than inventing a user:
+      // the server has just told us the flag is set and will say so again.
+      void client().invalidateQueries({ queryKey: queryKeys.auth.me() });
+      return;
+    }
+
+    const caged: SessionUserJson = { ...current, mustChangePassword: true };
+
+    client().setQueryData(queryKeys.auth.me(), caged);
+  };
+}
+
 export function createQueryClient(
   options: QueryClientOptions = {},
 ): QueryClient {
   const signedOut = createUnauthenticatedHandler(() => client, options);
+  const caged = createPasswordCageHandler(() => client);
 
   const client: QueryClient = new QueryClient({
     queryCache: new QueryCache({
       onError: (error, query) => {
         signedOut(error, isAuthKey(query.queryKey));
+        caged(error);
       },
     }),
     mutationCache: new MutationCache({
-      onError: (error) => {
-        signedOut(error, false);
+      onError: (error, _variables, _context, mutation) => {
+        signedOut(error, isAuthKey(mutation.options.mutationKey ?? []));
+        caged(error);
       },
     }),
     defaultOptions: {
@@ -95,9 +140,22 @@ export function createQueryClient(
   return client;
 }
 
-/** True for the `/auth/me` probe, which answers 401 as a normal outcome. */
-function isAuthKey(queryKey: readonly unknown[]): boolean {
-  return queryKey[0] === 'auth';
+/**
+ * True for the auth query and the auth mutations, which answer 401 normally.
+ *
+ * `/auth/me` answering 401 means "nobody is signed in". `/auth/login`
+ * answering 401 means "those were not the right credentials", and
+ * `/auth/change-credentials` answering it means "that is not your current
+ * password". None of the three is a session expiring, and treating them as
+ * one is worse than useless: clearing the cache on a failed sign-in throws
+ * away the mutation that holds the error, so the person types a wrong
+ * password and is shown nothing at all.
+ *
+ * Which is why the auth mutations carry a `mutationKey` — it exists only to
+ * be recognised here, the same way the query key is.
+ */
+function isAuthKey(key: readonly unknown[]): boolean {
+  return key[0] === 'auth';
 }
 
 /**

@@ -65,6 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const signInMutation = useMutation<SessionUserJson, Error, SignInCommand>({
+    // Tagged so the global 401 handler can tell "those credentials were
+    // wrong" from "your session has expired" — see `queryClient.ts`.
+    mutationKey: queryKeys.auth.me(),
     mutationFn: signIn,
     onSuccess: (user) => {
       // Written straight into the cache rather than invalidated: the response
@@ -76,6 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   const signOutMutation = useMutation<null, Error, void>({
+    mutationKey: queryKeys.auth.me(),
     mutationFn: signOut,
     onSuccess: () => {
       // Everything cached belonged to the session that just ended.
@@ -89,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     Error,
     ChangeCredentialsCommand
   >({
+    mutationKey: queryKeys.auth.me(),
     mutationFn: changeCredentials,
     onSuccess: (result) => {
       // The username may have changed and `mustChangePassword` may have just

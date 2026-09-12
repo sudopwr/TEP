@@ -1,7 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
-import { SETTLEMENT } from '../../../../test/msw/fixtures';
+import { OPEN_SETTLEMENT } from '../../../../test/msw/fixtures';
 import { postFails } from '../../../../test/msw/handlers';
 import { server } from '../../../../test/msw/server';
 import { renderHookWithClient, waitFor } from '../../../../test/renderHook';
@@ -58,7 +58,7 @@ describe('useRecordTransaction', () => {
     const client = createQueryClient();
 
     seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
     seed(client, queryKeys.balances.list(), { balances: [] });
     seed(client, queryKeys.dataQuality.list(), { issues: [] });
     // Should survive untouched:
@@ -66,7 +66,7 @@ describe('useRecordTransaction', () => {
     seed(client, queryKeys.companies.list(), { companies: [] });
     seed(client, queryKeys.documents.search('x'), { documents: [] });
     seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
-    seed(client, queryKeys.payouts.settlement(2), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(2), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useRecordTransaction(), {
       client,
@@ -189,7 +189,7 @@ describe('useAttachDocument', () => {
     seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
     seed(client, queryKeys.documents.search('march'), { documents: [] });
     seed(client, queryKeys.balances.list(), { balances: [] });
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useAttachDocument(), {
       client,
@@ -217,7 +217,7 @@ describe('useSettlePayout — the optimistic one', () => {
 
   it('flips the cached status to settled before the server answers', async () => {
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
     expect(settlementOf(client)?.status).toBe('open');
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
@@ -236,7 +236,7 @@ describe('useSettlePayout — the optimistic one', () => {
     // The fee schedule lives on the server. Optimistically inventing an
     // exchange fee would be the version of this that lies.
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
       client,
@@ -255,7 +255,7 @@ describe('useSettlePayout — the optimistic one', () => {
     server.use(postFails('/api/transactions'));
 
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
       client,
@@ -267,7 +267,7 @@ describe('useSettlePayout — the optimistic one', () => {
     });
 
     // Not merely "open" — the snapshot, restored entry for entry.
-    expect(settlementOf(client)).toEqual(SETTLEMENT);
+    expect(settlementOf(client)).toEqual(OPEN_SETTLEMENT);
   });
 
   it('writes through every currency variant of the same settlement', async () => {
@@ -275,8 +275,8 @@ describe('useSettlePayout — the optimistic one', () => {
     // cache entries of the same fact. Flipping one and not the other is how
     // two open tabs disagree.
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
-    seed(client, queryKeys.payouts.settlement(1, 'INR'), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1, 'INR'), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
       client,
@@ -294,8 +294,8 @@ describe('useSettlePayout — the optimistic one', () => {
 
   it('does not touch another payout on the way', async () => {
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
-    seed(client, queryKeys.payouts.settlement(2), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(2), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
       client,
@@ -314,7 +314,7 @@ describe('useSettlePayout — the optimistic one', () => {
 
   it('invalidates on success, so the guess is replaced by the answer', async () => {
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
     seed(client, queryKeys.balances.list(), { balances: [] });
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
@@ -334,7 +334,7 @@ describe('useSettlePayout — the optimistic one', () => {
     server.use(postFails('/api/transactions'));
 
     const client = createQueryClient();
-    seed(client, queryKeys.payouts.settlement(1), SETTLEMENT);
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
 
     const { result } = renderHookWithClient(() => useSettlePayout(), {
       client,

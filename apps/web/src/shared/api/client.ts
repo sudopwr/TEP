@@ -20,6 +20,16 @@ export class ApiError extends Error {
     readonly code: string,
     message: string,
     readonly details?: unknown,
+    /**
+     * The server's whole error body.
+     *
+     * Almost every route answers `{ code, message, details }` and `details`
+     * is enough. `/auth/change-credentials` is the exception: it sends
+     * `violations` as a top-level field (see `respondToChangeFailure`), and
+     * without this the list of policy failures would be parsed and then
+     * silently dropped one line later.
+     */
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -56,7 +66,13 @@ async function parseBody(response: Response): Promise<unknown> {
 function errorFrom(status: number, body: unknown): ApiError {
   if (typeof body === 'object' && body !== null && 'code' in body) {
     const shaped = body as ApiErrorBody;
-    return new ApiError(status, shaped.code, shaped.message, shaped.details);
+    return new ApiError(
+      status,
+      shaped.code,
+      shaped.message,
+      shaped.details,
+      body,
+    );
   }
 
   // The server always sends the shape above. Anything else is a proxy, a

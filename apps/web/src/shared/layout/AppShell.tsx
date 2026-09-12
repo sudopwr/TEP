@@ -1,30 +1,50 @@
 import Box from '@mui/material/Box';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
+import { NavLink } from 'react-router-dom';
+
+import { UserMenu } from '../components/UserMenu';
 
 /**
- * The five places this application goes.
+ * The frame: a fixed rail on the left, one column of page on the right.
  *
- * A fixed rail rather than a collapsible drawer: there is one user, five
- * destinations, and no mobile target. A hamburger would hide a list short
- * enough to read at a glance, and cost a click every time it was opened.
+ * A rail rather than a collapsible drawer. There is one user, six
+ * destinations and no mobile target, so a hamburger would hide a list short
+ * enough to read at a glance and cost a click every time it was opened.
  *
- * Only Balances is built. The rest are listed because the shape of the app is
- * itself a design decision and this is where it is recorded — and because a
- * rail that grows one item at a time never gets sized properly.
+ * Prop-driven, like everything else under `shared/`: the destinations are
+ * passed in rather than written here, so the shell knows about navigation
+ * without knowing about payouts. `src/routes.tsx` is where the two meet.
  */
-const DESTINATIONS = [
-  { label: 'Payouts', built: false },
-  { label: 'Balances', built: true },
-  { label: 'Documents', built: false },
-  { label: 'Data quality', built: false },
-  { label: 'Report', built: false },
-] as const;
+
+export interface Destination {
+  readonly label: string;
+  readonly to: string;
+  /** Match nested paths too — `/payouts` stays current on `/payouts/1`. */
+  readonly end?: boolean;
+}
+
+export interface AppShellProps {
+  readonly destinations: readonly Destination[];
+  readonly children: ReactNode;
+  /** Omitted while nobody is signed in; the menu then does not render. */
+  readonly username?: string;
+  readonly mustChangePassword?: boolean;
+  readonly onSignOut?: () => void;
+  readonly onAccountSettings?: () => void;
+}
 
 /** 27 spacing units — wide enough for "Data quality" without wrapping. */
 const RAIL_WIDTH = 27;
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  destinations,
+  children,
+  username,
+  mustChangePassword = false,
+  onSignOut,
+  onAccountSettings,
+}: AppShellProps) {
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
       <Box
@@ -37,6 +57,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           borderColor: 'divider',
           px: 2,
           py: 3,
+          display: 'flex',
+          flexDirection: 'column',
         }}
       >
         <Typography
@@ -47,22 +69,41 @@ export function AppShell({ children }: { children: ReactNode }) {
           Payout tracker
         </Typography>
 
-        <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0 }}>
-          {DESTINATIONS.map((destination) => (
-            <Box
-              component="li"
-              key={destination.label}
-              aria-current={destination.built ? 'page' : undefined}
-              sx={{
-                py: 0.75,
-                fontWeight: destination.built ? 600 : 400,
-                color: destination.built ? 'text.primary' : 'muted.main',
-              }}
-            >
-              {destination.label}
+        <Box component="ul" sx={{ listStyle: 'none', m: 0, p: 0, flex: 1 }}>
+          {destinations.map((destination) => (
+            <Box component="li" key={destination.to} sx={{ py: 0.25 }}>
+              <Box
+                component={NavLink}
+                to={destination.to}
+                end={destination.end ?? false}
+                sx={{
+                  display: 'block',
+                  py: 0.5,
+                  color: 'muted.main',
+                  textDecoration: 'none',
+                  // Weight and ink carry "you are here", not a coloured pill:
+                  // the palette's three colours are reserved for facts about
+                  // money, and spending one on navigation would dilute them.
+                  '&.active': { color: 'text.primary', fontWeight: 600 },
+                  '&:hover': { color: 'text.primary' },
+                }}
+              >
+                {destination.label}
+              </Box>
             </Box>
           ))}
         </Box>
+
+        {username === undefined ? null : (
+          <Box sx={{ mt: 2 }}>
+            <UserMenu
+              username={username}
+              mustChangePassword={mustChangePassword}
+              {...(onChangeCredentialsProps(onAccountSettings))}
+              {...(onSignOut === undefined ? {} : { onSignOut })}
+            />
+          </Box>
+        )}
       </Box>
 
       {/*
@@ -75,4 +116,9 @@ export function AppShell({ children }: { children: ReactNode }) {
       </Box>
     </Box>
   );
+}
+
+/** `exactOptionalPropertyTypes` refuses `{ onChangeCredentials: undefined }`. */
+function onChangeCredentialsProps(handler?: () => void) {
+  return handler === undefined ? {} : { onChangeCredentials: handler };
 }

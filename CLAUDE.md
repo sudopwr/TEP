@@ -8,14 +8,13 @@ wrong or this file is stale — say so, don't guess.
 
 A single-user local application for tracking trading-firm payouts from gross
 award to net rupees in the bank, with every supporting document attached and
-every fee accounted for. It runs on one machine, bound to `127.0.0.1`. No
-multi-user concept, no cloud. The user is the only user.
+every fee accounted for. It runs on one machine, bound to `127.0.0.1`, and the
+user is the only user.
 
 **Problem it solves.** A payout arrives as USD on a prop firm platform and
 moves through a processor, crypto wallets and an exchange before landing as INR
-in a bank. Each hop has its own fee, rate, reference and document. That lives
-in a spreadsheet today, where copy-paste errors silently destroyed four amounts
-and two fee values. The app enforces its own invariants instead.
+in a bank. Each hop has its own fee, rate, reference and document. That lived in
+a spreadsheet, where copy-paste silently destroyed four amounts and two fees.
 
 ## 2. Requirements
 
@@ -60,11 +59,10 @@ and two fee values. The app enforces its own invariants instead.
 
 Each maps to one class in `packages/core/src/usecases/`.
 
-**UC1 — RecordPayout.** Company, date, gross, currency, charges, reference.
-Creates it `open`. Rejects gross <= 0 and an unknown company. **UC2 —
-RecordTransaction.** Rejects: same from and to account, a rate on a
-same-currency move, a parent from a different payout, a currency the
-destination cannot hold.
+**UC1 — RecordPayout.** Company, date, gross, currency, charges, reference;
+rejects gross <= 0 and an unknown company. **UC2 — RecordTransaction.** Rejects
+a same-account move, a rate on a same-currency move, a parent from another
+payout, and a currency the destination cannot hold.
 
 **UC3 — RecordSale.** The important one. A USDT amount and an INR rate -> gross
 proceeds, the exchange's schedule applied for exchange fee and GST, a TDS
@@ -72,28 +70,25 @@ amount accepted from the statement, net INR out. Where 0.5% and 18% live. **UC4
 — AttachDocument.** Hashes, stores, dedupes by hash, links; re-uploading links
 the existing document instead of duplicating it.
 
-**UC5 — GetPayoutTrail.** The transaction tree, with amounts, fees and
-documents at each node. **UC6 — GetSettlement.** Gross proceeds, fees by type,
-net credited. **UC7 — GetAccountBalances.** Per account per currency, derived,
-never stored. **UC8 — RunDataQualityChecks.** Flagged rows with reasons. **UC9
-— SearchDocuments.** FTS5 over filename and text.
+**UC5 — GetPayoutTrail.** The tree, with amounts, fees and documents at each
+node. **UC6 — GetSettlement.** Gross proceeds, fees by type, net credited.
+**UC7 — GetAccountBalances.** Per account per currency, derived never stored.
+**UC8 — RunDataQualityChecks.** Flagged rows with reasons. **UC9 —
+SearchDocuments.** FTS5 over filename and text. **UC10 —
+GenerateFinancialYearReport.** A date range: credited / TDS / fees by company.
 
 **UC11 — SignIn.** Verifies the hash, opens a session, reports the must-change
 flag. One generic error either way, and a hash comparison even for an unknown
-username so timing reveals nothing. Re-hashes a weaker stored credential
+username so timing reveals nothing; re-hashes a weaker stored credential
 *without* clearing the flag. **UC12 — AuthenticateSession.** Session ID to
 user, or reject; revoked wins over expired; extends past half-life. **UC13 —
 ChangeCredentials.** Verifies the current password *first* (so it is not a free
 "is that username taken?" oracle), applies the policy against the *new*
 username, clears must-change only if the password actually changed, and revokes
 every session but the caller's. **UC14 — SignOut.** Revokes server-side;
-idempotent, and identical for a forged ID as a spent one. **UC10 —
-GenerateFinancialYearReport.** A date range, totalling credited / TDS / fees,
-grouped by company.
-
-**Not numbered**, because §3 assumed these existed: `RecordCompany`,
-`ListCompanies`, `ListPayouts`, `ListTransactions`, `GetDocument` (metadata
-only) and `ImportLegacyCsv`.
+idempotent, and identical for a forged ID as a spent one. **Not numbered**,
+because §3 assumed they existed: `RecordCompany`, `ListCompanies`,
+`ListPayouts`, `ListTransactions`, `GetDocument` and `ImportLegacyCsv`.
 
 ## 4. Domain glossary
 
@@ -101,8 +96,8 @@ Use these words in code. Do not invent synonyms.
 
 - **Company** — a prop firm or payment processor. Has a contract document.
 - **Account** — anywhere money sits: `prop_firm`, `processor`, `exchange`, `wallet`, `bank`.
-- **Payout** — a single award from a company. Root of a transaction tree.
-- **Transaction** — one movement between two accounts. Has a `parent_id`.
+- **Payout** — a single award from a company; the root of a transaction tree.
+  A **transaction** is one movement between two accounts, with a `parent_id`.
 - **Kind** — `payout_credit` | `withdrawal` | `transfer` | `sale` | `deposit`.
 - **Sale** — the exchange → bank leg, and the only leg producing INR.
 - **Gross proceeds** — `from_amount × rate`, before fees. **Net credited** — that minus TDS, exchange fee and GST.
@@ -121,33 +116,33 @@ apps/api/             Fastify + better-sqlite3
   routes/             thin — parse (zod), call one use case, serialize
   auth/ db/           hashing, cookie, guards / pragmas, migrations, seeds
   container.ts        the only file importing both a use case and an adapter
-  decorators.ts       types only: what a route may reach off the instance
-  server.ts main.ts   plugin order and guards / migrate, check bind, listen
+  decorators.ts server.ts main.ts   what a route may reach off the instance /
+                      plugin order and guards / migrate, check bind, listen
 
-apps/web/             React 18 + Vite + MUI v6
+apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/theme/       the ONE theme; only palette.ts may contain a hex
   shared/components/  reusable, zero feature knowledge; one per file
   shared/api/         the only place that talks to the server: TanStack Query
-                      v5, the queryKeys factory, the 401 rule
-  shared/layout/      the rail and the page frame
-  features/           one folder per feature, no cross-imports
+                      v5, the queryKeys factory, the 401 and 403 rules
+  shared/layout/ feedback/   the rail and page frame / the toast
+  features/           auth payouts transactions documents reports
+                      data-quality — no cross-imports
+  routes.tsx          the UI composition root: the one file that may build
+                      a screen out of several features
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper
 `#FAF7F2`, plus three saturated colours, each a fact about money — `positive`
 (arrived), `negative` (left), `flag` (§7's "suspicious, not impossible");
-`muted` derives from ink. Colourless chrome is what lets any colour *mean*
-something; MUI's blue is chrome, link and primary action at once, so it means
-nothing, and colour never carries meaning alone. IBM Plex Sans for the
-interface, Plex Mono for every number, self-hosted (offline).
-`typography.numeric` carries `tabular-nums lining-nums slashed-zero`. Light
-only — read beside printed statements.
+`muted` derives from ink. Colourless chrome is what lets colour *mean*
+something, and colour never carries meaning alone. IBM Plex Sans for the
+interface, Plex Mono for every number, self-hosted (offline); `numeric` carries
+`tabular-nums lining-nums slashed-zero`. Light only — read beside statements.
 
-**The dependency rule.** Dependencies point inward only; `core` knows nothing
-about anything. A runtime dependency in `packages/core/package.json` means
-something leaked. **Ports earn their existence**: an interface only where a
-fake is needed in tests or a second implementation exists — a wrapper around
-one library with one caller is not a port.
+**The dependency rule.** Dependencies point inward only; a runtime dependency
+in `packages/core/package.json` means something leaked. **Ports earn their
+existence**: an interface only where a fake is needed in tests or a second
+implementation exists — a wrapper round one library with one caller is not.
 
 ## 5a. Authentication
 
@@ -157,38 +152,38 @@ on one machine.
 **Storage.** argon2id via `@node-rs/argon2` at its recommended parameters
 (m=19456, t=2, p=1). Never SHA-anything, never a homemade salt. `password_hash`
 holds the full encoded string, salt and parameters included, so raising the cost
-later is a rehash-on-next-login. `003_auth.sql` defines `users` and `sessions`
-and is the authority on both.
+later is a rehash-on-next-login. `003_auth.sql` is the authority on the tables.
 
 **The default account.** The admin hash is computed at migration time by
 `db/seeds.ts`, never written into the `.sql` — a literal hash there means one
-shared salt in every install, in a file the checksum makes unchangeable. (It
-said `002` before `002_reference_currencies.sql` existed; renumbering applied
-history is what the checksum guard prevents.)
+shared salt in every install, in a file the checksum makes unchangeable. (It was
+`002` until `002_reference_currencies.sql` existed: renumbering applied history
+is exactly what the checksum guard prevents.)
 
 A deliberate convenience with a deliberate cage: (1) every route except
 `/health`, `/auth/login`, `/auth/me`, `/auth/logout` and
 `/auth/change-credentials` returns 403 `password_change_required` while the
 flag is set; (2) the server refuses to bind anywhere but `127.0.0.1` while it
 is set, and says why; (3) the UI routes to the change screen with no way past —
-**not built; there is no web app yet**. The default is safe only because of all
-three; remove one and the default must go too.
+no rail, no skip, no dismissible banner, and the copy says the password ships
+with every copy and works on this machine only. The default is safe only
+because of all three; remove one and the default must go too.
 
 **Password policy.** 12 characters minimum; rejects the current password, the
-username and a short embedded common list. No composition rules — length beats
-punctuation. A pure function in `core/domain/password-policy.ts` returning
-every violation, not the first; every common-list entry is itself 12+
-characters. **Rehash is not a change**, nor is a rename —
+username and a short embedded common list, every entry of which is itself 12+
+characters. No composition rules — length beats punctuation. A pure function in
+`core/domain/password-policy.ts` returning every violation, not the first, so
+the browser runs the same one. **Rehash is not a change**, nor is a rename:
 `must_change_password` clears only when a password is actually set.
 
-**Failure handling.** One message for every sign-in failure — byte-identical
-responses, and an unknown username still runs a full argon2 verification so the
-timing matches. 5 attempts a minute on `/auth/login`. Never log a password.
+**Failure handling.** One byte-identical message for every sign-in failure, and
+an unknown username still runs a full argon2 verification so the timing matches.
+5 attempts a minute on `/auth/login`. Never log a password.
 
 **Session.** ID is 32 random bytes, base64url, compared timing-safely. Cookie:
 `httpOnly`, `sameSite=lax`, `secure=false` (loopback has no TLS), `path=/`, 30
-days, session ID only. `SESSION_SECRET` lives in gitignored `.env` and is
-generated on first run; losing it only signs everyone out.
+days, session ID only. `SESSION_SECRET` lives in gitignored `.env`, generated
+on first run; losing it only signs everyone out.
 
 ## 6. Money
 
@@ -199,8 +194,8 @@ USDT 8). Rates are scaled by 1e8.
 - `75317770000` USDT = 753.1777 USDT
 - `9766520000` rate = 97.6652
 
-Never `REAL`, never `number` arithmetic on decimals. `Money` is the only thing
-allowed to do arithmetic, and it throws on currency mismatch.
+Never `REAL`, never `number` arithmetic. `Money` does the arithmetic, and it
+throws on a currency mismatch.
 
 ## 7. Invariants
 
@@ -214,14 +209,15 @@ needs to be friendlier:
 - a `document_links` row targets exactly one of company / payout / transaction
 - amounts are positive
 
-Enforced by views, not constraints — suspicious rather than impossible
-(`v_data_quality`):
+Enforced by views, not constraints — suspicious rather than impossible, since
+enforcing "cross-currency implies a rate" would block entry before the rate is
+known (`v_data_quality`):
 
 - a cross-currency move with no recorded rate
 - `to_amount` that doesn't reconcile with rate and fees
 - a fee more than 2% off the declared schedule
-- a transaction sending more than its parent delivered (legitimate when dust
-  from an earlier transfer is still in the wallet)
+- a leg sending more than its parent delivered — legitimate when earlier dust
+  is still in the wallet
 
 ## 8. Fee rules
 
@@ -233,15 +229,15 @@ Declared in `fee_schedules`, not hardcoded:
 | CoinDCX | gst | exchange_fee | 18% |
 | Rise | network_fee | flat | ~$4.00 |
 
-The Rise withdrawal fee is flat, not proportional: four withdrawals cost $16.31
-where one would have cost $4.03. See the open question in §11.
+The Rise fee is flat, not proportional: four withdrawals cost $16.31 where one
+would have cost $4.03. See §11.
 
 ## 9. Known defects in the source CSV
 
 The importer corrects these. Do not "fix" it to trust the sheet.
 
 1. **`From` amount wrong on all four sale rows** — `45.957` copy-pasted. True
-   values are `to_amount / rate`; Transaction0011's is 741.72, not 45.957.
+   values are `to_amount / rate`; Transaction0011 is 741.72, not 45.957.
 2. **Exchange fee and GST swapped** between Transaction003 and Transaction0011:
    as written 8.39% and 0.03%; swapped, both 0.508%.
 3. **`1.43908E+19`** — Excel destroyed a long reference by making it a float.
@@ -257,21 +253,18 @@ From `TradeifyPayout001`. Any refactor must still produce these:
 ```
 payout gross    $1,008.01     gross proceeds  ₹86,027.56
 total fees      ₹ 1,384.63    net credited    ₹84,642.93
-
 TDS ₹868.88   exchange_fee ₹437.09   GST ₹78.66
 network_fee $16.31   platform_charge $100.79
-
 balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 ```
 
 ## 11. Open questions
 
-- Does CoinDCX charge 0.5% on **order value** or **net proceeds**?
-  Transaction005 computes to 0.4866% and Transaction008 to 0.5308% on
-  proceeds; if it's order value, partial fills explain the spread and
-  `fee_schedules.basis` becomes `from_amount`. Check one CoinDCX order.
-- Warn before a withdrawal below a threshold, given the flat $4 fee?
-  Suggested, not decided.
+- Does CoinDCX charge 0.5% on **order value** or **net proceeds**? On proceeds
+  Transaction005 computes to 0.4866% and Transaction008 to 0.5308%; if it is
+  order value, partial fills explain the spread and `fee_schedules.basis`
+  becomes `from_amount`. Check one CoinDCX order.
+- Warn before a withdrawal below a threshold, given the flat $4 fee? Open.
 - Reached from outside this machine? If yes, Tailscale in front rather than
   an exposed port, and revisit §5a: a single password over a LAN deserves a
   second factor, and `secure=false` must become `true` behind TLS.
@@ -281,113 +274,120 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 - TypeScript everywhere, `strict: true`. Vitest for unit and integration,
   Playwright for e2e. Test file next to source: `money.ts` / `money.test.ts`.
 - No default exports except React components.
-- Errors are typed classes in `core/domain/errors.ts`, never bare strings.
-- SQL lives in adapter files (never routes or use cases); statements prepared
-  once per connection.
+- Errors are typed classes in `core/domain/errors.ts`, never bare strings, and
+  each message is written for the reader — the browser passes it through.
+- SQL lives in adapters, never routes or use cases; statements prepared once.
 - Commit message: `feat(core): ...`, `fix(api): ...`, `test(web): ...`.
+- Copy: sentence case, active voice, the user's words — the button says "Record
+  payout", the toast "Payout recorded", and an error says what happened and what
+  to do, never "Something went wrong".
 
 ## 13. Decision log
 
 Append here. Newest last. Never delete an entry — supersede it.
 
 - **Money as scaled integers, scale per currency**: one fixed scale breaks INR
-  or USDT, floats break both quietly. **Fees as rows, not columns**, each with
-  its own currency — TDS is INR, the Rise fee USD. **Status and totals derived,
-  never stored**: a stored status drifts the first time a row is edited, and
-  `to_amount` on a sale is gross proceeds matching the statement.
+  or USDT, floats break both quietly. **Fees as rows, not columns**, each in its
+  own currency — TDS is INR, the Rise fee USD. **Status and totals are derived,
+  never stored**: a stored status drifts the first time a row is edited.
 - **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
-  polymorphic `entity_type`/`entity_id`, discarding referential integrity.
-  **Addresses snapshotted on the transaction, normalized in
-  `account_identifiers`** — the FK says which account, the snapshot which one.
-- **Constraints for impossible states, views for suspicious ones** — enforcing
-  "cross-currency implies a rate" blocks entry before the rate is known.
+  polymorphic `entity_type`/`entity_id`, which discards referential integrity.
+  **Addresses are snapshotted on the leg and normalized in
+  `account_identifiers`.**
+
 - ~~**Google sign-in with a one-subject allow-list.**~~ Superseded by
-  **username and password with a single account**: it stored no credential but
-  needed a Google Cloud project, internet access and a hostname-bound redirect
-  URI. We now own the hashing, timing and rate limiting — §5a is where it is
-  paid.
+  **username and password, one account**: it needed a Cloud project, internet
+  and a hostname-bound redirect URI. §5a is the bill.
 - **Ships with `admin` / `admin` and a must-change flag** — indefensible except
   for §5a's three constraints; remove one and the default goes. **Sessions are
-  server-side rows, not JWTs**: sign-out must actually revoke, and a stateless
-  token cannot without building this very table. **Auth logic lives in
-  `apps/api/auth/`, not `core`** — hashing and cookies are infrastructure;
-  `core` sees a `PasswordHasher` port. **Changing credentials revokes all other
-  sessions**, including a username-only change. **Migrations can carry a seed**
-  in their transaction, for rows no SQL text can express — so far one: the
-  admin credential.
+  server-side rows, not JWTs**: sign-out must actually revoke, which a stateless
+  token cannot without building this table. **Auth lives in `apps/api/auth/`,
+  not `core`** — `core` sees a `PasswordHasher` port. **Changing credentials
+  revokes all other sessions**, rename included, and **migrations can carry a
+  seed** for rows no SQL text can express.
 - **Guards are global with an exemption list, never opt-in per route** — a
   forgotten route must fail closed. `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` =
   §5a's five; `/auth/me` and `/auth/change-credentials` are in the second only,
-  since both must know who is asking.
+  since both must know who is asking. `RequireAuth`/`RequireSession` mirror them
+  in the browser — for the right screen, not for safety: delete them and every
+  data route still answers 401 and 403.
 - **Session-id compare is constant-time; the index probe isn't** — an honest
-  limit; the rule stays so nobody swaps in a 6-digit code and keeps the `===`.
+  limit; the rule stays so nobody swaps in a 6-digit code and keeps `===`.
 - **Traps already fallen into**, each now covered by a test. `Error` owns
   `cause` and `name` (hence `.failure`, `.migrationName`). `Algorithm.Argon2id`
   is an ambient `const enum` `verbatimModuleSyntax` will not inline. `.catch(e
-  => e as E)` widens the type *and* passes when the call resolves; chained
-  after `.then` it swallows what the success path throws.
-  `Date.parse('2025-02-30')` rolls to 2 March. Fastify's ajv deletes undeclared
-  fields. `fetch('/api/x')` throws outside a browser. MUI and Testing Library
-  peer-accept React 19, so npm hoisted 19 while apps/web had 18 — a root
-  `overrides` pins one. Vitest does not typecheck, so `npm run typecheck` is
-  the only net for half of these.
+  => e as E)` widens the type *and* passes when the call resolves; after
+  `.then` it swallows what the success path throws. `Date.parse('2025-02-30')`
+  rolls to 2 March. Fastify's ajv deletes undeclared fields. `fetch('/api/x')`
+  throws outside a browser. MUI peer-accepts React 19, so npm hoisted 19 while
+  apps/web had 18 — a root `overrides` pins one. `\b` through a non-raw string
+  is a *backspace*, and has now silently killed a lint regex and a test regex
+  (`no-control-regex` caught both). Vitest does not typecheck: `npm run
+  typecheck` is the only net for half of these.
 - **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal
   *string* and a rate transformed to a 1e8 bigint are a refinement and a
   transform, neither of which survives JSON Schema. **Money leaves as two
-  strings** — N1 covers the wire too. **Union types derive from a runtime
-  array** (`DOCUMENT_TYPES`, `TRANSACTION_KINDS`, `FEE_TYPES`), so the API
-  cannot drift from the domain.
+  strings**, and N1 reaches the keyboard: `AmountField` filters keystrokes
+  rather than parsing. **Unions derive from a runtime array** (`FEE_TYPES`,
+  `DOCUMENT_TYPES`, `TRANSACTION_KINDS`), so the API cannot drift.
 - **The error map is keyed by `error.name`, not by constructor** — constructor
   identity breaks when two copies of core load. **Constraint violations are
   translated in the adapter**, per §7's "unless the message needs to be
   friendlier"; `document_links` has two FKs, so it checks which side first.
   **Documents are served by a handler, never a static mount** — a mount on
-  `data/files` publishes every file to anyone who can guess a hash.
-- **One composition root**: the F12 CLI wired its own adapters until
-  `container.test.ts` caught it. **The palette is a lint rule**:
-  `design/no-raw-hex` fails the build for a hex anywhere under apps/web but
-  `shared/theme/palette.ts`, tests included. **N8 is three more**:
-  `no-feature-imports`, `no-fetch-in-shared`, `no-cross-feature-imports` — the
-  last resolves paths rather than globbing, since a glob catching
-  `../other/Thing` also catches `../../shared/components/X`.
+  `data/files` publishes every file to anyone who can guess a hash. **A 400
+  carries `details.issues`**, so a form puts each message under its own field
+  instead of making the reader guess which of eight.
+- **One composition root per process**: `container.ts` on the server (the F12
+  CLI wired its own adapters until `container.test.ts` caught it) and
+  `routes.tsx` in the browser — the payout screen wants a header, a settlement
+  and a tree from three features, and `payouts/` importing `transactions/` would
+  leave neither readable or testable alone. **The palette is a lint rule**: `design/no-raw-hex`
+  fails the build for a hex anywhere under apps/web but
+  `shared/theme/palette.ts`. **N8 is three more**: `no-feature-imports`,
+  `no-fetch-in-shared`, `no-cross-feature-imports` — the last resolves paths,
+  since a glob catching `../other/Thing` also catches `../../shared/x`.
 - **happy-dom, not jsdom.** jsdom installs its own `AbortController` while the
   `fetch` running is undici's, which `instanceof`-checks Node's `AbortSignal`:
-  two realms, one check, every component request failing. A browser has one
-  realm — the environment was inventing a bug.
+  two realms, one check, every request failing. The environment invented it.
 - **The browser formats money; the server owns the value.** `MoneyDisplay`
   takes integer minor units, so grouping and locale are presentation.
-  Supersedes "display the server's `amount` string, never recompute" — that
-  kept the browser honest about *scale*, which a `scale` prop and a currency
-  table now do. All string/BigInt work: `Intl.NumberFormat#format` takes an
-  exact decimal *string*, so `2^53 + 1` paise renders digit for digit. Rupees
-  group Indian-style. An unknown currency **throws** rather than defaulting to
-  2 — guessing 2 for an 8-decimal token is a plausible balance a million times
-  too large.
+  Supersedes "render the server's `amount` string" — that kept the browser
+  honest about *scale*, which a `scale` prop and a currency table now do.
+  `Intl.NumberFormat#format` takes an exact decimal *string*, so
+  `2^53 + 1` paise renders digit for digit. Rupees group Indian-style. An
+  unknown currency **throws** — guessing 2 for an 8-decimal token is a
+  plausible balance a million times out.
 - **`sortBy` is separate from `cell` in `DataTable`**, so a money column sorts
   on its integer — as text, `9.00` sorts after `84,642.93`. Absent values pin
   to the bottom in *both* directions: the nullish check sits outside the
   direction multiplier. **`TreeView` splits each row** into an indented label
-  and an un-indented aside; nesting would indent the amounts too, turning a
-  column of figures into a staircase.
-- **Cache keys come from `queryKeys`, never inline.** A key typed at a call
-  site can be typed differently at the next one, and the two then look like
-  separate caches holding one fact: a mutation invalidates one spelling, the
-  screen reads the other, the number is stale. The hierarchy makes precise
+  and an un-indented aside; nesting would indent the amounts too, turning
+  §10's four-deep trail into a staircase.
+- **Cache keys come from `queryKeys`, never inline.** Typed at two call sites
+  they become two caches holding one fact: a mutation invalidates one spelling,
+  the screen reads the other, the number is stale. The hierarchy makes precise
   invalidation expressible — a leg invalidates that payout's trail and
   settlement, the balances and the checks, and a test asserts the payout *list*
   and every other payout stay untouched.
 - **A 401 is handled in the query and mutation caches, never at a call site.**
   It clears everything — a signed-out session must not leave balances in memory
-  — and seeds `auth.me` null. `/auth/me` answering 401 is exempt: that is the
-  ordinary way of asking "is anyone signed in?", and treating it as an expiry
-  clears the cache every time the sign-in screen loads. F15's 403 is exempt
-  too. **Signed-in state is that one `useQuery` and nothing else** — a second
-  `user` in React state disagrees the moment a session is revoked elsewhere.
-- **There is no "mark settled" endpoint**, and there should not be: status is
-  derived. Settling a payout *is* recording the sale that reaches a bank, which
-  is what `useSettlePayout` does — optimistically flipping the cached status,
-  the one consequence the browser can be sure of, leaving the figures to the
-  server.
+  — and seeds `auth.me` null. Three exemptions, each a 401 that is an answer
+  rather than an expiry: `/auth/me` (nobody is signed in), `/auth/login` and
+  `/auth/change-credentials` (wrong password — and clearing the cache there
+  destroys the mutation holding the error, so the reader sees *nothing*); the
+  auth mutations carry a `mutationKey` so the handler can tell.
+  **Signed-in state is that one `useQuery`** — a second `user` in React state
+  disagrees the moment a session is revoked elsewhere.
+- **F15's 403 routes by writing the auth cache, not by calling `navigate`.**
+  It sets `mustChangePassword` on `auth.me`; `RequireAuth` reads that, so a
+  stale tab cannot sit on a data screen. No rail, no skip, no dismissal (§5a).
+- **There is no "mark settled" endpoint**, and should not be: status is derived.
+  Settling a payout *is* recording the sale that reaches a bank, which is what
+  `useSettlePayout` does — flipping the cached status optimistically, the one
+  consequence the browser can be sure of, the figures left to the server.
+- **Web fixtures come from the API's own test server**, never invented —
+  §10's thirteen-leg tree as the routes serialise it, in `reference-payout.ts`.
 
 ## 14. Task protocol
 
@@ -397,5 +397,4 @@ At the end of every task:
 2. Append anything durable to §13 — a decision, a gotcha, a corrected
    assumption. Move anything resolved out of §11.
 3. If the task changed the schema, update §6, §7 or §8 to match.
-4. Keep this file under 400 lines. Condense old entries rather than
-   letting it sprawl.
+4. Keep this file under 400 lines. Condense old entries, never delete them.

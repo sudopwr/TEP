@@ -6,6 +6,9 @@
  * fetches anything or imports from `features/`. Both rules are enforced by
  * `no-feature-imports` and `no-fetch-in-shared` in eslint.config.js.
  */
+export { AmountField, isPartialDecimal } from './AmountField';
+export type { AmountFieldProps } from './AmountField';
+
 export { ConfirmDialog } from './ConfirmDialog';
 export type { ConfirmDialogProps } from './ConfirmDialog';
 
