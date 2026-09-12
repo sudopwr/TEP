@@ -1,71 +1,102 @@
 import { HttpResponse, http } from 'msw';
 
+import {
+  BALANCES,
+  DOCUMENTS,
+  ISSUES,
+  PAYOUT,
+  RISE_CO,
+  SETTLEMENT,
+  TRADEIFY,
+  TRAIL,
+  TRANSACTIONS,
+} from './fixtures';
+
 /**
- * The default world a component test renders into: the reference payout, as
- * the real API returns it.
+ * The whole API, answered at the network layer.
  *
- * These figures are §10's, copied from nowhere — they are what
- * `GET /api/accounts/balances` actually answered when the server was run
- * against the imported legacy sheet. Both dust balances are here because they
- * are the hard case for the numeric column: eight decimal places under two.
- *
- * MSW intercepts at the network layer, so the component under test runs its
- * real `fetch`, its real error handling and its real loading state. Nothing is
- * stubbed inside the component, which is the difference between testing the
- * component and testing a mock.
+ * MSW intercepts below `fetch`, so every hook test runs the real client, the
+ * real TanStack code paths, the real cache and the real invalidation. Nothing
+ * stubs `useQuery`: a test that did would be asserting on its own mock, and
+ * would keep passing through a rewrite of the very thing it claims to check.
  */
-export const REFERENCE_BALANCES = {
-  balances: [
-    {
-      account: {
-        id: 5,
-        code: 'bank-hdfc',
-        name: 'HDFC Bank',
-        type: 'bank',
-      },
-      balance: { currency: 'INR', minor: '8464293', amount: '84642.93' },
-    },
-    {
-      account: {
-        id: 4,
-        code: 'coindcx',
-        name: 'CoinDCX',
-        type: 'exchange',
-      },
-      balance: {
-        currency: 'USDT',
-        minor: '1409080000',
-        amount: '14.09080000',
-      },
-    },
-    {
-      account: {
-        id: 3,
-        code: 'trustwallet',
-        name: 'Trust Wallet',
-        type: 'wallet',
-      },
-      balance: { currency: 'USDT', minor: '133230000', amount: '1.33230000' },
-    },
-    {
-      account: {
-        id: 1,
-        code: 'tradeify',
-        name: 'Tradeify',
-        type: 'prop_firm',
-      },
-      balance: { currency: 'USD', minor: '-100801', amount: '-1008.01' },
-    },
-  ],
-} as const;
+
+export const REFERENCE_BALANCES = { balances: BALANCES } as const;
 
 export const handlers = [
+  // ---------- Auth ----------
+  http.get('/auth/me', () =>
+    HttpResponse.json({ username: 'admin', mustChangePassword: false }),
+  ),
+  http.post('/auth/login', () =>
+    HttpResponse.json({ username: 'admin', mustChangePassword: false }),
+  ),
+  http.post('/auth/logout', () => new HttpResponse(null, { status: 204 })),
+  http.post('/auth/change-credentials', () =>
+    HttpResponse.json({
+      username: 'admin',
+      mustChangePassword: false,
+      passwordChanged: true,
+      usernameChanged: false,
+      otherSessionsRevoked: 1,
+    }),
+  ),
+
+  // ---------- Data ----------
+  http.get('/api/companies', () =>
+    HttpResponse.json({ companies: [TRADEIFY, RISE_CO] }),
+  ),
+  http.post('/api/companies', () =>
+    HttpResponse.json({ company: TRADEIFY }, { status: 201 }),
+  ),
+
+  http.get('/api/payouts', () => HttpResponse.json({ payouts: [PAYOUT] })),
+  http.post('/api/payouts', () =>
+    HttpResponse.json({ payout: PAYOUT }, { status: 201 }),
+  ),
+  http.get('/api/payouts/:id/trail', () => HttpResponse.json(TRAIL)),
+  http.get('/api/payouts/:id/settlement', () => HttpResponse.json(SETTLEMENT)),
+
+  http.get('/api/transactions', () =>
+    HttpResponse.json({ transactions: TRANSACTIONS }),
+  ),
+  http.post('/api/transactions', () =>
+    HttpResponse.json(
+      {
+        transaction: TRANSACTIONS[1],
+        grossProceeds: SETTLEMENT.grossProceeds,
+        fees: [],
+        totalFees: SETTLEMENT.totalFees,
+        netCredited: SETTLEMENT.netCredited,
+      },
+      { status: 201 },
+    ),
+  ),
+
+  http.post('/api/transactions/:id/documents', () =>
+    HttpResponse.json(
+      { document: DOCUMENTS[0], created: true },
+      { status: 201 },
+    ),
+  ),
+  http.get('/api/documents/search', () =>
+    HttpResponse.json({ documents: DOCUMENTS }),
+  ),
+
   http.get('/api/accounts/balances', () =>
     HttpResponse.json(REFERENCE_BALANCES),
   ),
+  http.get('/api/data-quality', () => HttpResponse.json({ issues: ISSUES })),
 
-  http.get('/auth/me', () =>
-    HttpResponse.json({ username: 'admin', mustChangePassword: false }),
+  http.get('/api/reports/financial-year', () =>
+    HttpResponse.json({
+      range: { from: '2024-04-01', to: '2025-03-31' },
+      currency: 'INR',
+      totalCredited: SETTLEMENT.netCredited,
+      totalTds: SETTLEMENT.feesByType.tds,
+      totalFees: SETTLEMENT.totalFees,
+      byCompany: [],
+    }),
   ),
 ];
 
@@ -94,3 +125,21 @@ export const passwordChangeRequired = (path: string) =>
 /** A server that is not running at all, rather than one answering badly. */
 export const unreachable = (path: string) =>
   http.get(path, () => HttpResponse.error());
+
+/** Any POST that refuses, for testing rollback. */
+export const postFails = (path: string, status = 400) =>
+  http.post(path, () =>
+    HttpResponse.json(
+      { code: 'same_account_transfer', message: 'That leg sends to itself.' },
+      { status },
+    ),
+  );
+
+/** Nobody signed in, for the auth-probe path. */
+export const signedOut = () =>
+  http.get('/auth/me', () =>
+    HttpResponse.json(
+      { code: 'authentication_required', message: 'Sign in to continue.' },
+      { status: 401 },
+    ),
+  );

@@ -90,8 +90,40 @@ function absolute(path: string): string {
 
 export interface RequestOptions {
   readonly method?: 'GET' | 'POST';
+  /** Serialised as JSON. Mutually exclusive with `formData`. */
   readonly body?: unknown;
+  /**
+   * A multipart body.
+   *
+   * Kept separate from `body` because the two need opposite treatment: JSON
+   * needs a `content-type` header, and `FormData` must NOT have one. The
+   * browser generates `multipart/form-data; boundary=...` with a boundary only
+   * it knows, and setting the header by hand replaces it with one that has no
+   * boundary at all — at which point the server cannot find the parts and
+   * answers 415.
+   */
+  readonly formData?: FormData;
   readonly signal?: AbortSignal;
+}
+
+function headersFor(options: RequestOptions): Record<string, string> {
+  if (options.formData !== undefined) {
+    return { accept: 'application/json' };
+  }
+
+  return options.body === undefined
+    ? { accept: 'application/json' }
+    : { accept: 'application/json', 'content-type': 'application/json' };
+}
+
+function bodyFor(options: RequestOptions): { body?: BodyInit } {
+  if (options.formData !== undefined) {
+    return { body: options.formData };
+  }
+
+  return options.body === undefined
+    ? {}
+    : { body: JSON.stringify(options.body) };
 }
 
 /**
@@ -108,13 +140,8 @@ export async function request<T>(
   const response = await fetch(absolute(path), {
     method: options.method ?? 'GET',
     credentials: 'same-origin',
-    headers:
-      options.body === undefined
-        ? { accept: 'application/json' }
-        : { accept: 'application/json', 'content-type': 'application/json' },
-    ...(options.body === undefined
-      ? {}
-      : { body: JSON.stringify(options.body) }),
+    headers: headersFor(options),
+    ...bodyFor(options),
     ...(options.signal === undefined ? {} : { signal: options.signal }),
   });
 
