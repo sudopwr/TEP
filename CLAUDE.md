@@ -303,19 +303,18 @@ Newest last. Never delete an entry — supersede it.
   throws outside a browser. MUI peer-accepts React 19, so npm hoisted it while
   apps/web had 18; a root `overrides` pins one. `\b` through a non-raw string
   is a *backspace*; `no-control-regex` has caught that twice. Vitest does not
-  typecheck: `npm run typecheck` is the only net for half of these. **Test
-  timeouts move, the cost does not**: `unit` is 30s for argon2, `web` 15s
-  because `userEvent` waits for React after every keystroke — both cross 5s
-  only on a loaded machine, where a timeout reads like a hang and nothing is
-  stuck. **happy-dom, not jsdom.** jsdom installs its own `AbortController`
-  while the running `fetch` is undici's, which `instanceof`-checks Node's: two
-  realms, one check, every request failing.
+  typecheck; `npm run typecheck` is the only net. **Test timeouts move, the
+  cost does not**: `unit` is 30s for argon2, `web` 15s because `userEvent`
+  waits for React after every keystroke — both cross 5s only on a loaded
+  machine, where a timeout reads like a hang. **happy-dom, not jsdom.** jsdom
+  installs its own `AbortController` while the running `fetch` is undici's,
+  which `instanceof`-checks Node's: two realms, one check, every request
+  failing.
 - **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal
   *string* and a rate transformed to a 1e8 bigint are a refinement and a
-  transform, neither of which survives JSON Schema. **Money leaves as two
-  strings**, and N1 reaches the keyboard: `AmountField` filters keystrokes
-  rather than parsing. **Unions derive from a runtime array**, so the API
-  cannot drift from the domain.
+  transform, neither survives JSON Schema. **Money leaves as two strings**, and
+  N1 reaches the keyboard: `AmountField` filters keystrokes, not parses.
+  **Unions derive from a runtime array**, so the API cannot drift.
 - **The error map is keyed by `error.name`, not by constructor** — constructor
   identity breaks when two copies of core load. **Constraint violations are
   translated in the adapter**, per §7's "unless the message needs to be
@@ -341,23 +340,23 @@ Newest last. Never delete an entry — supersede it.
   they become two caches holding one fact: a mutation invalidates one spelling,
   the screen reads the other, the number is stale. The hierarchy makes precise
   invalidation expressible — a leg invalidates that payout's trail and
-  settlement, the balances and the checks, and a test asserts the payout *list*
-  and every other payout stay untouched. **A 401 is handled in the query and
-  mutation caches, never at a call site.** It clears everything — a signed-out
-  session must not leave balances in memory — and seeds `auth.me` null. Three
-  exemptions, each a 401 that is an answer rather than an expiry: `/auth/me`,
-  `/auth/login` and `/auth/change-credentials` — clearing the cache on a wrong
-  password destroys the mutation holding the error, so the reader sees
-  *nothing*. They carry a `mutationKey` so the handler can tell. **Signed-in
-  state is that one `useQuery`** — a second `user` in React state disagrees the
-  moment a session is revoked elsewhere. **F15's 403 routes by writing the auth
-  cache, not by calling `navigate`.** It sets `mustChangePassword` on `auth.me`
-  and `RequireAuth` reads that, so a stale tab cannot sit on a data screen. No
+  settlement, the balances and the checks, and a test asserts every other
+  payout stays untouched. **A 401 is handled in the query and mutation caches,
+  never at a call site.** It clears everything — a signed-out session must not
+  leave balances in memory — and seeds `auth.me` null. Three exemptions, each a
+  401 that is an answer rather than an expiry: `/auth/me`, `/auth/login` and
+  `/auth/change-credentials` — clearing the cache on a wrong password destroys
+  the mutation holding the error, so the reader sees *nothing*. They carry a
+  `mutationKey` so the handler can tell. **Signed-in state is that one
+  `useQuery`** — a second `user` in React state disagrees the moment a session
+  is revoked elsewhere. **F15's 403 routes by writing the auth cache, not by
+  calling `navigate`.** It sets `mustChangePassword` on `auth.me` and
+  `RequireAuth` reads that, so a stale tab cannot sit on a data screen. No
   rail, no skip, no dismissal (§5a).
 - **There is no "mark settled" endpoint**, and should not be: status is
   derived. Settling *is* recording the sale that reaches a bank, which is what
-  `useSettlePayout` does — flipping the cached status optimistically and
-  leaving the figures to the server.
+  `useSettlePayout` does — flipping the cached status optimistically, figures
+  left to the server.
 - **Web fixtures come from the API's own test server**, never invented — §10's
   thirteen-leg tree as the routes serialise it, in `reference-payout.ts`.
 - **`/api/accounts` and `/api/accounts/balances` answer two questions.** A
@@ -370,26 +369,27 @@ Newest last. Never delete an entry — supersede it.
 - **One process in production, two in development.** `npm start` serves the
   built bundle from the API, so the browser sees one origin and §5a's
   `sameSite=lax` cookie needs no proxy pretending otherwise; `npm run dev`
-  keeps Vite for hot reload. The one static mount; `data/files` is still never
-  one. **The SPA fallback never answers for `/api`, `/auth` or `/health`**:
-  JSON asked for and a 200 of HTML returned is a typo reported three layers
-  from where it happened. The guards still cover the interface, recognising it
-  by the routes the plugin actually registered rather than a guessed pattern,
-  so a later root-level route stays guarded. **One e2e world per journey**:
-  temp database, legacy import, `start()` on a port the OS picks, and the
-  interface served from that same process. Sharing one would make the suite
-  order-dependent. The first test that ever *clicked* anything found two bugs
-  every DOM assertion had passed over: a rail 27px wide, because an `sx` width
-  is pixels not spacing units, so its links were unclickable; and the cage
-  redirecting away on the success of the change it was guarding.
+  keeps Vite for hot reload. **The SPA fallback never answers for `/api`,
+  `/auth` or `/health`**: JSON asked for and a 200 of HTML returned is a typo
+  reported three layers away. The guards recognise the interface by the routes
+  the plugin registered, not a guessed pattern, so a later root-level route
+  stays guarded. **One e2e world per journey** — temp database, legacy import,
+  `start()` on a port the OS picks — or the suite turns order-dependent. The
+  first test that ever *clicked* anything found two bugs every DOM assertion
+  had passed: a 27px rail, since an `sx` width is pixels not spacing units; and
+  the cage redirecting away on the change it was guarding.
 - **`npm run backup` uses SQLite's backup API, never a file copy.** In WAL mode
-  the newest pages are in `app.db-wal`; `cp` gives three snapshots from three
-  instants, and with nothing checkpointed the copy has no schema at all and
-  opens cheerfully as empty — a test demonstrates exactly that. The attached
-  files are copied, and rightly: each is written once, never edited.
+  the newest pages are in `app.db-wal`; `cp` gives three snapshots of three
+  instants, and with nothing checkpointed the copy has no schema at all — a
+  test shows exactly that. The attached files are copied, and rightly: each is
+  written once, never edited.
 - **The bundle's size warning is raised, not obeyed.** 500kB is advice about
   download cost to somebody who might leave; this is read off local disk by
   somebody who already opened it, and splitting it would make §11 worse.
+- **`npm run dev` watches with `node --watch`, not `tsx watch`.** Under
+  concurrently's prefixed output the `tsx watch` supervisor's child never ran
+  the module — no error, no listen — so Vite's proxy answered ECONNREFUSED and
+  the bug read as the app's. `--raw` cures it too, at the cost of the prefixes.
 ## 14. Task protocol
 
 At the end of every task:
