@@ -17,6 +17,7 @@ import {
   FileDropzone,
   MoneyDisplay,
   PasswordField,
+  SelectWithCreate,
   StatCard,
   TreeView,
   UserMenu,
@@ -147,6 +148,17 @@ describe('minimum required props', () => {
       ),
     ],
     ['PasswordField', () => <PasswordField value="" onChange={noop} />],
+    [
+      'SelectWithCreate',
+      () => (
+        <SelectWithCreate
+          label="Company"
+          value=""
+          onChange={noop}
+          options={[]}
+        />
+      ),
+    ],
     ['UserMenu', () => <UserMenu username="admin" />],
     ['ErrorBoundary', () => <ErrorBoundary>ok</ErrorBoundary>],
   ];

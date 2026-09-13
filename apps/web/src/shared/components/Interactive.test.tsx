@@ -6,6 +6,7 @@ import { render, screen, waitFor } from '../../../test/render';
 import { ConfirmDialog } from './ConfirmDialog';
 import { FileDropzone } from './FileDropzone';
 import { PasswordField } from './PasswordField';
+import { SelectWithCreate } from './SelectWithCreate';
 import { UserMenu } from './UserMenu';
 
 const file = (name: string, contents = 'bytes'): File =>
@@ -455,5 +456,95 @@ describe('UserMenu', () => {
     expect(
       screen.getByRole('button', { name: /somebody-else/ }),
     ).toBeInTheDocument();
+  });
+});
+
+describe('SelectWithCreate', () => {
+  const OPTIONS = [
+    { value: '1', label: 'Tradeify' },
+    { value: '2', label: 'Rise' },
+  ];
+
+  const open = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('combobox', { name: /Company/ }));
+  };
+
+  it('reports an ordinary choice by its value', async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <SelectWithCreate
+        label="Company"
+        value=""
+        onChange={onChange}
+        options={OPTIONS}
+      />,
+    );
+
+    await open(user);
+    await user.click(screen.getByRole('option', { name: 'Rise' }));
+
+    expect(onChange).toHaveBeenCalledWith('2');
+  });
+
+  it('offers no extra item when there is nothing to create', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SelectWithCreate
+        label="Company"
+        value=""
+        onChange={vi.fn()}
+        options={OPTIONS}
+      />,
+    );
+
+    await open(user);
+
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+  });
+
+  it('calls back for the create item instead of choosing it', async () => {
+    // The value has to stay exactly as it was: a cancelled dialog must leave
+    // the form holding what it held, not a sentinel nobody can see.
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+    const onCreate = vi.fn();
+
+    render(
+      <SelectWithCreate
+        label="Company"
+        value="1"
+        onChange={onChange}
+        options={OPTIONS}
+        createLabel="Add a company…"
+        onCreate={onCreate}
+      />,
+    );
+
+    await open(user);
+    await user.click(screen.getByRole('option', { name: 'Add a company…' }));
+
+    expect(onCreate).toHaveBeenCalledOnce();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('drops an option carrying the create item own value', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <SelectWithCreate
+        label="Company"
+        value=""
+        onChange={vi.fn()}
+        options={[...OPTIONS, { value: '__create__', label: 'Impostor' }]}
+        onCreate={vi.fn()}
+      />,
+    );
+
+    await open(user);
+
+    expect(screen.queryByRole('option', { name: 'Impostor' })).toBeNull();
   });
 });

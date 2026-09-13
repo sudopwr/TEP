@@ -1,6 +1,5 @@
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
-import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
@@ -9,8 +8,14 @@ import { useNavigate } from 'react-router-dom';
 
 import { useCompanies, useRecordPayout } from '../../shared/api';
 import { describeError, fieldErrors } from '../../shared/api/errors';
-import { AmountField, ErrorState } from '../../shared/components';
+import {
+  AmountField,
+  ErrorState,
+  SelectWithCreate,
+} from '../../shared/components';
 import { useToast } from '../../shared/feedback';
+
+import { NewCompanyDialog } from './NewCompanyDialog';
 
 /**
  * F2 — record a payout: company, date, gross, charges, reference.
@@ -34,6 +39,7 @@ export function RecordPayoutForm() {
 
   const [code, setCode] = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [addingCompany, setAddingCompany] = useState(false);
   const [payoutDate, setPayoutDate] = useState('');
   const [grossAmount, setGrossAmount] = useState('');
   const [currencyCode, setCurrencyCode] = useState('USD');
@@ -105,25 +111,23 @@ export function RecordPayoutForm() {
               }
             />
 
-            <TextField
-              select
+            <SelectWithCreate
               label="Company"
               value={companyId}
-              onChange={(event) => {
-                setCompanyId(event.target.value);
+              onChange={setCompanyId}
+              options={(companies.data ?? []).map((company) => ({
+                value: String(company.id),
+                label: company.name,
+              }))}
+              createLabel="Add a company…"
+              onCreate={() => {
+                setAddingCompany(true);
               }}
-              fullWidth
-              size="small"
               required
-              error={errors['companyId'] !== undefined}
-              helperText={errors['companyId']}
-            >
-              {(companies.data ?? []).map((company) => (
-                <MenuItem key={company.id} value={String(company.id)}>
-                  {company.name}
-                </MenuItem>
-              ))}
-            </TextField>
+              {...(errors['companyId'] === undefined
+                ? {}
+                : { error: errors['companyId'] })}
+            />
           </Box>
 
           <TextField
@@ -243,6 +247,26 @@ export function RecordPayoutForm() {
           </Box>
         </Box>
       </Paper>
+
+      {/*
+        Outside the form on purpose, not merely beside it.
+
+        A dialog renders through a portal, so its own <form> is nowhere near
+        this one in the DOM — but React propagates events along its own tree,
+        so a submit fired inside the dialog would run this form's `onSubmit`
+        too, and adding a company would record a half-filled payout with it.
+      */}
+      <NewCompanyDialog
+        open={addingCompany}
+        onCreated={(company) => {
+          setCompanyId(String(company.id));
+          setAddingCompany(false);
+          notify(`${company.name} added`);
+        }}
+        onCancel={() => {
+          setAddingCompany(false);
+        }}
+      />
     </Box>
   );
 }

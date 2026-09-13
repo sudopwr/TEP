@@ -47,6 +47,9 @@ export type { MoneyDisplayProps, MoneyTone } from './MoneyDisplay';
 export { PasswordField } from './PasswordField';
 export type { PasswordFieldProps, PasswordStrength } from './PasswordField';
 
+export { SelectWithCreate } from './SelectWithCreate';
+export type { SelectOption, SelectWithCreateProps } from './SelectWithCreate';
+
 export { StatCard } from './StatCard';
 export type { StatCardProps, StatDelta } from './StatCard';
 

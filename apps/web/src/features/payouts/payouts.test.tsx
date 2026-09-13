@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   answering,
+  companyCanBeAdded,
   invalidRequest,
   unreachable,
 } from '../../../test/msw/handlers';
@@ -33,9 +34,7 @@ describe('the payout list', () => {
     // and destroyed it. Every reference column is TEXT, and so is this cell.
     renderApp({ route: '/payouts' });
 
-    expect(
-      await screen.findByText('FTDFYSLX50676373980'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('FTDFYSLX50676373980')).toBeInTheDocument();
   });
 
   it('opens the payout when its row is clicked', async () => {
@@ -124,7 +123,10 @@ describe('recording a payout', () => {
   it("puts the server's complaint under the field it is about", async () => {
     server.use(
       invalidRequest('/api/payouts', [
-        { path: 'grossAmount', message: 'expected an amount greater than zero' },
+        {
+          path: 'grossAmount',
+          message: 'expected an amount greater than zero',
+        },
       ]),
     );
 
@@ -158,5 +160,127 @@ describe('recording a payout', () => {
     // The comma is rejected and the rest keeps going, rather than the field
     // silently "repairing" the paste into something else.
     expect(amount).toHaveValue('1008.01');
+  });
+});
+
+describe('adding a company while recording a payout', () => {
+  const FUNDED_NEXT = {
+    id: 99,
+    code: 'FundedNext001',
+    name: 'FundedNext',
+    notes: null,
+  };
+
+  const openTheDialog = async (): Promise<void> => {
+    renderApp({ route: '/payouts/new' });
+    await screen.findByRole('heading', { name: 'Record payout' });
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Company/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Add a company…' }),
+    );
+  };
+
+  it('offers the choice that is missing, inside the list of choices', async () => {
+    // The moment somebody needs a company that is not there is the moment
+    // they have the dropdown open — so that is where the way to add one is.
+    renderApp({ route: '/payouts/new' });
+    await screen.findByRole('heading', { name: 'Record payout' });
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Company/ }));
+
+    expect(
+      await screen.findByRole('option', { name: 'Tradeify' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('option', { name: 'Add a company…' }),
+    ).toBeInTheDocument();
+  });
+
+  it('selects the company it just added, without losing the form', async () => {
+    server.use(...companyCanBeAdded(FUNDED_NEXT));
+
+    await openTheDialog();
+    await userEvent.type(
+      screen.getByLabelText(/^Company code/),
+      'FundedNext001',
+    );
+    await userEvent.type(screen.getByLabelText(/^Company name/), 'FundedNext');
+    await userEvent.click(screen.getByRole('button', { name: 'Add company' }));
+
+    // The list was refetched before the selection was made, so the select
+    // shows a name rather than an empty box holding an id nothing matches.
+    expect(
+      await screen.findByRole('combobox', { name: /Company/ }),
+    ).toHaveTextContent('FundedNext');
+    expect(await screen.findByText('FundedNext added')).toBeInTheDocument();
+  });
+
+  it('records no payout when the company form is submitted', async () => {
+    // A dialog renders through a portal, but React propagates its events
+    // along its own tree: with the dialog inside the payout's <form>, adding
+    // a company submitted the payout too.
+    server.use(...companyCanBeAdded(FUNDED_NEXT));
+
+    await openTheDialog();
+    await userEvent.type(screen.getByLabelText(/^Company code/), 'FN001');
+    await userEvent.type(screen.getByLabelText(/^Company name/), 'FundedNext');
+    await userEvent.click(screen.getByRole('button', { name: 'Add company' }));
+
+    await screen.findByText('FundedNext added');
+    expect(screen.queryByText('Payout recorded')).not.toBeInTheDocument();
+
+    // `find`, not `get`: while the dialog plays its closing transition the
+    // modal still holds `aria-hidden` on everything behind it, and a role
+    // query skips hidden nodes.
+    expect(
+      await screen.findByRole('heading', { name: 'Record payout' }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves the form exactly as it was when the dialog is cancelled', async () => {
+    renderApp({ route: '/payouts/new' });
+    await screen.findByRole('heading', { name: 'Record payout' });
+
+    await userEvent.type(
+      screen.getByLabelText(/^Payout code/),
+      'TradeifyPayout002',
+    );
+    await userEvent.click(screen.getByRole('combobox', { name: /Company/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Tradeify' }),
+    );
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Company/ }));
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'Add a company…' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    // The company still chosen, the code still typed: the create item is an
+    // action, not a choice that overwrites what was picked before it.
+    expect(
+      await screen.findByRole('combobox', { name: /Company/ }),
+    ).toHaveTextContent('Tradeify');
+    expect(screen.getByLabelText(/^Payout code/)).toHaveValue(
+      'TradeifyPayout002',
+    );
+  });
+
+  it("puts the server's complaint under the field it is about", async () => {
+    server.use(
+      invalidRequest('/api/companies', [
+        { path: 'code', message: 'a company with that code already exists' },
+      ]),
+    );
+
+    await openTheDialog();
+    await userEvent.type(screen.getByLabelText(/^Company code/), 'Tradeify001');
+    await userEvent.type(screen.getByLabelText(/^Company name/), 'Tradeify');
+    await userEvent.click(screen.getByRole('button', { name: 'Add company' }));
+
+    expect(
+      await screen.findByText('a company with that code already exists'),
+    ).toBeInTheDocument();
   });
 });

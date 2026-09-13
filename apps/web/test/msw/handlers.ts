@@ -1,5 +1,7 @@
 import { HttpResponse, http } from 'msw';
 
+import type { CompanyJson } from '../../src/shared/api/types';
+
 import {
   ACCOUNTS,
   BALANCES,
@@ -154,6 +156,31 @@ export const invalidRequest = (
     ),
   );
 
+/**
+ * A server where adding a company really adds it.
+ *
+ * Both halves in one helper, because the behaviour under test is the two of
+ * them together: the form posts, the mutation invalidates the company list,
+ * and the select has to find the new row in the answer to the refetch. A POST
+ * handler with a static list behind it would let a broken invalidation pass.
+ */
+export const companyCanBeAdded = (company: CompanyJson) => {
+  let created = false;
+
+  return [
+    http.get('/api/companies', () =>
+      HttpResponse.json({
+        companies: created ? [TRADEIFY, RISE_CO, company] : [TRADEIFY, RISE_CO],
+      }),
+    ),
+    http.post('/api/companies', () => {
+      created = true;
+
+      return HttpResponse.json({ company }, { status: 201 });
+    }),
+  ];
+};
+
 /** Any POST that refuses, for testing rollback. */
 export const postFails = (path: string, status = 400) =>
   http.post(path, () =>
@@ -206,7 +233,10 @@ export const passwordRejected = (violations: readonly string[]) =>
 /** UC4 recognised the bytes and linked the existing document (F6). */
 export const documentAlreadyStored = () =>
   http.post('/api/transactions/:id/documents', () =>
-    HttpResponse.json({ document: DOCUMENTS[0], created: false }, { status: 201 }),
+    HttpResponse.json(
+      { document: DOCUMENTS[0], created: false },
+      { status: 201 },
+    ),
   );
 
 /** Nobody signed in, for the auth-probe path. */
