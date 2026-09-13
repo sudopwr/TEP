@@ -4,7 +4,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { test as base, type Locator, type Page } from '@playwright/test';
-import { preview, type PreviewServer } from 'vite';
 
 import { buildContainer } from '../../apps/api/src/container';
 import { openDatabase } from '../../apps/api/src/db/connection';
@@ -15,10 +14,10 @@ import { start, type StartedServer } from '../../apps/api/src/main';
  * A whole application, from an empty directory, for one test.
  *
  * Everything is real: the migrations that ship, the importer that corrects
- * §9's defects, the Fastify server started through `main.ts`'s own `start`,
- * and the built web app served by Vite with its proxy pointed at that server.
- * Nothing is stubbed, and the only thing a test supplies is where the data
- * lives.
+ * §9's defects, and the Fastify server started through `main.ts`'s own
+ * `start` — serving the built interface itself, from one process on one
+ * origin, which is exactly what `npm start` does. Nothing is stubbed, and the
+ * only thing a test supplies is where the data lives.
  *
  * **Per test, not per worker.** Half of these journeys change the world — they
  * set a password, record a leg, upload a file — and the other half assert on
@@ -41,7 +40,7 @@ export const CHANGED_PASSWORD = 'a quiet harbour lamp';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, '..', '..');
-const WEB = path.join(REPO, 'apps', 'web');
+const WEB_DIST = path.join(REPO, 'apps', 'web', 'dist');
 const LEGACY_CSV = path.join(
   REPO,
   'apps',
@@ -52,9 +51,9 @@ const LEGACY_CSV = path.join(
 );
 
 export interface World {
-  /** Where the browser goes: the web app, with `/api` proxied to the server. */
+  /** Where the browser goes. The same origin the API answers on.  */
   readonly baseURL: string;
-  /** The API's own origin, for asserting without a browser. */
+  /** The same address again, for the few assertions made without a browser. */
   readonly apiURL: string;
   readonly databasePath: string;
   /** Sign in through the real form. Does not wait for what comes next. */
@@ -96,6 +95,9 @@ async function startWorld(): Promise<Running> {
     port: 0,
     databasePath,
     filesRoot,
+    // The built interface, served by this same process. `global-setup.ts`
+    // builds it once for the whole run.
+    webRoot: WEB_DIST,
     // Never the repository's own `.env`: a run must not rewrite the
     // developer's session secret, and a file of its own means every world
     // signs its cookies with a key nothing else knows.
@@ -103,38 +105,8 @@ async function startWorld(): Promise<Running> {
     logger: false,
   });
 
-  /*
-    The built web app, served the way `vite preview` serves it — SPA fallback
-    included, so `/payouts/1` typed into the address bar reaches the router
-    rather than a 404. `global-setup.ts` builds it once for the whole run.
-  */
-  const web: PreviewServer = await preview({
-    root: WEB,
-    configFile: false,
-    build: { outDir: 'dist' },
-    preview: {
-      host: '127.0.0.1',
-      port: 0,
-      strictPort: false,
-      proxy: Object.fromEntries(
-        ['/api', '/auth', '/health'].map((prefix) => [
-          prefix,
-          { target: api.address, changeOrigin: false },
-        ]),
-      ),
-    },
-    logLevel: 'silent',
-  });
-
-  const served = web.resolvedUrls?.local[0];
-  if (served === undefined) {
-    throw new Error(
-      'the preview server started without an address — has apps/web been built?',
-    );
-  }
-
   const world: World = {
-    baseURL: served.replace(/\/$/, ''),
+    baseURL: api.address,
     apiURL: api.address,
     databasePath,
     async signIn(page, password = CHANGED_PASSWORD) {
@@ -148,10 +120,6 @@ async function startWorld(): Promise<Running> {
   return {
     world,
     close: async () => {
-      // Vite's own `close`, which drops keep-alive connections rather than
-      // waiting for the browser to let go of them — `httpServer.close()`
-      // alone would sit there until a socket timed out.
-      await web.close();
       await api.close();
       rmSync(directory, { recursive: true, force: true });
     },

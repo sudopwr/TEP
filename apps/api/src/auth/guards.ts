@@ -7,6 +7,8 @@ import {
   type User,
 } from '@payout/core';
 
+import { isApiPath } from '../routes/web';
+
 import {
   SESSION_COOKIE,
   clearedSessionCookieOptions,
@@ -79,6 +81,43 @@ function routeKey(request: FastifyRequest): string {
   return request.routeOptions.url ?? request.url;
 }
 
+/**
+ * A request for the interface itself — the HTML, the bundle, the fonts.
+ *
+ * Public of necessity: nobody can sign in through a screen they cannot load.
+ * The definition is deliberately narrow, so that "the interface is public"
+ * never becomes "anything we forgot to register is public". Three conditions,
+ * all of them:
+ *
+ *   - a GET or a HEAD, so no write is ever waved through;
+ *   - not an API address, so a mistyped `/api/payout` is still refused with a
+ *     401 rather than told that it does not exist;
+ *   - and either a route the static plugin registered — which the server
+ *     records as it happens, rather than guessing at the pattern — or *no
+ *     route at all*, which is the SPA fallback and can only ever answer with
+ *     `index.html`.
+ *
+ * So a new `/api` handler is guarded on the day it is written, and so is a
+ * root-level one: it is neither an interface route nor unmatched.
+ */
+function requestsTheInterface(request: FastifyRequest): boolean {
+  if (request.method !== 'GET' && request.method !== 'HEAD') {
+    return false;
+  }
+
+  if (isApiPath(request.url)) {
+    return false;
+  }
+
+  const matched = request.routeOptions.url;
+
+  if (matched === undefined) {
+    return true;
+  }
+
+  return request.server.interfaceRoutes?.has(matched) === true;
+}
+
 export interface GuardDependencies {
   readonly authenticate: AuthenticateSession;
 }
@@ -94,7 +133,8 @@ export function registerSessionGuard(
   deps: GuardDependencies,
 ): void {
   app.addHook('onRequest', async (request, reply) => {
-    const isPublic = PUBLIC_ROUTES.has(routeKey(request));
+    const isPublic =
+      PUBLIC_ROUTES.has(routeKey(request)) || requestsTheInterface(request);
     const presented = readSessionId(request);
 
     if (presented === null) {
@@ -146,8 +186,13 @@ export function registerPasswordChangedGuard(app: FastifyInstance): void {
 
     // Reachable while the flag is set: anything that needs no session at all
     // (it never had a user to check), plus the three routes that exist to
-    // clear the flag. Everything else 403s.
-    if (PUBLIC_ROUTES.has(key) || MUST_CHANGE_EXEMPT.has(key)) {
+    // clear the flag, plus the interface — which has to load in order to show
+    // the screen that clears it. Everything else 403s.
+    if (
+      PUBLIC_ROUTES.has(key) ||
+      MUST_CHANGE_EXEMPT.has(key) ||
+      requestsTheInterface(request)
+    ) {
       return;
     }
 

@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { openTestDatabase } from '../../test/open-test-database';
+
 import { openDatabase, type SqliteDatabase } from './connection';
 import {
   defaultMigrationsDirectory,
@@ -237,5 +239,86 @@ describe('migrate', () => {
 
       expect(loadMigrations(directory)).toHaveLength(1);
     });
+  });
+});
+
+describe('recovering a forgotten password', () => {
+  /**
+   * The procedure the README documents, run end to end.
+   *
+   * There is no password-reset flow and there should not be — a single-user
+   * local tool has nowhere to mail a link. What it has instead is the
+   * database: delete the row and start the application. That only works if
+   * migrating a database whose migrations have all already run still puts the
+   * credential back, which is what `isMissing` is for.
+   */
+  it('re-seeds the shipped credential when the users table is empty', () => {
+    const database = openTestDatabase();
+
+    try {
+      migrate(database);
+      database.exec('DELETE FROM users');
+
+      const result = migrate(database);
+
+      expect(result.applied).toEqual([]);
+      expect(result.repaired).toEqual(['003_auth.sql']);
+
+      const row = database
+        .prepare('SELECT username, must_change_password FROM users')
+        .get() as { username: string; must_change_password: bigint };
+
+      expect(row.username).toBe('admin');
+      // And the cage comes back with it, or the recovery would be a hole.
+      expect(Number(row.must_change_password)).toBe(1);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('takes the sessions with it, so no old cookie survives the reset', () => {
+    // `sessions.user_id` cascades. Worth asserting: a session that outlived
+    // the account it belonged to would be a way past the new cage.
+    const database = openTestDatabase();
+
+    try {
+      migrate(database);
+      database
+        .prepare(
+          'INSERT INTO sessions (id, user_id, created_at, expires_at) VALUES (?, 1, ?, ?)',
+        )
+        .run('a-session', '2026-01-01T00:00:00.000Z', '2099-01-01T00:00:00.000Z');
+
+      database.exec('DELETE FROM users');
+      migrate(database);
+
+      const sessions = database
+        .prepare('SELECT COUNT(*) AS n FROM sessions')
+        .get() as { n: bigint };
+
+      expect(Number(sessions.n)).toBe(0);
+    } finally {
+      database.close();
+    }
+  });
+
+  it('leaves a renamed account alone', () => {
+    // F16 lets the owner rename themselves. A database with one user called
+    // `kd` is healthy, and adding an `admin` beside them would be a back door.
+    const database = openTestDatabase();
+
+    try {
+      migrate(database);
+      database.prepare('UPDATE users SET username = ?').run('kd');
+
+      const result = migrate(database);
+
+      expect(result.repaired).toEqual([]);
+      expect(
+        database.prepare('SELECT COUNT(*) AS n FROM users').get(),
+      ).toMatchObject({ n: 1n });
+    } finally {
+      database.close();
+    }
   });
 });

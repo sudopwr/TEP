@@ -23,6 +23,17 @@ export interface MigrationSeed {
   /** The migration file this belongs to, matched by exact filename. */
   readonly filename: string;
   apply(database: SqliteDatabase): void;
+  /**
+   * True when the row this seed exists to create has gone missing.
+   *
+   * Optional, and only the admin credential has it. It is what makes a
+   * forgotten password recoverable without a password-reset flow: delete the
+   * row, start the application, and the migration runner puts the shipped
+   * credential back — behind F15's cage, on loopback only. The alternative
+   * would be an installation that nobody can ever sign into again, which for
+   * a single-user local tool means the data is gone.
+   */
+  isMissing?(database: SqliteDatabase): boolean;
 }
 
 /** The shipped default (§5a). Also the thing F15 refuses to let you keep. */
@@ -60,6 +71,23 @@ export const seedDefaultAdmin: MigrationSeed = {
         hashPasswordSync(DEFAULT_ADMIN_PASSWORD),
         new Date().toISOString(),
       );
+  },
+
+  /**
+   * Empty, not "no row called admin".
+   *
+   * The owner is expected to rename the account — F16 exists for that — so a
+   * database with one user called `kd` is a database in perfect health, and
+   * adding a second `admin` beside them would be a back door rather than a
+   * repair. The only state worth repairing is no user at all, which nobody
+   * can sign into.
+   */
+  isMissing(database: SqliteDatabase): boolean {
+    const row = database.prepare('SELECT COUNT(*) AS n FROM users').get() as
+      | { n: bigint | number }
+      | undefined;
+
+    return Number(row?.n ?? 0) === 0;
   },
 };
 

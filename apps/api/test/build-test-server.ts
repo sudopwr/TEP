@@ -55,6 +55,14 @@ export interface TestServer {
 export interface BuildTestServerOptions {
   /** Seed the reference payout so the read endpoints have something to read. */
   readonly seed?: (database: SqliteDatabase) => void;
+  /**
+   * A built interface to serve alongside the API.
+   *
+   * Omitted by default, because almost no test wants one: the API's own
+   * integration tests are about the API, and building the web app to run them
+   * would tie a Fastify test to a Vite build.
+   */
+  readonly webRoot?: string;
 }
 
 /**
@@ -79,6 +87,7 @@ export async function buildTestServer(
     sessionSecret: 'test-secret-not-a-real-one',
     clock,
     filesRoot,
+    ...(options.webRoot === undefined ? {} : { webRoot: options.webRoot }),
   });
 
   return {

@@ -29,6 +29,13 @@ export interface MigrateResult {
   readonly applied: readonly AppliedMigration[];
   /** Migrations that were already recorded before this call. */
   readonly skipped: number;
+  /**
+   * Seeds re-run because the rows they own had gone missing.
+   *
+   * Never empty quietly: a repair means the database changed in a way nobody
+   * asked for on this run, and the bootstrap says so out loud.
+   */
+  readonly repaired: readonly string[];
 }
 
 export class MigrationError extends Error {
@@ -132,6 +139,13 @@ export function loadMigrations(
  * credential is the case, because its salt must differ per installation.
  * Seeds are matched by filename rather than version number so a throwaway
  * migration directory in a test cannot collide with one.
+ *
+ * A seed may also be *repaired*. A migration runs once and is then history,
+ * so an applied migration's seed never runs again — which would leave a
+ * database whose users table had been emptied with no way back in, since
+ * there is no password-reset flow to fall back on. A seed that can say
+ * whether its row is missing gets re-applied when it is, and that is what
+ * makes "delete the row and restart" a real recovery rather than advice.
  */
 export function migrate(
   database: SqliteDatabase,
@@ -163,8 +177,13 @@ export function migrate(
   }
 
   const applied: AppliedMigration[] = [];
+  /** Every migration file on disk, and the ones this call ran. */
+  const present = new Set<string>();
+  const justApplied = new Set<string>();
 
   for (const migration of loadMigrations(directory)) {
+    present.add(migration.filename);
+
     const previous = already.get(migration.version);
 
     if (previous !== undefined) {
@@ -191,6 +210,7 @@ export function migrate(
 
     run();
 
+    justApplied.add(migration.filename);
     applied.push({
       version: migration.version,
       name: migration.name,
@@ -199,5 +219,42 @@ export function migrate(
     });
   }
 
-  return { applied, skipped: already.size };
+  const repaired = repairSeeds(database, seeds, present, justApplied);
+
+  return { applied, skipped: already.size, repaired };
+}
+
+/**
+ * Put back a seeded row that has gone missing since its migration ran.
+ *
+ * Only for migrations that are applied — the tables have to exist — and only
+ * where the seed itself says the row is absent. A seed that was just run on
+ * this call is skipped, because it has by definition only now written the row.
+ */
+function repairSeeds(
+  database: SqliteDatabase,
+  seeds: readonly MigrationSeed[],
+  present: ReadonlySet<string>,
+  justApplied: ReadonlySet<string>,
+): readonly string[] {
+  const repaired: string[] = [];
+
+  for (const seed of seeds) {
+    // No opinion about being missing, no migration to have run, or run a
+    // moment ago on this very call — in which case the row is there because
+    // we just wrote it.
+    if (seed.isMissing === undefined) continue;
+    if (!present.has(seed.filename)) continue;
+    if (justApplied.has(seed.filename)) continue;
+
+    if (!seed.isMissing(database)) continue;
+
+    database.transaction(() => {
+      seed.apply(database);
+    })();
+
+    repaired.push(seed.filename);
+  }
+
+  return repaired;
 }

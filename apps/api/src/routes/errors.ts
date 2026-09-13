@@ -106,7 +106,25 @@ function statusOf(error: unknown): number | null {
  *   3. A DomainError's message *is* for the reader. Those are written as
  *      sentences and carry no internals — that is the whole point of §12.
  */
-export function registerErrorHandler(app: FastifyInstance): void {
+export interface ErrorHandlerOptions {
+  /**
+   * What to do with an address that matched no route.
+   *
+   * Present when the built interface is being served: an unmatched GET that
+   * is not an API address is a client-side route, and belongs to the router
+   * rather than to a 404. Returning null means "not mine", and the JSON 404
+   * below answers instead.
+   */
+  readonly notFound?: (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => FastifyReply | null;
+}
+
+export function registerErrorHandler(
+  app: FastifyInstance,
+  options: ErrorHandlerOptions = {},
+): void {
   app.setErrorHandler(
     (error: unknown, request: FastifyRequest, reply: FastifyReply) => {
       if (error instanceof RequestValidationError) {
@@ -164,14 +182,21 @@ export function registerErrorHandler(app: FastifyInstance): void {
     },
   );
 
-  // A 404 from the router, in the same shape as everything else, so a client
-  // never has to parse two error formats.
-  app.setNotFoundHandler((request, reply) =>
-    reply.status(404).send({
+  app.setNotFoundHandler((request, reply) => {
+    // The interface first, where there is one: `/payouts/1` typed into the
+    // address bar is a route the browser knows and the server does not.
+    const served = options.notFound?.(request, reply);
+    if (served !== null && served !== undefined) {
+      return served;
+    }
+
+    // Otherwise a 404 in the same shape as every other error, so a client
+    // never has to parse two formats.
+    return reply.status(404).send({
       code: 'not_found',
       message: `No route for ${request.method} ${request.url}.`,
-    }),
-  );
+    });
+  });
 }
 
 /** `PayoutNotFoundError` -> `payout_not_found`. Stable, and machine-readable. */

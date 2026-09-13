@@ -30,6 +30,21 @@ function everySourceFile(directory: string): string[] {
 const relative = (file: string): string =>
   path.relative(SRC, file).replace(/\\/g, '/');
 
+/**
+ * A file's statements, with its comments taken out.
+ *
+ * Every sweep below looks for a pattern in source text, and without this a
+ * *comment* mentioning `@fastify/static` or `adapters/` fails the test — which
+ * happened the moment `server.ts` explained why it registers the interface
+ * before the guards. A check that prose can break is a check that quietly
+ * pressures people into writing worse prose.
+ */
+function statementsOf(file: string): string {
+  return readFileSync(file, 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/.*$/gm, '');
+}
+
 describe('buildContainer', () => {
   let database: SqliteDatabase;
 
@@ -123,7 +138,7 @@ describe('the container is the only bridge (§5)', () => {
     const offenders: string[] = [];
 
     for (const file of files) {
-      const source = readFileSync(file, 'utf8');
+      const source = statementsOf(file);
       const name = relative(file);
 
       if (name === 'container.ts') {
@@ -153,7 +168,7 @@ describe('the container is the only bridge (§5)', () => {
     const offenders = files
       .filter((file) => relative(file).startsWith('routes/'))
       .filter((file) =>
-        /from\s+['"][^'"]*adapters\//.test(readFileSync(file, 'utf8')),
+        /from\s+['"][^'"]*adapters\//.test(statementsOf(file)),
       )
       .map(relative);
 
@@ -167,26 +182,49 @@ describe('the container is the only bridge (§5)', () => {
     const offenders = files
       .filter((file) => relative(file).startsWith('routes/'))
       .filter((file) =>
-        /from\s+['"][^'"]*db\/connection['"]/.test(readFileSync(file, 'utf8')),
+        /from\s+['"][^'"]*db\/connection['"]/.test(statementsOf(file)),
       )
       .map(relative);
 
     expect(offenders).toEqual([]);
   });
 
-  it('never mounts a static file handler', () => {
-    // Documents are served by `/api/documents/:id`, behind both guards. A
-    // static mount on `data/files` would publish every stored file to anyone
-    // who can guess a content-addressed path, with no session check and no
-    // place to add one.
-    const offenders = files
+  it('never serves the data directory statically', () => {
+    /*
+      Documents are served by `/api/documents/:id`, behind both guards. A
+      static mount on `data/files` would publish every stored statement to
+      anyone who can guess a content-addressed path, with no session check and
+      no place to add one.
+
+      Narrowed from "no static mount anywhere" once the API began serving the
+      built interface: `apps/web/dist` is a directory of compiled JavaScript
+      and fonts that every visitor downloads by definition, which is not the
+      same kind of thing as a folder of somebody's bank statements. What is
+      still forbidden is pointing a mount at the files root, and only
+      `routes/web.ts` may hold a mount at all — so a second one anywhere else
+      fails here.
+    */
+    const mounts = files
       .filter((file) =>
-        /@fastify\/static|sendFile|root:\s*.*files/.test(
-          readFileSync(file, 'utf8'),
+        /@fastify\/static|reply\.sendFile|\.sendFile\(/.test(
+          statementsOf(file),
         ),
       )
-      .map(relative);
+      .map(relative)
+      .filter((name) => name !== 'routes/web.ts');
 
-    expect(offenders).toEqual([]);
+    expect(mounts).toEqual([]);
+
+    // And no route file so much as knows where the files root is. A handler
+    // reaches the store through `app.documentFiles`, which hands back one
+    // stream for one id; a path would let it hand back a directory.
+    const knowsTheFilesRoot = files
+      .map(relative)
+      .filter((name) => name.startsWith('routes/'))
+      .filter((name) =>
+        statementsOf(path.join(SRC, name)).includes('filesRoot'),
+      );
+
+    expect(knowsTheFilesRoot).toEqual([]);
   });
 });

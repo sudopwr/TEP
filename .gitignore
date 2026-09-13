@@ -18,9 +18,11 @@ blob-report/
 .env.*
 !.env.example
 
-# the database and the attached files — back up by copying, never commit
+# the database and the attached files. `npm run backup` writes into backups/;
+# neither folder belongs in version control, and both hold real money data.
 data/*
 !data/.gitkeep
+backups/
 
 # editors / os
 .DS_Store

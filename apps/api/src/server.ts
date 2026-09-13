@@ -13,6 +13,7 @@ import type { SqliteDatabase } from './db/connection';
 import { registerApiRoutes } from './routes/api';
 import { registerAuthRoutes } from './routes/auth';
 import { registerErrorHandler } from './routes/errors';
+import { registerWebApp, serveIndex, webAppIsBuilt } from './routes/web';
 
 /**
  * Every field whose value could be a password, at every place a logger might
@@ -49,6 +50,15 @@ export interface ServerOptions extends ContainerOptions {
   /** Swap in fakes without a database. Tests only; the container wins if absent. */
   readonly useCases?: UseCases;
   readonly documentFiles?: DocumentFileSource;
+  /**
+   * Where `apps/web/dist` is, when the interface is being served too.
+   *
+   * Omitted — or pointing at a directory with no `index.html` — and the
+   * server is an API and nothing else. That is what `npm run dev` wants,
+   * since Vite is serving the interface then, and it is what every
+   * integration test wants, since none of them builds the web app.
+   */
+  readonly webRoot?: string;
 }
 
 /**
@@ -113,7 +123,21 @@ export async function buildServer(
     timeWindow: '1 minute',
   });
 
-  registerErrorHandler(app);
+  /*
+    The interface, if there is one to serve.
+
+    Registered before the guards so that `@fastify/static`'s route exists by
+    the time they run — they recognise it by name. The guards still apply to
+    it; it is simply on their exemption list, like `/health`.
+  */
+  const servesTheInterface =
+    options.webRoot !== undefined && webAppIsBuilt(options.webRoot);
+
+  if (servesTheInterface) {
+    await registerWebApp(app, options.webRoot as string);
+  }
+
+  registerErrorHandler(app, servesTheInterface ? { notFound: serveIndex } : {});
 
   registerSessionGuard(app, { authenticate: app.useCases.authenticate });
   registerPasswordChangedGuard(app);
