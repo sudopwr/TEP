@@ -285,3 +285,42 @@ describe('account settings', () => {
     ).toBeInTheDocument();
   });
 });
+
+describe('the cage, once it has done its job', () => {
+  it('does not bounce away when the flag clears underneath it', async () => {
+    /*
+      The bug an end-to-end run found, pinned here where it is cheap.
+
+      A successful change clears `mustChangePassword`, which re-renders this
+      screen. Read live, its "you do not belong here" redirect then fires on
+      the success of the very change it was guarding, and races the navigation
+      to the payout list — the reward for choosing a password was being
+      dropped on account settings. The question the screen asks is about
+      *arrival*, so it is answered once, at mount.
+    */
+    server.use(...defaultPasswordStillSet());
+
+    const client = createQueryClient();
+    renderApp({ route: '/payouts', client });
+
+    await screen.findByRole('heading', {
+      name: 'Choose a password before you start',
+    });
+
+    // The server says the flag is gone, exactly as it would after UC13.
+    client.setQueryData(queryKeys.auth.me(), {
+      username: 'admin',
+      mustChangePassword: false,
+    });
+
+    // The screen stays put rather than redirecting itself away.
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Set password and continue' }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByRole('heading', { name: 'Account' }),
+    ).not.toBeInTheDocument();
+  });
+});

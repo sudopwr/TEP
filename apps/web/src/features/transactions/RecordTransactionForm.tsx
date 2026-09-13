@@ -107,6 +107,19 @@ export function RecordTransactionForm({
   const from = options.find((one) => String(one.id) === fromAccountId);
   const to = options.find((one) => String(one.id) === toAccountId);
 
+  /*
+    §7's first invariant — `from_account_id <> to_account_id` — caught before
+    the request rather than after it.
+
+    The server refuses this too (`SameAccountTransferError`), and that refusal
+    is what actually guarantees it; this is the same arrangement as the
+    password policy, where the browser runs the check for the reader's sake
+    and the server runs it for the database's. What it buys is a message under
+    the field that is wrong, instead of a round trip ending in a banner above
+    a form the reader then has to re-read.
+  */
+  const sameAccount = fromAccountId !== '' && fromAccountId === toAccountId;
+
   const isSale = kind === 'sale';
   const mutation = isSale ? recordSale : recordMovement;
   const sameCurrency =
@@ -115,7 +128,7 @@ export function RecordTransactionForm({
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
-    if (mutation.isPending) return;
+    if (mutation.isPending || sameAccount) return;
 
     const shared = {
       code: code.trim(),
@@ -272,8 +285,12 @@ export function RecordTransactionForm({
             fullWidth
             size="small"
             required
-            error={errors['toAccountId'] !== undefined}
-            helperText={errors['toAccountId']}
+            error={sameAccount || errors['toAccountId'] !== undefined}
+            helperText={
+              sameAccount
+                ? 'A leg moves money between two different accounts. Choose another.'
+                : errors['toAccountId']
+            }
           >
             {options.map((account) => (
               <MenuItem key={account.id} value={String(account.id)}>
@@ -419,7 +436,7 @@ export function RecordTransactionForm({
           <Button
             type="submit"
             variant="contained"
-            disabled={mutation.isPending}
+            disabled={mutation.isPending || sameAccount}
           >
             {mutation.isPending
               ? 'Recording…'

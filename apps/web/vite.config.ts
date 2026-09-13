@@ -16,7 +16,12 @@ import { defineConfig } from 'vite';
  * first on Windows and Node 18+, the API binds IPv4, and the result is
  * ECONNREFUSED for reasons that take an hour to find.
  */
-const API = 'http://127.0.0.1:3000';
+/**
+ * Overridable so the end-to-end suite can point a preview server at an API it
+ * started on a random port. Nothing else sets it: `npm run dev` starts the API
+ * on 3000 and this is where the browser is told to look for it.
+ */
+const API = process.env['PAYOUT_API'] ?? 'http://127.0.0.1:3000';
 
 export default defineConfig({
   plugins: [react()],

@@ -69,9 +69,7 @@ node. **UC6 — GetSettlement.** Gross proceeds, fees by type, net credited.
 **UC7 — GetAccountBalances.** Per account per currency, derived never stored.
 **UC8 — RunDataQualityChecks.** Flagged rows with reasons. **UC9 —
 SearchDocuments.** FTS5 over filename and text. **UC10 —
-GenerateFinancialYearReport.** A date range: credited / TDS / fees by company.
-
-**UC11 — SignIn.** Verifies the hash, opens a session, reports the must-change
+GenerateFinancialYearReport.** A date range: credited / TDS / fees by company. **UC11 — SignIn.** Verifies the hash, opens a session, reports the must-change
 flag. One generic error either way, and a hash comparison even for an unknown
 username so timing reveals nothing; re-hashes a weaker credential *without*
 clearing the flag. **UC12 — AuthenticateSession.** Session ID to user, or
@@ -88,13 +86,12 @@ because §3 assumed they existed: `RecordCompany`, `RecordAccount`,
 ## 4. Domain glossary
 
 Use these words in code. Do not invent synonyms.
-
 - **Company** — a prop firm or payment processor. Has a contract document.
 - **Account** — anywhere money sits: `prop_firm`, `processor`, `exchange`, `wallet`, `bank`.
 - **Payout** — a single award from a company; the root of a transaction tree.
   A **transaction** is one movement between two accounts, with a `parent_id`.
 - **Kind** — `payout_credit` | `withdrawal` | `transfer` | `sale` | `deposit`.
-- **Sale** — the exchange → bank leg, and the only leg producing INR.
+- **Sale** — the exchange → bank leg, the only one producing INR.
 - **Gross proceeds** — `from_amount × rate`, before fees; **net credited** is that minus TDS, exchange fee and GST. **Dust** is the crypto residue a transfer leaves behind.
 - **Must-change** — the flag on the admin row blocking every data route until the default password is replaced.
 - **Session** — a server-side row keyed by a random 256-bit ID, behind a signed httpOnly cookie.
@@ -121,6 +118,8 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   features/           one folder each, no cross-imports
   routes.tsx          the UI composition root: the one file that may build
                       a screen out of several features
+
+e2e/                  nine browser journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper
@@ -159,7 +158,6 @@ is set, and says why; (3) the UI routes to the change screen with no way past �
 no rail, no skip, no dismissible banner, and the copy says the password ships
 with every copy and works on this machine only. The default is safe only
 because of all three; remove one and the default must go too.
-
 **Password policy.** 12 characters minimum; rejects the current password, the
 username and a short embedded common list, every entry of which is itself 12+
 characters. No composition rules — length beats punctuation. A pure function in
@@ -191,7 +189,6 @@ throws on a currency mismatch.
 
 By database constraints, not repeated in code unless the message needs to be
 friendlier:
-
 - `from_account_id <> to_account_id`
 - `rate_applied IS NULL` when `from_currency = to_currency`
 - dates match `YYYY-MM-DD`
@@ -202,7 +199,6 @@ friendlier:
 Enforced by views, not constraints — suspicious rather than impossible, since
 enforcing "cross-currency implies a rate" would block entry before the rate is
 known (`v_data_quality`):
-
 - a cross-currency move with no recorded rate
 - `to_amount` that doesn't reconcile with rate and fees
 - a fee more than 2% off the declared schedule
@@ -219,13 +215,12 @@ Declared in `fee_schedules`, not hardcoded:
 | CoinDCX | gst | exchange_fee | 18% |
 | Rise | network_fee | flat | ~$4.00 |
 
-The Rise fee is flat, not proportional: four withdrawals cost $16.31 where one
-would have cost $4.03. See §11.
+The Rise fee is flat: four withdrawals cost $16.31 where one would have cost
+$4.03. See §11.
 
 ## 9. Known defects in the source CSV
 
 The importer corrects these. Do not "fix" it to trust the sheet.
-
 1. **`From` amount wrong on all four sale rows** — `45.957` copy-pasted. True
    values are `to_amount / rate`; Transaction0011 is 741.72, not 45.957.
 2. **Exchange fee and GST swapped** between Transaction003 and Transaction0011:
@@ -234,7 +229,8 @@ The importer corrects these. Do not "fix" it to trust the sheet.
    Unrecoverable; all reference columns are `TEXT`.
 4. **Duplicate `ToAmount` header** — the first occurrence is the from-side.
 5. **`Transaction0010` sorts before `Transaction002`** as text. Internal keys
-   are integers; the sheet ID is kept as `code`.
+   are integers; the sheet ID is kept as `code`. Not to be confused with
+   `Transaction0011`, the one row `v_data_quality` flags — see §7's dust.
 
 ## 10. Verified reference figures
 
@@ -259,9 +255,8 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
   factor, and `secure=false` must become `true` behind TLS.
 
 ## 12. Conventions
-
 - TypeScript everywhere, `strict: true`. Vitest for unit and integration,
-  Playwright for e2e. Test file next to source: `money.ts` / `money.test.ts`.
+  Playwright for e2e in `e2e/`. Test file next to source: `money.test.ts`.
 - No default exports except React components.
 - Errors are typed classes in `core/domain/errors.ts`, never bare strings, and
   each message is written for the reader — the browser passes it through.
@@ -273,8 +268,7 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 
 ## 13. Decision log
 
-Append here. Newest last. Never delete an entry — supersede it.
-
+Newest last. Never delete an entry — supersede it.
 - **Money as scaled integers, scale per currency**: one fixed scale breaks INR
   or USDT, floats break both quietly. **Fees as rows, not columns**, each in its
   own currency — TDS is INR, the Rise fee USD. **Status and totals are derived**;
@@ -308,7 +302,7 @@ Append here. Newest last. Never delete an entry — supersede it.
   `.then` it swallows what the success path throws. `Date.parse('2025-02-30')`
   rolls to 2 March. Fastify's ajv deletes undeclared fields. `fetch('/api/x')`
   throws outside a browser. MUI peer-accepts React 19, so npm hoisted it while
-  apps/web had 18 — a root `overrides` pins one. `\b` through a non-raw string
+  apps/web had 18; a root `overrides` pins one. `\b` through a non-raw string
   is a *backspace*, and has now silently killed a lint regex and a test regex
   (`no-control-regex` caught both). Vitest does not typecheck: `npm run
   typecheck` is the only net for half of these. **Test timeouts move, the cost
@@ -342,8 +336,8 @@ Append here. Newest last. Never delete an entry — supersede it.
   `fetch` running is undici's, which `instanceof`-checks Node's `AbortSignal`:
   two realms, one check, every request failing. The environment invented it.
 - **The browser formats money; the server owns the value.** `MoneyDisplay`
-  takes integer minor units, so grouping and locale are presentation.
-  Supersedes "render the server's `amount` string" — that kept the browser
+  takes integer minor units, so grouping and locale are presentation, and
+  supersedes "render the server's `amount` string" — that kept the browser
   honest about *scale*, which a `scale` prop and a currency table now do.
   `Intl.NumberFormat#format` takes an exact decimal *string*, so
   `2^53 + 1` paise renders digit for digit. Rupees group Indian-style. An
@@ -364,9 +358,9 @@ Append here. Newest last. Never delete an entry — supersede it.
   It clears everything — a signed-out session must not leave balances in memory
   — and seeds `auth.me` null. Three exemptions, each a 401 that is an answer
   rather than an expiry: `/auth/me` (nobody is signed in), `/auth/login` and
-  `/auth/change-credentials` (wrong password — and clearing the cache there
+  `/auth/change-credentials` (wrong password — clearing the cache there
   destroys the mutation holding the error, so the reader sees *nothing*); the
-  auth mutations carry a `mutationKey` so the handler can tell.
+  auth mutations carry a `mutationKey` so the handler can tell them apart.
   **Signed-in state is that one `useQuery`** — a second `user` in React state
   disagrees the moment a session is revoked elsewhere.
 - **F15's 403 routes by writing the auth cache, not by calling `navigate`.**
@@ -385,6 +379,13 @@ Append here. Newest last. Never delete an entry — supersede it.
   legacy import and a fresh database had nowhere to move money between. An
   allow-list is a **set**: `RecordAccount` sorts it, because SQLite reads it
   back ordered and a fake does not — the contract run caught that.
+- **One e2e world per journey**: temp database, legacy import, `start()` on a
+  port the OS picks, a preview server proxied at it. Sharing one would make the
+  suite order-dependent, since half the journeys move what the other half
+  assert. The first test that ever *clicked* anything found two bugs every DOM
+  assertion had passed over: a rail 27px wide, because an `sx` width is pixels
+  and not spacing units, so its links were unclickable; and the cage
+  redirecting away on the success of the change it was guarding.
 - **The bundle's size warning is raised, not obeyed.** 500kB is advice about
   download cost to somebody who might leave; this is read off local disk by
   somebody who already opened it, and splitting it would make §11 worse.
@@ -392,7 +393,6 @@ Append here. Newest last. Never delete an entry — supersede it.
 ## 14. Task protocol
 
 At the end of every task:
-
 1. Run the full test suite. Do not report done with a failing test.
 2. Append anything durable to §13 — a decision, a gotcha, a corrected
    assumption. Move anything resolved out of §11.

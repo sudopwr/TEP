@@ -1,0 +1,21 @@
+{
+  // The end-to-end half of the typecheck.
+  //
+  // Its own file for the same reason the other two are separate: this is the
+  // only corner that holds both halves of the application at once. The
+  // fixture imports the API's own bootstrap — real Node, real better-sqlite3
+  // — and the specs drive a browser, so it needs Node types and Playwright's
+  // together. Folding it into either of the others would give that one the
+  // dependency it was split up to avoid.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"],
+  "references": [{ "path": "./packages/core" }, { "path": "./apps/api" }]
+}

@@ -39,6 +39,15 @@ export interface StatCardProps {
   readonly value: ReactNode;
   readonly delta?: StatDelta;
   readonly hint?: string;
+  /**
+   * A handle for a test, put on the card rather than the value.
+   *
+   * The only selector that otherwise ties a figure to the label above it is
+   * "the div two levels up from this heading", which breaks the first time
+   * anybody adds a wrapper. Given one, an end-to-end test can say *net
+   * credited is 84,642.93* instead of *84,642.93 appears somewhere*.
+   */
+  readonly testId?: string;
 }
 
 const ARROW: Readonly<Record<NonNullable<StatDelta['direction']>, string>> = {
@@ -66,9 +75,18 @@ function deltaColor(delta: StatDelta): string {
  * would force the caller to format money somewhere else — which is exactly
  * how a second, subtly different money formatter gets written.
  */
-export function StatCard({ label, value, delta, hint }: StatCardProps) {
+export function StatCard({
+  label,
+  value,
+  delta,
+  hint,
+  testId,
+}: StatCardProps) {
   return (
-    <Paper sx={{ p: 2, minWidth: 160 }}>
+    <Paper
+      sx={{ p: 2, minWidth: 160 }}
+      {...(testId === undefined ? {} : { 'data-testid': testId })}
+    >
       <Typography variant="label" component="h3" sx={{ display: 'block' }}>
         {label}
       </Typography>

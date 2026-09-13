@@ -91,6 +91,7 @@ export function SettlementPanel({ payoutId }: { readonly payoutId: number }) {
 
       <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
         <StatCard
+          testId="settlement-gross"
           label="Gross proceeds"
           value={
             <MoneyDisplay
@@ -103,6 +104,7 @@ export function SettlementPanel({ payoutId }: { readonly payoutId: number }) {
         />
 
         <StatCard
+          testId="settlement-fees"
           label="Total fees"
           value={
             <MoneyDisplay
@@ -116,6 +118,7 @@ export function SettlementPanel({ payoutId }: { readonly payoutId: number }) {
         />
 
         <StatCard
+          testId="settlement-net"
           label="Net credited"
           value={
             <MoneyDisplay

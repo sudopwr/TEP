@@ -16,14 +16,16 @@
     "dev:web": "npm run dev --workspace @payout/web",
     "build": "npm run lint && tsc -b tsconfig.json && npm run build --workspace @payout/web",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:watch": "vitest",
     "lint": "eslint .",
-    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json && tsc -p tsconfig.tests.web.json",
+    "typecheck": "tsc -b tsconfig.json && tsc -p tsconfig.tests.json && tsc -p tsconfig.tests.web.json && tsc -p tsconfig.e2e.json",
     "import": "tsx apps/api/src/cli/import.ts",
     "start": "tsx apps/api/src/main.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
+    "@playwright/test": "^1.63.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.3",
     "@testing-library/user-event": "^14.6.7",

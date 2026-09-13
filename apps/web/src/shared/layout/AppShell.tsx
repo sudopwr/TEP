@@ -37,6 +37,18 @@ export interface AppShellProps {
 /** 27 spacing units — wide enough for "Data quality" without wrapping. */
 const RAIL_WIDTH = 27;
 
+/*
+  Through `theme.spacing`, not as a bare number.
+
+  `sx={{ width: 27 }}` is twenty-seven *pixels*: MUI's sizing system reads a
+  number above 1 as px and only `spacing`-aware props multiply. The rail was
+  27px wide and its links were clipped to nothing — invisible to a click and,
+  since no test had ever clicked one, invisible to the suite as well. The
+  first end-to-end journey that tried to navigate found it immediately.
+*/
+const railWidth = (theme: { spacing: (value: number) => string }): string =>
+  theme.spacing(RAIL_WIDTH);
+
 export function AppShell({
   destinations,
   children,
@@ -51,7 +63,7 @@ export function AppShell({
         component="nav"
         aria-label="Sections"
         sx={{
-          width: RAIL_WIDTH,
+          width: railWidth,
           flexShrink: 0,
           borderRight: '1px solid',
           borderColor: 'divider',

@@ -8,6 +8,10 @@ dist/
 
 # tests
 coverage/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
 
 # secrets
 .env

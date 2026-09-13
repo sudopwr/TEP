@@ -36,21 +36,25 @@ export function ChangePasswordScreen() {
   const { notify } = useToast();
 
   /*
-    Set the moment this screen does its job, and read one line below.
+    Was this screen needed when we arrived? Decided once, at mount.
 
-    Without it the redirect fires on the success of the very change it is
-    guarding: the flag clears, this component re-renders, and `Navigate` wins
-    the race against the navigation in `onDone` — so the reward for choosing
-    a password is being dropped on account settings. This is not a second copy
-    of the auth state; it is "this screen has finished", which is local by
-    nature.
+    The question below is about *arrival*, not about now, and writing it that
+    way is what makes it safe. Read live, the redirect fires on the success of
+    the very change it is guarding: the flag clears, this component re-renders,
+    and `Navigate` beats the navigation in `onDone` — so the reward for
+    choosing a password is being dropped on account settings. An end-to-end
+    run caught exactly that, on a path a unit test had been passing.
+
+    `RequireSession` renders a spinner until `/auth/me` has answered, so the
+    flag is already true or already false by the time this mounts. There is no
+    third state to catch.
   */
-  const [justChanged, setJustChanged] = useState(false);
+  const [wasCaged] = useState(mustChangePassword);
 
   // Somebody who has already changed it does not belong here. Sending them to
   // account settings rather than away entirely: arriving at this URL means
   // they meant to change a credential, and that is where that is done.
-  if (!mustChangePassword && !justChanged) {
+  if (!wasCaged) {
     return <Navigate to="/account" replace />;
   }
 
@@ -95,7 +99,6 @@ export function ChangePasswordScreen() {
           requireNewPassword
           submitLabel="Set password and continue"
           onDone={() => {
-            setJustChanged(true);
             notify('Password changed');
             // Straight to the payout list, and they never see this again:
             // the flag is now clear, so the guard above redirects anybody who

@@ -12,9 +12,26 @@ import { buildServer } from './server';
 
 export interface BootstrapOptions {
   readonly host?: string;
+  /** 0 asks the OS for a free one, and `address` reports which. */
   readonly port?: number;
   readonly databasePath?: string;
+  /**
+   * Where `data/files` lives.
+   *
+   * N6 says the data is `app.db` plus `files/` and that a backup is a copy of
+   * that folder — so the two have to be able to move together. Only the
+   * database could, until this.
+   */
+  readonly filesRoot?: string;
   readonly envFile?: string;
+  /**
+   * Operational output: request logs and the console banners below.
+   *
+   * One switch rather than two, because they are one thing — a caller that
+   * passes `false` is saying there is no operator watching a console, and a
+   * first-run notice printed to nobody is just noise in a test report.
+   */
+  readonly logger?: boolean;
 }
 
 export interface StartedServer {
@@ -42,13 +59,17 @@ export async function start(
     options.databasePath ??
     process.env['PAYOUT_DB'] ??
     path.resolve('data', 'app.db');
+  const filesRoot =
+    options.filesRoot ??
+    process.env['PAYOUT_FILES'] ??
+    path.resolve('data', 'files');
 
   const database = openDatabase(databasePath);
 
   try {
     migrate(database);
 
-    const { hasher, users } = buildContainer(database);
+    const { hasher, users } = buildContainer(database, { filesRoot });
     const admin = await users.findById(1);
 
     // N10 and §5a's second constraint. Before listen, never after.
@@ -57,11 +78,13 @@ export async function start(
       mustChangePassword: admin?.mustChangePassword ?? false,
     });
 
+    const speak = options.logger ?? true;
+
     const { secret, source } = loadOrCreateSessionSecret(
       options.envFile ?? path.resolve('.env'),
     );
 
-    if (source === 'generated') {
+    if (source === 'generated' && speak) {
       process.stdout.write(
         'Generated a new SESSION_SECRET into .env. Existing sign-ins are now invalid.\n',
       );
@@ -74,12 +97,13 @@ export async function start(
     const app = await buildServer({
       database,
       sessionSecret: secret,
-      logger: true,
+      filesRoot,
+      logger: speak,
     });
 
     const address = await app.listen({ host, port });
 
-    if (admin?.mustChangePassword === true) {
+    if (admin?.mustChangePassword === true && speak) {
       process.stdout.write(
         `\nListening on ${address}\n` +
           '\nThe default password (admin / admin) is still in place.\n' +
