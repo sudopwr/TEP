@@ -11,6 +11,7 @@ import {
   createCompany,
   createPayout,
   createTransaction,
+  deletePayout,
 } from '../endpoints';
 import { cachesAffectedByTransaction, queryKeys } from '../keys';
 import type {
@@ -22,6 +23,7 @@ import type {
   CreateSaleCommand,
   CreateTransactionCommand,
   DocumentAttachedJson,
+  PayoutDeletedJson,
   PayoutJson,
   SaleRecordedJson,
   SettlementJson,
@@ -100,6 +102,47 @@ export function useRecordPayout(): UseMutationResult<
   return useMutation({
     mutationFn: createPayout,
     onSuccess: () => invalidateAll(client, [queryKeys.payouts.lists()]),
+  });
+}
+
+/**
+ * F2 — delete a payout, with its legs, their fees and its document links.
+ *
+ * The one mutation that **removes** cache entries rather than invalidating
+ * them. Invalidating `payouts.detail(id)` would send the screen straight back
+ * to the server for a trail and a settlement belonging to a payout that no
+ * longer exists, and the reader would watch the row they just deleted be
+ * replaced by two red boxes explaining that it is missing. Removing is the
+ * truthful move: there is nothing to re-read.
+ *
+ * Everything else is invalidated rather than removed, because it still
+ * exists and is now wrong: the payout lists, the ledger-wide transaction
+ * lists, the balances (money that never moved is money the totals counted),
+ * the data-quality checks (§7's flagged rows were partly this payout's), and
+ * the financial-year report, which is the one place a *deleted* payout
+ * changes a figure nobody is looking at — `cachesAffectedByTransaction` does
+ * not name it because recording a leg cannot change what a payout credited.
+ */
+export function useDeletePayout(): UseMutationResult<
+  PayoutDeletedJson,
+  Error,
+  number
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: deletePayout,
+    onSuccess: async (_result, payoutId) => {
+      client.removeQueries({ queryKey: queryKeys.payouts.detail(payoutId) });
+
+      await invalidateAll(client, [
+        queryKeys.payouts.lists(),
+        queryKeys.transactions.all(),
+        queryKeys.balances.all(),
+        queryKeys.dataQuality.all(),
+        queryKeys.reports.all(),
+      ]);
+    },
   });
 }
 

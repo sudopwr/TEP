@@ -123,6 +123,27 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return reply.status(201).send({ payout: out.payout(payout) });
   });
 
+  /*
+    F2 — remove a payout that should not have been recorded.
+
+    A DELETE that answers with a body rather than 204: the reader is about to
+    be told what happened, and "Payout deleted" is a worse sentence than
+    naming the code and the thirteen legs that went with it. The counts come
+    from the use case, which took them while there was still something to
+    count.
+  */
+  app.delete('/api/payouts/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const deleted = await app.useCases.deletePayout.execute({ payoutId: id });
+
+    return {
+      payout: out.payout(deleted.payout),
+      transactionsDeleted: deleted.transactionsDeleted,
+      feesDeleted: deleted.feesDeleted,
+    };
+  });
+
   app.get('/api/payouts/:id/trail', async (request) => {
     const { id } = parseOrThrow(idParam, request.params, 'params');
 

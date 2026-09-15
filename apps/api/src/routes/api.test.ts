@@ -41,6 +41,8 @@ describe('/api routes', () => {
   const get = (url: string) => asUser(server, cookie, { url });
   const post = (url: string, payload: Record<string, unknown>) =>
     asUser(server, cookie, { method: 'POST', url, payload });
+  const del = (url: string) =>
+    asUser(server, cookie, { method: 'DELETE', url });
 
   describe('GET /health', () => {
     beforeEach(async () => {
@@ -242,7 +244,11 @@ describe('/api routes', () => {
 
     it('narrows by type', async () => {
       await post('/api/accounts', { code: 'b', name: 'Bank', type: 'bank' });
-      await post('/api/accounts', { code: 'w', name: 'Wallet', type: 'wallet' });
+      await post('/api/accounts', {
+        code: 'w',
+        name: 'Wallet',
+        type: 'wallet',
+      });
 
       const response = await get('/api/accounts?type=bank');
 
@@ -506,6 +512,76 @@ describe('/api routes', () => {
       const response = await get('/api/payouts?orderBy=whatever');
 
       expect(response.statusCode).toBe(400);
+    });
+  });
+
+  describe('DELETE /api/payouts/:id (F2)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    it('deletes the payout and says what went with it', async () => {
+      const response = await del('/api/payouts/1');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        payout: { code: 'TradeifyPayout001' },
+        transactionsDeleted: 13,
+        feesDeleted: 16,
+      });
+    });
+
+    it('leaves the list empty afterwards', async () => {
+      await del('/api/payouts/1');
+
+      const response = await get('/api/payouts');
+
+      expect(response.json().payouts).toEqual([]);
+    });
+
+    it('takes the whole four-level tree, not just the root', async () => {
+      await del('/api/payouts/1');
+
+      const response = await get('/api/transactions');
+
+      expect(response.json().transactions).toEqual([]);
+    });
+
+    it('empties the balances, because the movements are gone', async () => {
+      // §10's ₹84,642.93 in the bank came entirely from this payout. F10 is
+      // derived from movements, so deleting them has to leave nothing behind
+      // — a balance outliving its legs is the spreadsheet bug all over again.
+      await del('/api/payouts/1');
+
+      const response = await get('/api/accounts/balances');
+
+      expect(response.json().balances).toEqual([]);
+    });
+
+    it('404s a payout that is not there, and changes nothing', async () => {
+      const response = await del('/api/payouts/999');
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('payout_not_found');
+
+      const list = await get('/api/payouts');
+      expect(list.json().payouts).toHaveLength(1);
+    });
+
+    it('400s an id that is not a row number', async () => {
+      const response = await del('/api/payouts/not-a-number');
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('401s without a session, like every other data route', async () => {
+      const response = await server.app.inject({
+        method: 'DELETE',
+        url: '/api/payouts/1',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json().code).toBe('authentication_required');
     });
   });
 

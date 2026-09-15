@@ -65,6 +65,13 @@ export type {
 export { GetSettlement } from './get-settlement';
 
 export type {
+  DeletePayoutCommand,
+  DeletePayoutDependencies,
+  PayoutDeleted,
+} from './delete-payout';
+export { DeletePayout } from './delete-payout';
+
+export type {
   RecordPayoutCommand,
   RecordPayoutDependencies,
 } from './record-payout';

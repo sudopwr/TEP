@@ -6,8 +6,14 @@ import type {
   PayoutRepository,
 } from '../../src/ports/payout-repository';
 
+/** What a payout takes with it. `FakeTransactionRepository` satisfies it. */
+export interface PayoutCascade {
+  deleteByPayout(payoutId: PayoutId): number;
+}
+
 export class FakePayoutRepository implements PayoutRepository {
   readonly #rows = new Map<PayoutId, Payout>();
+  #cascade: PayoutCascade | null = null;
   #nextId = 1;
 
   seed(...payouts: readonly Payout[]): this {
@@ -62,6 +68,23 @@ export class FakePayoutRepository implements PayoutRepository {
   update(payout: Payout): Promise<Payout> {
     this.#rows.set(payout.id, payout);
     return Promise.resolve(payout);
+  }
+
+  /**
+   * Takes the legs with it, exactly as the SQLite adapter's one unit of work
+   * does — a fake that quietly left them behind would let a use-case test
+   * pass against a world no database can produce.
+   */
+  delete(id: PayoutId): Promise<void> {
+    this.#rows.delete(id);
+    this.#cascade?.deleteByPayout(id);
+    return Promise.resolve();
+  }
+
+  /** Wired by `TestWorld`, so the two fakes agree about what a delete means. */
+  cascadeTo(transactions: PayoutCascade): this {
+    this.#cascade = transactions;
+    return this;
   }
 
   size(): number {

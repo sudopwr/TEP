@@ -50,7 +50,8 @@ export function describeError(error: unknown): ErrorDescription {
   if (!(error instanceof ApiError)) {
     return {
       message: 'The browser could not complete that.',
-      action: 'Try again. If it keeps happening, the details are in the console.',
+      action:
+        'Try again. If it keeps happening, the details are in the console.',
     };
   }
 
@@ -159,8 +160,9 @@ export function policyViolations(error: unknown): readonly string[] {
 
   // Top-level on this route, not under `details` — which is why `ApiError`
   // keeps the whole body.
-  const violations = (error.body as { violations?: readonly string[] } | undefined)
-    ?.violations;
+  const violations = (
+    error.body as { violations?: readonly string[] } | undefined
+  )?.violations;
 
   return violations ?? [];
 }

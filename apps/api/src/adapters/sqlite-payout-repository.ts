@@ -39,6 +39,26 @@ const SQL = {
              reference = @reference, gross_amount = @gross, charges = @charges,
              currency_code = @currencyCode, notes = @notes
            WHERE id = @id`,
+  /*
+    One layer of the tree: the legs of this payout that are nobody's parent.
+
+    `transactions.parent_id` is ON DELETE RESTRICT, and RESTRICT is checked
+    the instant a row goes rather than at the end of the statement — so a
+    plain `DELETE FROM payouts`, whose CASCADE reaches the legs in whatever
+    order SQLite likes, fails with a bare "FOREIGN KEY constraint failed" on
+    any payout deeper than one level. §10's tree is four.
+
+    Running this until it changes nothing peels the tree from the leaves
+    inward, which is the only order the constraint allows. The subquery is
+    deliberately not scoped to the payout: a leg of *another* payout pointing
+    here would be §7's business, and pretending it away by ignoring it would
+    turn a constraint into a silent orphan.
+  */
+  deleteLeafTransactions: `DELETE FROM transactions
+     WHERE payout_id = ?
+       AND id NOT IN (SELECT parent_id FROM transactions
+                       WHERE parent_id IS NOT NULL)`,
+  delete: 'DELETE FROM payouts WHERE id = ?',
 } as const;
 
 interface PayoutWrite {
@@ -53,6 +73,7 @@ interface PayoutWrite {
 }
 
 export class SqlitePayoutRepository implements PayoutRepository {
+  readonly #database: SqliteDatabase;
   readonly #currencies: CurrencyRegistry;
   readonly #selectById;
   readonly #selectByCode;
@@ -61,8 +82,11 @@ export class SqlitePayoutRepository implements PayoutRepository {
   readonly #selectByDateRange;
   readonly #insert;
   readonly #update;
+  readonly #deleteLeafTransactions;
+  readonly #delete;
 
   constructor(database: SqliteDatabase, currencies: CurrencyRegistry) {
+    this.#database = database;
     this.#currencies = currencies;
     this.#selectById = database.prepare<[number], PayoutRow>(SQL.selectById);
     this.#selectByCode = database.prepare<[string], PayoutRow>(
@@ -77,6 +101,10 @@ export class SqlitePayoutRepository implements PayoutRepository {
     );
     this.#insert = database.prepare<PayoutWrite>(SQL.insert);
     this.#update = database.prepare<PayoutWrite & { id: number }>(SQL.update);
+    this.#deleteLeafTransactions = database.prepare<[number]>(
+      SQL.deleteLeafTransactions,
+    );
+    this.#delete = database.prepare<[number]>(SQL.delete);
   }
 
   async findById(id: PayoutId): Promise<Payout | null> {
@@ -118,6 +146,33 @@ export class SqlitePayoutRepository implements PayoutRepository {
       id: payout.id,
     });
     return this.#require(payout.id);
+  }
+
+  /**
+   * The payout, its legs, their fees and the links to both — one unit of work.
+   *
+   * Wrapped in `database.transaction` because the first statement runs
+   * several times: half a peeled tree is a set of legs belonging to a payout
+   * that still exists, which no view and no check would report as wrong. The
+   * fees and the `document_links` rows need no statement of their own — both
+   * cascade from the row they hang on, and the documents themselves stay
+   * (F6: one file can be evidence for several things).
+   */
+  async delete(id: PayoutId): Promise<void> {
+    const remove = this.#database.transaction((payoutId: number) => {
+      // Bounded by the depth of the tree, not by a hope: each pass removes
+      // every current leaf, so a pass that removes nothing means nothing is
+      // left to remove.
+      for (;;) {
+        const { changes } = this.#deleteLeafTransactions.run(payoutId);
+        if (changes === 0) break;
+      }
+
+      this.#delete.run(payoutId);
+    });
+
+    remove(id);
+    return Promise.resolve();
   }
 
   static #toWrite(payout: PayoutDraft | Payout): PayoutWrite {

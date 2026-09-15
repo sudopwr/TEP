@@ -24,4 +24,19 @@ export interface PayoutRepository {
   insert(draft: PayoutDraft): Promise<Payout>;
 
   update(payout: Payout): Promise<Payout>;
+
+  /**
+   * Remove a payout and everything that hangs off it, all or nothing.
+   *
+   * Its transactions and their fees go with it, and so do the document links
+   * that pointed at either — but never the documents themselves: one file may
+   * be evidence for several things (F6), and deleting the payout it happened
+   * to be uploaded from would take a statement away from a company it is
+   * still attached to.
+   *
+   * Deleting something that is not there is not an error; the use case has
+   * already established that it was, and a second opinion from the adapter
+   * would only be a race.
+   */
+  delete(id: PayoutId): Promise<void>;
 }

@@ -122,6 +122,32 @@ export class FakeTransactionRepository implements TransactionRepository {
     return Promise.resolve(fee);
   }
 
+  /**
+   * The cascade `PayoutRepository.delete` performs in SQL, in a Map.
+   *
+   * Not on the port: no use case deletes a leg on its own, and a port method
+   * with no caller is exactly what §5 says a port is not. It exists so that
+   * `FakePayoutRepository` can take the legs with it, and a use-case test can
+   * assert the world afterwards rather than trusting a comment.
+   */
+  deleteByPayout(payoutId: PayoutId): number {
+    const doomed = [...this.#rows.values()].filter(
+      (transaction) => transaction.payoutId === payoutId,
+    );
+
+    for (const transaction of doomed) {
+      this.#rows.delete(transaction.id);
+
+      for (const fee of [...this.#fees.values()]) {
+        if (fee.transactionId === transaction.id) {
+          this.#fees.delete(fee.id);
+        }
+      }
+    }
+
+    return doomed.length;
+  }
+
   allFees(): readonly TransactionFee[] {
     return [...this.#fees.values()];
   }

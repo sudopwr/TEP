@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   answering,
   companyCanBeAdded,
+  deleteFails,
   invalidRequest,
   unreachable,
 } from '../../../test/msw/handlers';
@@ -282,5 +283,87 @@ describe('adding a company while recording a payout', () => {
     expect(
       await screen.findByText('a company with that code already exists'),
     ).toBeInTheDocument();
+  });
+});
+
+describe('deleting a payout', () => {
+  const openThePayout = async (): Promise<void> => {
+    renderApp({ route: '/payouts/1' });
+    await screen.findByRole('heading', { name: /TradeifyPayout001/ });
+  };
+
+  it('asks first, naming the payout and what goes with it', async () => {
+    await openThePayout();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete payout' }),
+    );
+
+    expect(
+      await screen.findByText('Delete TradeifyPayout001?'),
+    ).toBeInTheDocument();
+    // The count is the point of the sentence: it is what stops somebody
+    // deleting the payout below the one they meant.
+    expect(screen.getByText(/13 legs/)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be undone/)).toBeInTheDocument();
+  });
+
+  it('deletes nothing when the question is declined', async () => {
+    await openThePayout();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete payout' }),
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(
+      await screen.findByRole('heading', { name: /TradeifyPayout001/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/deleted/)).not.toBeInTheDocument();
+  });
+
+  it('returns to the list and says what it deleted', async () => {
+    await openThePayout();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete payout' }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Delete payout',
+      }),
+    );
+
+    // Named, not "Payout deleted": the reader needs to see which one went.
+    expect(
+      await screen.findByText('TradeifyPayout001 deleted'),
+    ).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Payouts' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says what happened when the server refuses', async () => {
+    server.use(deleteFails('/api/payouts/:id'));
+
+    await openThePayout();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete payout' }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Delete payout',
+      }),
+    );
+
+    // The server's own sentence, passed through (§12), not "Something went
+    // wrong" — and under the question, which is still live: the payout is
+    // still there, and the answer is still "delete it".
+    expect(
+      await screen.findByText(/There is no payout numbered 1\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Delete TradeifyPayout001?')).toBeInTheDocument();
+    expect(screen.queryByText(/deleted$/)).not.toBeInTheDocument();
   });
 });

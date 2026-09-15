@@ -45,6 +45,11 @@ export class TestWorld {
    * would be a world the contract run could not reproduce.
    */
   constructor() {
+    // A payout takes its legs with it, here as in SQLite (`001_initial.sql`
+    // cascades; the adapter orders it leaf-first). Wired once, so no test has
+    // to remember that the two fakes are two halves of one delete.
+    this.payouts.cascadeTo(this.transactions);
+
     this.users.seed(
       User.create({
         id: DEFAULT_ADMIN_ID,

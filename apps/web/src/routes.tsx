@@ -20,7 +20,12 @@ import {
 } from './features/auth';
 import { DataQualityScreen } from './features/data-quality';
 import { DocumentSearch, DocumentUpload } from './features/documents';
-import { PayoutHeader, PayoutList, RecordPayoutForm } from './features/payouts';
+import {
+  DeletePayoutButton,
+  PayoutHeader,
+  PayoutList,
+  RecordPayoutForm,
+} from './features/payouts';
 import {
   AccountBalances,
   FinancialYearReport,
@@ -140,7 +145,32 @@ function PayoutDetailPage() {
 
   return (
     <Box>
-      <PayoutHeader payoutId={payoutId} />
+      {/*
+        The delete sits beside the header rather than inside it: `payouts/`
+        owns both halves, but the header is what the screen *is* and the
+        button is something done to it. Top-right and in the negative colour,
+        away from the trail — the destructive action should never be adjacent
+        to the thing somebody clicks to read a leg.
+      */}
+      <Box
+        sx={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
+          gap: 2,
+        }}
+      >
+        <PayoutHeader payoutId={payoutId} />
+
+        <DeletePayoutButton
+          payoutId={payoutId}
+          onDeleted={() => {
+            // `replace`, so Back does not return to the screen of a payout
+            // that is gone and show two error panels about it.
+            void navigate('/payouts', { replace: true });
+          }}
+        />
+      </Box>
 
       <Box sx={{ mt: 4 }}>
         <SettlementPanel payoutId={payoutId} />

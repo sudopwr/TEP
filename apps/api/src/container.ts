@@ -4,6 +4,7 @@ import {
   AttachDocument,
   AuthenticateSession,
   ChangeCredentials,
+  DeletePayout,
   GenerateFinancialYearReport,
   GetAccountBalances,
   GetDocument,
@@ -127,6 +128,7 @@ export function buildContainer(
     listAccounts: new ListAccounts({ accounts }),
 
     recordPayout: new RecordPayout({ payouts, companies, currencies, clock }),
+    deletePayout: new DeletePayout({ payouts, transactions }),
     listPayouts: new ListPayouts({ payouts }),
     getPayoutTrail: new GetPayoutTrail({ payouts, transactions, documents }),
     getSettlement: new GetSettlement({

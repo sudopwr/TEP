@@ -2,7 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
 import { OPEN_SETTLEMENT } from '../../../../test/msw/fixtures';
-import { postFails } from '../../../../test/msw/handlers';
+import { deleteFails, postFails } from '../../../../test/msw/handlers';
 import { server } from '../../../../test/msw/server';
 import { renderHookWithClient, waitFor } from '../../../../test/renderHook';
 import { createQueryClient } from '../queryClient';
@@ -11,6 +11,7 @@ import type { CreateSaleCommand, SettlementJson } from '../types';
 
 import {
   useAttachDocument,
+  useDeletePayout,
   useRecordCompany,
   useRecordPayout,
   useRecordTransaction,
@@ -365,5 +366,99 @@ describe('useSettlePayout — the optimistic one', () => {
     expect(
       client.getQueryData(queryKeys.payouts.settlement(1)),
     ).toBeUndefined();
+  });
+});
+
+const FY = { from: '2025-04-01', to: '2026-03-31' };
+
+describe('useDeletePayout', () => {
+  /**
+   * The delete's blast radius, and its one difference from every other
+   * mutation: the deleted payout's own caches are *removed*, not invalidated.
+   * Invalidating them would send the screen back for a trail and a settlement
+   * that no longer exist.
+   */
+  async function deleteAgainstSeededCache(): Promise<QueryClient> {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.payouts.list(), { payouts: [] });
+    seed(client, queryKeys.transactions.list(), { transactions: [] });
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+    seed(client, queryKeys.reports.financialYear(FY), { byCompany: [] });
+    // Should survive untouched:
+    seed(client, queryKeys.companies.list(), { companies: [] });
+    seed(client, queryKeys.documents.search('x'), { documents: [] });
+    seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
+
+    const { result } = renderHookWithClient(() => useDeletePayout(), {
+      client,
+    });
+
+    result.current.mutate(1);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    return client;
+  }
+
+  it("removes the deleted payout's own caches rather than refetching them", async () => {
+    const client = await deleteAgainstSeededCache();
+
+    expect(
+      client.getQueryCache().find({ queryKey: queryKeys.payouts.trail(1) }),
+    ).toBeUndefined();
+    expect(
+      client
+        .getQueryCache()
+        .find({ queryKey: queryKeys.payouts.settlement(1) }),
+    ).toBeUndefined();
+  });
+
+  it('invalidates the lists and every derived figure', async () => {
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.list())).toBe(true);
+    expect(isStale(client, queryKeys.transactions.list())).toBe(true);
+    expect(isStale(client, queryKeys.balances.list())).toBe(true);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(true);
+    // The financial-year report, which recording a leg cannot change but
+    // deleting a payout can: its credited total was partly this award.
+    expect(isStale(client, queryKeys.reports.financialYear(FY))).toBe(true);
+  });
+
+  it('leaves companies, documents and another payout alone', async () => {
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.companies.list())).toBe(false);
+    expect(isStale(client, queryKeys.documents.search('x'))).toBe(false);
+    expect(
+      client.getQueryCache().find({ queryKey: queryKeys.payouts.trail(2) }),
+    ).toBeDefined();
+  });
+
+  it('reports the failure and touches nothing when the server refuses', async () => {
+    server.use(deleteFails('/api/payouts/:id'));
+
+    const client = createQueryClient();
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+
+    const { result } = renderHookWithClient(() => useDeletePayout(), {
+      client,
+    });
+
+    result.current.mutate(1);
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(
+      client.getQueryCache().find({ queryKey: queryKeys.payouts.trail(1) }),
+    ).toBeDefined();
   });
 });

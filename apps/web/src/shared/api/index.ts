@@ -8,11 +8,7 @@
 export { ApiError } from './client';
 export type { ApiErrorBody, RequestOptions } from './client';
 
-export {
-  describeError,
-  fieldErrors,
-  policyViolations,
-} from './errors';
+export { describeError, fieldErrors, policyViolations } from './errors';
 export type { ErrorDescription } from './errors';
 
 export { queryKeys, cachesAffectedByTransaction } from './keys';

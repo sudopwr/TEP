@@ -55,7 +55,9 @@ export function useCompanies(): UseQueryResult<readonly CompanyJson[]> {
  * account recorded a minute ago is absent from it — which is right for a
  * balance sheet and useless for a form that has to offer it as a destination.
  */
-export function useAccounts(type?: string): UseQueryResult<readonly AccountJson[]> {
+export function useAccounts(
+  type?: string,
+): UseQueryResult<readonly AccountJson[]> {
   return useQuery({
     queryKey: queryKeys.accounts.list(type),
     queryFn: ({ signal }) => fetchAccounts(type, signal),

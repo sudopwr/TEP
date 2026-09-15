@@ -17,6 +17,7 @@ import type {
   DocumentsResponse,
   FinancialYearFilter,
   FinancialYearReportJson,
+  PayoutDeletedJson,
   PayoutFilter,
   PayoutJson,
   PayoutTrailJson,
@@ -158,6 +159,12 @@ export function createPayout(
   return request<{ payout: PayoutJson }>('/api/payouts', {
     method: 'POST',
     body: command,
+  });
+}
+
+export function deletePayout(payoutId: number): Promise<PayoutDeletedJson> {
+  return request<PayoutDeletedJson>(`/api/payouts/${String(payoutId)}`, {
+    method: 'DELETE',
   });
 }
 

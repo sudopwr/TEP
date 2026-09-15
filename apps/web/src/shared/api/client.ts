@@ -105,7 +105,7 @@ function absolute(path: string): string {
 }
 
 export interface RequestOptions {
-  readonly method?: 'GET' | 'POST';
+  readonly method?: 'GET' | 'POST' | 'DELETE';
   /** Serialised as JSON. Mutually exclusive with `formData`. */
   readonly body?: unknown;
   /**

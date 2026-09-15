@@ -52,6 +52,18 @@ export interface PayoutJson {
   readonly notes: string | null;
 }
 
+/**
+ * What a delete took with it (F2).
+ *
+ * The payout is the row as it was: there is nothing on file with that id by
+ * the time this arrives, and the toast still has to be able to name it.
+ */
+export interface PayoutDeletedJson {
+  readonly payout: PayoutJson;
+  readonly transactionsDeleted: number;
+  readonly feesDeleted: number;
+}
+
 export type TransactionKind =
   'payout_credit' | 'withdrawal' | 'transfer' | 'sale' | 'deposit';
 

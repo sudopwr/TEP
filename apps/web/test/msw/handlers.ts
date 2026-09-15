@@ -63,6 +63,13 @@ export const handlers = [
   http.post('/api/payouts', () =>
     HttpResponse.json({ payout: PAYOUT }, { status: 201 }),
   ),
+  http.delete('/api/payouts/:id', () =>
+    HttpResponse.json({
+      payout: PAYOUT,
+      transactionsDeleted: TRANSACTIONS.length,
+      feesDeleted: 16,
+    }),
+  ),
   http.get('/api/payouts/:id/trail', () => HttpResponse.json(TRAIL)),
   http.get('/api/payouts/:id/settlement', () => HttpResponse.json(SETTLEMENT)),
 
@@ -180,6 +187,15 @@ export const companyCanBeAdded = (company: CompanyJson) => {
     }),
   ];
 };
+
+/** A delete the server refuses — the payout is already gone. */
+export const deleteFails = (path: string) =>
+  http.delete(path, () =>
+    HttpResponse.json(
+      { code: 'payout_not_found', message: 'There is no payout numbered 1.' },
+      { status: 404 },
+    ),
+  );
 
 /** Any POST that refuses, for testing rollback. */
 export const postFails = (path: string, status = 400) =>
