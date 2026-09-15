@@ -198,3 +198,10 @@ cabinet.
 
 Development notes, the reasoning behind the design, and the decision log live
 in [CLAUDE.md](CLAUDE.md).
+
+## License
+
+Released under the [GNU Affero General Public License v3.0](LICENSE). You may
+use, study, change and share it; if you change it and let other people reach
+your copy over a network, section 13 asks you to offer them the source of the
+version they are using.

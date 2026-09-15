@@ -265,8 +265,8 @@ Newest last. Never delete an entry — supersede it.
   edited. **The browser formats money; the server owns the value**: `MoneyDisplay` takes
   integer minor units, superseding "render the server's `amount` string", whose honesty
   about *scale* a `scale` prop and the currency table now keep. `Intl.NumberFormat`
-  takes an exact decimal *string*, so `2^53 + 1` paise renders digit for digit and
-  rupees group Indian-style. An unknown currency **throws**: guessing 2 for an 8-decimal
+  takes an exact decimal *string*, so `2^53 + 1` paise renders digit for digit and rupees
+  group Indian-style; an unknown currency **throws**, since guessing 2 for an 8-decimal
   token is a plausible balance.
 - **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
   polymorphic `entity_type`/`entity_id`, which discards referential integrity.
@@ -363,15 +363,13 @@ Newest last. Never delete an entry — supersede it.
   the change it guarded.
 - **`npm run backup` uses SQLite's backup API, never a file copy**: in WAL mode the
   newest pages are in `app.db-wal`, so `cp` gives three snapshots of three instants and,
-  with nothing checkpointed, no schema at all (a test shows it). Attached files are
-  copied — each is written once, never edited.
+  with nothing checkpointed, no schema at all (a test shows it). Attached files are copied.
 - **The bundle's size warning is raised, not obeyed**: 500kB is advice about download
-  cost to somebody who might leave, and this is local disk read by somebody who already
-  opened it; splitting would make §11 worse.
-- **`npm run dev` watches with `node --watch`, not `tsx watch`.** Under concurrently's
-  prefixed output the supervisor's child never ran the module — no error, no listen — so
-  Vite's proxy answered ECONNREFUSED and the bug read as the app's. `--raw` cures it
-  too, at the cost of the prefixes.
+  cost to somebody who might leave; this is local disk, and splitting would make §11 worse.
+  **`npm run dev` watches with `node --watch`, not `tsx watch`**: under
+  concurrently's prefixed output the supervisor's child never ran the module — no error,
+  no listen — so Vite's proxy answered ECONNREFUSED and the bug read as the app's
+  (`--raw` cures it too, at the cost of the prefixes).
 - **A missing choice is added from inside the dropdown** (`SelectWithCreate`), because
   needing one happens mid-form. Its item carries a sentinel never passed to `onChange`,
   so cancelling leaves the field as found; the dialog renders **outside** the form,
@@ -388,6 +386,9 @@ Newest last. Never delete an entry — supersede it.
   configuration cascades, and editing is a **replacement** (F19) because an empty
   allow-list means "holds anything". The payout delete alone **removes** cache entries
   instead of invalidating them — a deleted trail answers 404.
+- **AGPL-3.0-only**, verbatim from gnu.org in `LICENSE`, `license` in all four manifests,
+  no per-file headers. Its §13 is the point: a copy reached over a network owes its users
+  the source, so §11's "reached from outside?" is now a licence question as well.
 
 ## 14. Task protocol
 
