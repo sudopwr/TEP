@@ -83,6 +83,7 @@ export * from './usecases/index';
 
 export {
   AccountCodeTakenError,
+  AccountInUseError,
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
   AuthenticationFailedError,

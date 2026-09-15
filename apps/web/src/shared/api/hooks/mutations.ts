@@ -11,7 +11,9 @@ import {
   createCompany,
   createPayout,
   createTransaction,
+  deleteAccount,
   deletePayout,
+  updateAccount,
 } from '../endpoints';
 import { cachesAffectedByTransaction, queryKeys } from '../keys';
 import type {
@@ -28,6 +30,7 @@ import type {
   SaleRecordedJson,
   SettlementJson,
   TransactionJson,
+  UpdateAccountCommand,
 } from '../types';
 
 /**
@@ -81,6 +84,61 @@ export function useRecordAccount(): UseMutationResult<
 
   return useMutation({
     mutationFn: createAccount,
+    onSuccess: () => invalidateAll(client, [queryKeys.accounts.all()]),
+  });
+}
+
+/**
+ * F1 — correct an account.
+ *
+ * Wider than recording one, and each for a reason the server can prove:
+ *
+ *   - the account lists, obviously;
+ *   - the **balances**, which embed the whole account (`accountBalance`
+ *     serialises it), so a renamed exchange is a stale row on that screen;
+ *   - the **data-quality checks**, because narrowing an allow-list is exactly
+ *     what turns an existing leg into §7's "currency not allowed" — the edit
+ *     does not move any money and still changes what is flagged.
+ *
+ * Not the trails or the settlements: a trail node carries the transaction and
+ * its account *ids*, never a name, so nothing there can have gone stale.
+ */
+export function useEditAccount(): UseMutationResult<
+  { account: AccountJson },
+  Error,
+  UpdateAccountCommand
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateAccount,
+    onSuccess: () =>
+      invalidateAll(client, [
+        queryKeys.accounts.all(),
+        queryKeys.balances.all(),
+        queryKeys.dataQuality.all(),
+      ]),
+  });
+}
+
+/**
+ * F1 — remove an account nothing has moved through.
+ *
+ * Only the account lists. An account the server agreed to delete had no legs
+ * at all — that is the condition, and it 409s otherwise — so the balances and
+ * the checks, both derived from movements, provably cannot have changed.
+ * Invalidating them anyway would be a refetch of two screens to display the
+ * same figures, and would blur why the edit above touches them.
+ */
+export function useDeleteAccount(): UseMutationResult<
+  { account: AccountJson },
+  Error,
+  number
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteAccount,
     onSuccess: () => invalidateAll(client, [queryKeys.accounts.all()]),
   });
 }

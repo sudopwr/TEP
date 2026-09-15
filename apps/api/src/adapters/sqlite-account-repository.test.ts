@@ -114,3 +114,115 @@ describe('SqliteAccountRepository', () => {
     await expect(repository.list()).resolves.toEqual([]);
   });
 });
+
+describe('SqliteAccountRepository.delete', () => {
+  let database: SqliteDatabase;
+  let repository: SqliteAccountRepository;
+
+  beforeEach(() => {
+    database = openTestDatabase();
+    repository = new SqliteAccountRepository(database);
+  });
+
+  afterEach(() => {
+    database.close();
+  });
+
+  // `Number`, because the connection runs with SQLite's 64-bit integers on
+  // (§6), so even a COUNT arrives as a bigint.
+  const count = (sql: string): number =>
+    Number((database.prepare(sql).get() as { c: number | bigint }).c);
+
+  const exchange = {
+    code: 'coindcx',
+    name: 'CoinDCX',
+    type: 'exchange' as const,
+    companyId: null,
+    allowedCurrencies: ['USDT', 'INR'],
+  };
+
+  it('removes the account and its allow-list', async () => {
+    const account = await repository.insert(exchange);
+
+    await repository.delete(account.id);
+
+    await expect(repository.findById(account.id)).resolves.toBeNull();
+    expect(count('SELECT COUNT(*) c FROM account_currencies')).toBe(0);
+  });
+
+  it('takes the addresses and the fee schedules with it', async () => {
+    // Both are configuration *for* the account: an address book and a 0.5%
+    // schedule belonging to an exchange that is gone are orphans, not history.
+    const account = await repository.insert(exchange);
+
+    database
+      .prepare(
+        `INSERT INTO account_identifiers (account_id, kind, value)
+         VALUES (?, 'wallet', '0xabc')`,
+      )
+      .run(account.id);
+    database
+      .prepare(
+        `INSERT INTO fee_schedules
+           (account_id, fee_type, basis, rate_bps, effective_from)
+         VALUES (?, 'exchange_fee', 'to_amount', 50, '2025-01-01')`,
+      )
+      .run(account.id);
+
+    await repository.delete(account.id);
+
+    expect(count('SELECT COUNT(*) c FROM account_identifiers')).toBe(0);
+    expect(count('SELECT COUNT(*) c FROM fee_schedules')).toBe(0);
+  });
+
+  it('refuses an account a transaction points at, from either side', async () => {
+    // ON DELETE RESTRICT on both `from_account_id` and `to_account_id`. This
+    // is the guarantee `DeleteAccount`'s friendlier sentence stands on: even
+    // if the count were raced past, the ledger cannot lose a party to a leg.
+    const from = await repository.insert(exchange);
+    const to = await repository.insert({
+      ...exchange,
+      code: 'bank-hdfc',
+      name: 'HDFC',
+      type: 'bank',
+      allowedCurrencies: ['INR'],
+    });
+
+    database
+      .prepare('INSERT INTO companies (code, name) VALUES (?, ?)')
+      .run('Tradeify001', 'Tradeify');
+    database
+      .prepare(
+        `INSERT INTO payouts (code, company_id, payout_date, gross_amount, currency_code)
+         VALUES ('P1', 1, '2025-03-10', 100801, 'USD')`,
+      )
+      .run();
+    database
+      .prepare(
+        `INSERT INTO transactions
+           (code, payout_id, txn_date, kind, from_account_id, to_account_id,
+            from_amount, from_currency, to_amount, to_currency)
+         VALUES ('T1', 1, '2025-03-12', 'sale', ?, ?, 100000000, 'USDT', 9766, 'INR')`,
+      )
+      .run(from.id, to.id);
+
+    // RESTRICT reports itself as `SQLITE_CONSTRAINT_TRIGGER` rather than
+    // `..._FOREIGNKEY`: it is checked as the row goes, not at the end of the
+    // statement. The message is "FOREIGN KEY constraint failed" either way,
+    // which is exactly why nobody should be reading it.
+    await expect(repository.delete(from.id)).rejects.toMatchObject({
+      code: 'SQLITE_CONSTRAINT_TRIGGER',
+    });
+    await expect(repository.delete(to.id)).rejects.toMatchObject({
+      code: 'SQLITE_CONSTRAINT_TRIGGER',
+    });
+  });
+
+  it('is a no-op for an id that is not there', async () => {
+    await repository.insert(exchange);
+
+    await expect(repository.delete(4242)).resolves.toBeUndefined();
+
+    await expect(repository.list()).resolves.toHaveLength(1);
+  });
+});

@@ -29,6 +29,7 @@ const SQL = {
   insertCurrency:
     'INSERT OR IGNORE INTO account_currencies (account_id, currency_code) VALUES (?, ?)',
   deleteCurrencies: 'DELETE FROM account_currencies WHERE account_id = ?',
+  delete: 'DELETE FROM accounts WHERE id = ?',
 } as const;
 
 interface CurrencyRow {
@@ -58,6 +59,7 @@ export class SqliteAccountRepository implements AccountRepository {
   readonly #selectCurrenciesFor;
   readonly #insertCurrency;
   readonly #deleteCurrencies;
+  readonly #delete;
 
   constructor(database: SqliteDatabase) {
     this.#database = database;
@@ -93,6 +95,7 @@ export class SqliteAccountRepository implements AccountRepository {
       SQL.insertCurrency,
     );
     this.#deleteCurrencies = database.prepare<[number]>(SQL.deleteCurrencies);
+    this.#delete = database.prepare<[number]>(SQL.delete);
   }
 
   async findById(id: AccountId): Promise<Account | null> {
@@ -150,6 +153,22 @@ export class SqliteAccountRepository implements AccountRepository {
 
     write();
     return this.#require(account.id);
+  }
+
+  /**
+   * The account and the configuration that only exists for it.
+   *
+   * `account_currencies`, `account_identifiers` and `fee_schedules` all
+   * cascade from the row — an allow-list, an address book and a 0.5% schedule
+   * belonging to an exchange that is gone are three kinds of orphan. The
+   * transactions do not cascade and must not: both `from_account_id` and
+   * `to_account_id` are ON DELETE RESTRICT, so an account with any history
+   * fails here rather than taking the ledger with it. `DeleteAccount` says so
+   * in a sentence before it gets this far; this is the guarantee behind it.
+   */
+  async delete(id: AccountId): Promise<void> {
+    this.#delete.run(id);
+    return Promise.resolve();
   }
 
   #hydrate(row: AccountRow): Account {

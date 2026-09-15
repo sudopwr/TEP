@@ -1,17 +1,26 @@
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Typography from '@mui/material/Typography';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { useAccounts, useCompanies, type AccountJson } from '../../shared/api';
+import {
+  useAccounts,
+  useCompanies,
+  useDeleteAccount,
+  type AccountJson,
+} from '../../shared/api';
 import { describeError } from '../../shared/api/errors';
 import {
+  ConfirmDialog,
   CurrencyChip,
   DataTable,
   ErrorState,
   type Column,
 } from '../../shared/components';
+import { useToast } from '../../shared/feedback';
+
+import { EditAccountDialog } from './EditAccountDialog';
 
 /**
  * F1 — everywhere money can sit.
@@ -39,7 +48,19 @@ const TYPE_LABELS: Readonly<Record<string, string>> = {
 export function AccountList() {
   const accounts = useAccounts();
   const companies = useCompanies();
+  const remove = useDeleteAccount();
   const navigate = useNavigate();
+  const { notify } = useToast();
+
+  /*
+    Two dialogs, each holding the row it is about rather than an id.
+
+    An id would have to be looked up again on every render, and the lookup
+    would come back undefined at exactly the wrong moment — the instant after
+    a delete succeeds and before the dialog closes.
+  */
+  const [editing, setEditing] = useState<AccountJson | null>(null);
+  const [deleting, setDeleting] = useState<AccountJson | null>(null);
 
   const companyNames = useMemo(() => {
     const byId = new Map<number, string>();
@@ -113,6 +134,35 @@ export function AccountList() {
           ),
         sortBy: (account) => account.allowedCurrencies.join(','),
       },
+      {
+        id: 'actions',
+        header: '',
+        align: 'right',
+        // No `sortBy`: a column of buttons has nothing to sort on, which
+        // `DataTable` expresses by the field simply being absent.
+        cell: (account) => (
+          <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
+            <Button
+              size="small"
+              color="inherit"
+              onClick={() => {
+                setEditing(account);
+              }}
+            >
+              Edit
+            </Button>
+            <Button
+              size="small"
+              color="error"
+              onClick={() => {
+                setDeleting(account);
+              }}
+            >
+              Delete
+            </Button>
+          </Box>
+        ),
+      },
     ],
     [companyNames],
   );
@@ -175,6 +225,58 @@ export function AccountList() {
               void navigate('/accounts/new');
             },
           },
+        }}
+      />
+
+      <EditAccountDialog
+        account={editing}
+        onClose={() => {
+          setEditing(null);
+        }}
+        onSaved={(account) => {
+          setEditing(null);
+          notify(`${account.name} saved`);
+        }}
+      />
+
+      {/*
+        The refusal is shown inside the dialog, not as a toast: an account
+        money has moved through cannot be deleted at all (409), and the
+        sentence explaining why belongs next to the question it answers.
+        `ToastTone` has no error tone — confirmations are not where failures
+        are reported.
+      */}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting?.name ?? 'this account'}?`}
+        message={
+          <>
+            Nothing that has been recorded changes. Its addresses and any fee
+            schedules on it go with it, and an account money has moved through
+            cannot be deleted at all.
+            {remove.error === null ? null : (
+              <Box sx={{ mt: 2 }}>
+                <ErrorState message={describeError(remove.error).message} />
+              </Box>
+            )}
+          </>
+        }
+        confirmLabel="Delete account"
+        destructive
+        busy={remove.isPending}
+        onConfirm={() => {
+          if (deleting === null || remove.isPending) return;
+
+          remove.mutate(deleting.id, {
+            onSuccess: (result) => {
+              setDeleting(null);
+              notify(`${result.account.name} deleted`);
+            },
+          });
+        }}
+        onCancel={() => {
+          setDeleting(null);
+          remove.reset();
         }}
       />
     </Box>

@@ -2,7 +2,11 @@ import type { QueryClient } from '@tanstack/react-query';
 import { describe, expect, it } from 'vitest';
 
 import { OPEN_SETTLEMENT } from '../../../../test/msw/fixtures';
-import { deleteFails, postFails } from '../../../../test/msw/handlers';
+import {
+  accountInUse,
+  deleteFails,
+  postFails,
+} from '../../../../test/msw/handlers';
 import { server } from '../../../../test/msw/server';
 import { renderHookWithClient, waitFor } from '../../../../test/renderHook';
 import { createQueryClient } from '../queryClient';
@@ -11,7 +15,9 @@ import type { CreateSaleCommand, SettlementJson } from '../types';
 
 import {
   useAttachDocument,
+  useDeleteAccount,
   useDeletePayout,
+  useEditAccount,
   useRecordCompany,
   useRecordPayout,
   useRecordTransaction,
@@ -460,5 +466,104 @@ describe('useDeletePayout', () => {
     expect(
       client.getQueryCache().find({ queryKey: queryKeys.payouts.trail(1) }),
     ).toBeDefined();
+  });
+});
+
+describe('useEditAccount', () => {
+  /**
+   * An edit moves no money and still changes two derived screens: the
+   * balances embed the whole account, and narrowing an allow-list is what
+   * turns an existing leg into §7's "currency not allowed".
+   */
+  async function editAgainstSeededCache(): Promise<QueryClient> {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.accounts.list(), { accounts: [] });
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+    // Should survive untouched:
+    seed(client, queryKeys.payouts.list(), { payouts: [] });
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.companies.list(), { companies: [] });
+
+    const { result } = renderHookWithClient(() => useEditAccount(), { client });
+
+    result.current.mutate({
+      accountId: 1,
+      code: 'coindcx',
+      name: 'CoinDCX (INR)',
+      type: 'exchange',
+      allowedCurrencies: ['INR'],
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    return client;
+  }
+
+  it('invalidates the accounts, the balances and the checks', async () => {
+    const client = await editAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.accounts.list())).toBe(true);
+    expect(isStale(client, queryKeys.balances.list())).toBe(true);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(true);
+  });
+
+  it('leaves the trails, the payouts and the companies alone', async () => {
+    // A trail node carries the transaction and account *ids*, never a name,
+    // so nothing there can have gone stale.
+    const client = await editAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(false);
+    expect(isStale(client, queryKeys.payouts.list())).toBe(false);
+    expect(isStale(client, queryKeys.companies.list())).toBe(false);
+  });
+});
+
+describe('useDeleteAccount', () => {
+  it('invalidates the account lists and nothing else', async () => {
+    // The server only agrees to delete an account with no legs at all, so
+    // the balances and the checks — both derived from movements — provably
+    // cannot have changed.
+    const client = createQueryClient();
+
+    seed(client, queryKeys.accounts.list(), { accounts: [] });
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+
+    const { result } = renderHookWithClient(() => useDeleteAccount(), {
+      client,
+    });
+
+    result.current.mutate(1);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(isStale(client, queryKeys.accounts.list())).toBe(true);
+    expect(isStale(client, queryKeys.balances.list())).toBe(false);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(false);
+  });
+
+  it('keeps the cache untouched when the account is in use', async () => {
+    server.use(accountInUse(13));
+
+    const client = createQueryClient();
+    seed(client, queryKeys.accounts.list(), { accounts: [] });
+
+    const { result } = renderHookWithClient(() => useDeleteAccount(), {
+      client,
+    });
+
+    result.current.mutate(1);
+
+    await waitFor(() => {
+      expect(result.current.isError).toBe(true);
+    });
+
+    expect(isStale(client, queryKeys.accounts.list())).toBe(false);
   });
 });

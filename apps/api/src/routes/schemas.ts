@@ -142,6 +142,17 @@ export const createAccountBody = z
   })
   .strict();
 
+/**
+ * The same shape again, and deliberately not a partial of it.
+ *
+ * `PUT`, not `PATCH`: the body says what the account *is* now. A partial
+ * would have no way to express "it holds anything from now on", since the
+ * allow-list's empty value is itself meaningful — omitting the field would
+ * have to mean "leave it alone", and the one edit somebody most wants to make
+ * would become impossible.
+ */
+export const updateAccountBody = createAccountBody;
+
 export const listAccountsQuery = z
   .object({ type: accountType.optional() })
   .strict();

@@ -43,6 +43,8 @@ describe('/api routes', () => {
     asUser(server, cookie, { method: 'POST', url, payload });
   const del = (url: string) =>
     asUser(server, cookie, { method: 'DELETE', url });
+  const put = (url: string, payload: Record<string, unknown>) =>
+    asUser(server, cookie, { method: 'PUT', url, payload });
 
   describe('GET /health', () => {
     beforeEach(async () => {
@@ -387,6 +389,161 @@ describe('/api routes', () => {
       });
 
       expect(response.statusCode).toBe(201);
+    });
+  });
+
+  describe('editing an account (F1)', () => {
+    beforeEach(async () => {
+      await withSeed();
+      await post('/api/accounts', {
+        code: 'coindcx',
+        name: 'CoinDCX',
+        type: 'exchange',
+        allowedCurrencies: ['USDT'],
+      });
+    });
+
+    it('replaces the account and answers with what it now is', async () => {
+      const response = await put('/api/accounts/1', {
+        code: 'coindcx',
+        name: 'CoinDCX (INR)',
+        type: 'exchange',
+        allowedCurrencies: ['USDT', 'INR'],
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().account).toMatchObject({
+        id: 1,
+        name: 'CoinDCX (INR)',
+        allowedCurrencies: ['INR', 'USDT'],
+      });
+    });
+
+    it('empties the allow-list when the field is absent, because PUT replaces', async () => {
+      await put('/api/accounts/1', {
+        code: 'coindcx',
+        name: 'CoinDCX',
+        type: 'exchange',
+      });
+
+      const listed = await get('/api/accounts');
+
+      expect(listed.json().accounts[0].allowedCurrencies).toEqual([]);
+    });
+
+    it('lets an account keep its own code', async () => {
+      const response = await put('/api/accounts/1', {
+        code: 'coindcx',
+        name: 'Renamed',
+        type: 'exchange',
+      });
+
+      expect(response.statusCode).toBe(200);
+    });
+
+    it('409s a code that belongs to another account', async () => {
+      await post('/api/accounts', { code: 'bank', name: 'HDFC', type: 'bank' });
+
+      const response = await put('/api/accounts/1', {
+        code: 'bank',
+        name: 'CoinDCX',
+        type: 'exchange',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe('account_code_taken');
+    });
+
+    it('404s an account that is not there', async () => {
+      const response = await put('/api/accounts/99', {
+        code: 'nope',
+        name: 'Nope',
+        type: 'bank',
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('account_not_found');
+    });
+
+    it('400s an unknown currency and an unknown kind', async () => {
+      const currency = await put('/api/accounts/1', {
+        code: 'coindcx',
+        name: 'CoinDCX',
+        type: 'exchange',
+        allowedCurrencies: ['XRP'],
+      });
+      const kind = await put('/api/accounts/1', {
+        code: 'coindcx',
+        name: 'CoinDCX',
+        type: 'vault',
+      });
+
+      expect(currency.statusCode).toBe(400);
+      expect(kind.statusCode).toBe(400);
+    });
+  });
+
+  describe('deleting an account (F1)', () => {
+    beforeEach(async () => {
+      await withSeed();
+    });
+
+    it('deletes one nothing has moved through, naming it', async () => {
+      await post('/api/accounts', { code: 'bank', name: 'HDFC', type: 'bank' });
+
+      const response = await del('/api/accounts/1');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().account).toMatchObject({ code: 'bank' });
+
+      const listed = await get('/api/accounts');
+      expect(listed.json().accounts).toEqual([]);
+    });
+
+    it('404s an account that is not there', async () => {
+      const response = await del('/api/accounts/99');
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('account_not_found');
+    });
+  });
+
+  describe('deleting an account money has moved through', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    it('409s, saying how many transactions use it', async () => {
+      // Both FKs are ON DELETE RESTRICT, so the database refuses this too —
+      // but "FOREIGN KEY constraint failed" is not a sentence anybody can act
+      // on, and the action here is a real one.
+      const accounts = await get('/api/accounts');
+      const coindcx = (
+        accounts.json().accounts as { id: number; code: string }[]
+      ).find((account) => account.code === 'coindcx');
+
+      const response = await del(`/api/accounts/${String(coindcx?.id)}`);
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe('account_in_use');
+      expect(response.json().message).toMatch(
+        /transactions and cannot be deleted/,
+      );
+    });
+
+    it('leaves the account and its legs standing', async () => {
+      const accounts = await get('/api/accounts');
+      const coindcx = (
+        accounts.json().accounts as { id: number; code: string }[]
+      ).find((account) => account.code === 'coindcx');
+
+      await del(`/api/accounts/${String(coindcx?.id)}`);
+
+      const after = await get('/api/accounts');
+      const transactions = await get('/api/transactions');
+
+      expect(after.json().accounts).toHaveLength(5);
+      expect(transactions.json().transactions).toHaveLength(13);
     });
   });
 

@@ -18,6 +18,7 @@ import {
   listTransactionsQuery,
   searchDocumentsQuery,
   settlementQuery,
+  updateAccountBody,
 } from './schemas';
 import { parseOrThrow } from './validate';
 
@@ -89,6 +90,47 @@ export function registerApiRoutes(app: FastifyInstance): void {
     });
 
     return reply.status(201).send({ account: out.account(account) });
+  });
+
+  /*
+    F1 — correct an account. A replacement, not a patch: see
+    `updateAccountBody` for why the allow-list makes that the only honest
+    reading.
+  */
+  app.put('/api/accounts/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+    const body = parseOrThrow(updateAccountBody, request.body, 'body');
+
+    const account = await app.useCases.editAccount.execute({
+      accountId: id,
+      code: body.code,
+      name: body.name,
+      type: body.type,
+      ...(body.companyId === undefined ? {} : { companyId: body.companyId }),
+      ...(body.allowedCurrencies === undefined
+        ? {}
+        : { allowedCurrencies: body.allowedCurrencies }),
+    });
+
+    return { account: out.account(account) };
+  });
+
+  /*
+    F1 — remove an account nothing has moved through.
+
+    409 when something has, carrying the count: the account is a party to
+    those legs, and deleting it would leave them pointing at nothing. The
+    body names what went so the reader sees which account, since the id in
+    the URL is not what they called it.
+  */
+  app.delete('/api/accounts/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const account = await app.useCases.deleteAccount.execute({
+      accountId: id,
+    });
+
+    return { account: out.account(account) };
   });
 
   // ---------- Payouts (F2, F8, F9) ----------

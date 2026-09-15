@@ -361,6 +361,27 @@ export class AccountCodeTakenError extends DomainError {
   }
 }
 
+/**
+ * An account that still has money moving through it.
+ *
+ * `transactions.from_account_id` and `to_account_id` are ON DELETE RESTRICT,
+ * so the database already refuses this — but "FOREIGN KEY constraint failed"
+ * is not a sentence anybody can act on, and the action here is a real one:
+ * delete the payouts whose legs use the account, or leave the account alone.
+ * §7's "unless the message needs to be friendlier", in other words.
+ */
+export class AccountInUseError extends DomainError {
+  constructor(
+    readonly code: string,
+    readonly transactionCount: number,
+  ) {
+    super(
+      'AccountInUseError',
+      `Account '${code}' is used by ${transactionCount} transaction${transactionCount === 1 ? '' : 's'} and cannot be deleted. Delete those payouts first, or keep the account.`,
+    );
+  }
+}
+
 /** A document whose bytes are missing from the store. */
 export class DocumentFileMissingError extends DomainError {
   constructor(

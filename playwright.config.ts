@@ -3,9 +3,9 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * N4's third clause: "core journeys e2e".
  *
- * These are the ten paths a person actually walks, driven through a real
+ * These are the eleven paths a person actually walks, driven through a real
  * browser against a real server and a real database. Everything smaller is
- * already covered — 1,650 unit and integration tests — so nothing here exists
+ * already covered — 1,700 unit and integration tests — so nothing here exists
  * to check a function. They exist to catch what only shows up when the pieces
  * are assembled: a redirect that loops, a cookie that does not survive the
  * proxy, a form that posts a shape the server refuses.

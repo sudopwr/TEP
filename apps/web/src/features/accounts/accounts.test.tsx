@@ -1,7 +1,11 @@
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
-import { answering, invalidRequest } from '../../../test/msw/handlers';
+import {
+  accountInUse,
+  answering,
+  invalidRequest,
+} from '../../../test/msw/handlers';
 import { server } from '../../../test/msw/server';
 import { renderApp, screen, within } from '../../../test/renderApp';
 
@@ -152,5 +156,139 @@ describe('the gap this closes', () => {
     // Rise included: it has no balance, and it is still somewhere money goes.
     const options = await screen.findAllByRole('option');
     expect(options.map((option) => option.textContent)).toContain('Rise');
+  });
+});
+
+describe('editing an account', () => {
+  const openTheEditor = async (name: string): Promise<HTMLElement> => {
+    renderApp({ route: '/accounts' });
+    const table = await screen.findByRole('table', { name: 'Accounts' });
+    await within(table).findByText(name);
+
+    const row = within(table).getByText(name).closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Edit' }));
+
+    return screen.findByRole('dialog');
+  };
+
+  it('opens on the row that was clicked, filled in with what it is', async () => {
+    const dialog = await openTheEditor('CoinDCX');
+
+    expect(within(dialog).getByLabelText(/^Name/)).toHaveValue('CoinDCX');
+    expect(within(dialog).getByLabelText(/^Code/)).toHaveValue('coindcx');
+    // The allow-list arrives as toggles already on, not as an empty row that
+    // would quietly clear it on save.
+    expect(
+      within(dialog).getByRole('button', { name: 'USDT' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('saves the change and says so in the words the button used', async () => {
+    const dialog = await openTheEditor('CoinDCX');
+
+    const name = within(dialog).getByLabelText(/^Name/);
+    await userEvent.clear(name);
+    await userEvent.type(name, 'CoinDCX (INR)');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Save account' }),
+    );
+
+    expect(await screen.findByText('CoinDCX (INR) saved')).toBeInTheDocument();
+  });
+
+  it("puts the server's complaint under the field it is about", async () => {
+    server.use(
+      invalidRequest(
+        '/api/accounts/:id',
+        [{ path: 'code', message: 'expected at least 1 character' }],
+        'put',
+      ),
+    );
+
+    const dialog = await openTheEditor('CoinDCX');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Save account' }),
+    );
+
+    expect(
+      await screen.findByText('expected at least 1 character'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes without saving when cancelled', async () => {
+    const dialog = await openTheEditor('CoinDCX');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+
+    expect(
+      await screen.findByRole('table', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/saved$/)).not.toBeInTheDocument();
+  });
+});
+
+describe('deleting an account', () => {
+  const askToDelete = async (name: string): Promise<HTMLElement> => {
+    renderApp({ route: '/accounts' });
+    const table = await screen.findByRole('table', { name: 'Accounts' });
+    await within(table).findByText(name);
+
+    const row = within(table).getByText(name).closest('tr') as HTMLElement;
+    await userEvent.click(within(row).getByRole('button', { name: 'Delete' }));
+
+    return screen.findByRole('dialog');
+  };
+
+  it('asks first, naming the account and what goes with it', async () => {
+    const dialog = await askToDelete('CoinDCX');
+
+    expect(within(dialog).getByText('Delete CoinDCX?')).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/fee schedules on it go with it/),
+    ).toBeInTheDocument();
+  });
+
+  it('deletes it and says which one went', async () => {
+    const dialog = await askToDelete('CoinDCX');
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete account' }),
+    );
+
+    expect(await screen.findByText('CoinDCX deleted')).toBeInTheDocument();
+  });
+
+  it('shows the refusal next to the question when money has moved through it', async () => {
+    // 409, not a 500 and not a silent no-op: both account columns on
+    // `transactions` are ON DELETE RESTRICT, and the sentence has to carry the
+    // count so the reader knows how much history they are being asked about.
+    server.use(accountInUse(13));
+
+    const dialog = await askToDelete('CoinDCX');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete account' }),
+    );
+
+    expect(
+      await screen.findByText(
+        /is used by 13 transactions and cannot be deleted/,
+      ),
+    ).toBeInTheDocument();
+    // Still asking, and nothing pretended to succeed.
+    expect(screen.getByText('Delete CoinDCX?')).toBeInTheDocument();
+    expect(screen.queryByText(/deleted$/)).not.toBeInTheDocument();
+  });
+
+  it('deletes nothing when the question is declined', async () => {
+    const dialog = await askToDelete('CoinDCX');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+
+    expect(
+      await screen.findByRole('table', { name: 'Accounts' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/deleted$/)).not.toBeInTheDocument();
   });
 });

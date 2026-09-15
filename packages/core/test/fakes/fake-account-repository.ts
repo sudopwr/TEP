@@ -52,6 +52,11 @@ export class FakeAccountRepository implements AccountRepository {
     return Promise.resolve(account);
   }
 
+  delete(id: AccountId): Promise<void> {
+    this.#rows.delete(id);
+    return Promise.resolve();
+  }
+
   /** The directory shape `Payout.status` expects. */
   directory(): ReadonlyMap<AccountId, Account> {
     return new Map(this.#rows);

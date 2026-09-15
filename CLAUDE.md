@@ -37,6 +37,7 @@ four amounts and two fees.
 | F16 | The signed-in user can change their username and password from within the app |
 | F17 | Session persists across restarts via a signed httpOnly cookie; sign-out revokes it |
 | F18 | Delete a payout, taking its transactions, their fees and its document links |
+| F19 | Edit an account; delete one, refused while any transaction still uses it |
 
 ### Non-functional
 | # | Requirement |
@@ -69,17 +70,17 @@ by type, net credited. **UC7 — GetAccountBalances.** Per account per currency,
 never stored. **UC8 — RunDataQualityChecks.** Flagged rows with reasons. **UC9 —
 SearchDocuments.** FTS5 over filename and text. **UC10 — GenerateFinancialYearReport.**
 A date range: credited / TDS / fees by company. **UC11 — SignIn.** Verifies the hash,
-opens a session, reports the must-change flag. One generic error either way, and a hash
-comparison even for an unknown username so timing reveals nothing; re-hashes a weaker
-credential *without* clearing the flag. **UC12 — AuthenticateSession.** Session ID to
-user, or reject; revoked wins over expired; extends past half-life. **UC13 —
-ChangeCredentials.** Verifies the current password *first* (so it is not a free "is that
-username taken?" oracle), applies the policy against the *new* username, clears
-must-change only if the password actually changed, and revokes every session but the
-caller's. **UC14 — SignOut.** Revokes server-side; idempotent, and identical for a
-forged ID as a spent one. **UC15 — DeletePayout.** F18. Counts the legs and fees first,
-then one atomic delete; no "cancelled" status, since §13 derives it. **Not numbered**,
-because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `ListCompanies`,
+opens a session, reports the must-change flag; one message and one full verification
+either way (§5a), and a weaker credential is re-hashed *without* clearing the flag.
+**UC12 — AuthenticateSession.** Session ID to user, or reject; revoked wins over
+expired; extends past half-life. **UC13 — ChangeCredentials.** Verifies the current
+password *first*, so it is not a free "is that username taken?" oracle; applies the
+policy against the *new* username, clears must-change only if the password actually
+changed, revokes every session but the caller's. **UC14 — SignOut.** Revokes
+server-side; idempotent, and identical for a forged ID as a spent one. **UC15 —
+DeletePayout.** F18: count the legs and fees, then one atomic delete — no "cancelled"
+status, §13 derives it. **Not numbered**, because §3 assumed they existed:
+`RecordCompany`, `RecordAccount`, `EditAccount`, `DeleteAccount`, `ListCompanies`,
 `ListAccounts`, `ListPayouts`, `ListTransactions`, `GetDocument` and `ImportLegacyCsv`.
 
 ## 4. Domain glossary
@@ -112,12 +113,10 @@ apps/api/             Fastify + better-sqlite3; serves the built UI too
 apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/theme/       the ONE theme; only palette.ts may contain a hex
   shared/components/  reusable, zero feature knowledge; one per file
-  shared/api/         the only place that talks to the server: TanStack Query
-                      v5, the queryKeys factory, the 401 and 403 rules
+  shared/api/         the only place that talks to the server: TanStack Query v5, the queryKeys factory, the 401 and 403 rules
   shared/layout/ feedback/   the rail and page frame / the toast
   features/           one folder each, no cross-imports
-  routes.tsx          the UI composition root: the one file that may build
-                      a screen out of several features
+  routes.tsx          the UI composition root: the one file that may build a screen out of several features
 
 e2e/                  ten browser journeys, each against a world of its own
 ```
@@ -156,8 +155,7 @@ characters minimum; rejects the current password, the username and a short embed
 common list, every entry of which is itself 12+ characters. No composition rules —
 length beats punctuation. A pure function in `core/domain/password-policy.ts` returning
 every violation, not the first, so the browser runs the same one. **Rehash is not a
-change**, nor is a rename: `must_change_password` clears only when a password is
-actually set.
+change**, nor is a rename: `must_change_password` clears only when a password is set.
 
 **Failure handling.** One byte-identical message for every sign-in failure, and an
 unknown username still runs a full argon2 verification so the timing matches. 5 attempts
@@ -215,15 +213,15 @@ The Rise fee is flat: four withdrawals cost $16.31 where one would have cost $4.
 
 The importer corrects these. Do not "fix" it to trust the sheet.
 1. **`From` amount wrong on all four sale rows** — `45.957` copy-pasted. True values are
-   `to_amount / rate`; Transaction0011 is 741.72, not 45.957.
+  `to_amount / rate`; Transaction0011 is 741.72, not 45.957.
 2. **Exchange fee and GST swapped** between Transaction003 and Transaction0011: as
-   written 8.39% and 0.03%; swapped, both 0.508%.
+  written 8.39% and 0.03%; swapped, both 0.508%.
 3. **`1.43908E+19`** — Excel destroyed a long reference by making it a float.
-   Unrecoverable; all reference columns are `TEXT`.
+  Unrecoverable; all reference columns are `TEXT`.
 4. **Duplicate `ToAmount` header** — the first occurrence is the from-side.
 5. **`Transaction0010` sorts before `Transaction002`** as text. Internal keys are
-   integers; the sheet ID is kept as `code`. Not to be confused with `Transaction0011`,
-   the one row `v_data_quality` flags — see §7's dust.
+  integers; the sheet ID is kept as `code`. Not to be confused with `Transaction0011`,
+  the one row `v_data_quality` flags — see §7's dust.
 
 ## 10. Verified reference figures
 
@@ -264,31 +262,30 @@ Newest last. Never delete an entry — supersede it.
 - **Money as scaled integers, scale per currency**: one fixed scale breaks INR or USDT,
   floats break both quietly. **Fees as rows, not columns**, each in its own currency.
   **Status and totals are derived**; a stored status drifts the first time a row is
-  edited. **The browser formats money; the server owns the value.** `MoneyDisplay` takes
-  integer minor units, so grouping and locale are presentation, and supersedes "render
-  the server's `amount` string" — that kept the browser honest about *scale*, which a
-  `scale` prop and a currency table now do. `Intl.NumberFormat#format` takes an exact
-  decimal *string*, so `2^53 + 1` paise renders digit for digit; rupees group
-  Indian-style. An unknown currency **throws**: guessing 2 for an 8-decimal token is a
-  plausible balance.
+  edited. **The browser formats money; the server owns the value**: `MoneyDisplay` takes
+  integer minor units, superseding "render the server's `amount` string", whose honesty
+  about *scale* a `scale` prop and the currency table now keep. `Intl.NumberFormat`
+  takes an exact decimal *string*, so `2^53 + 1` paise renders digit for digit and
+  rupees group Indian-style. An unknown currency **throws**: guessing 2 for an 8-decimal
+  token is a plausible balance.
 - **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
   polymorphic `entity_type`/`entity_id`, which discards referential integrity.
   **Addresses snapshot on the leg, normalized in `account_identifiers`.**
 - ~~**Google sign-in with a one-subject allow-list.**~~ Superseded by **username and
   password, one account**: it needed a Cloud project, internet and a hostname-bound
-  redirect. §5a is the bill.
-- **Ships with `admin` / `admin` and a must-change flag**, defensible only because of
-  §5a's three constraints. **Sessions are rows, not JWTs**: sign-out must actually
-  revoke, which a token cannot without this table. **Auth lives in `apps/api/auth/`, not
-  `core`**, which sees a `PasswordHasher` port. **Changing credentials revokes every
-  other session**, rename included; **migrations carry seeds**.
-- **Guards are global with an exemption list, never opt-in per route** — a forgotten
-  route must fail closed. `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` = §5a's five;
-  `/auth/me` and `/auth/change-credentials` are in the second only, since both must know
-  who is asking. `RequireAuth`/`RequireSession` mirror them in the browser — for the
-  right screen, not for safety.
-- **Session-id compare is constant-time; the index probe isn't** — an honest limit; the
-  rule stays so nobody swaps in a 6-digit code and keeps `===`.
+  redirect (§5a is the bill).
+- **Auth, in one place.** **Ships with `admin` / `admin` and a must-change flag**,
+  defensible only because of §5a's three constraints. **Sessions are rows, not JWTs**:
+  sign-out must actually revoke, which a token cannot without this table. **Auth lives
+  in `apps/api/auth/`, not `core`**, which sees a `PasswordHasher` port. **Changing
+  credentials revokes every other session**, rename included; **migrations carry
+  seeds**. **Guards are global with an exemption list, never opt-in per route**, so a
+  forgotten route fails closed: `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` = §5a's five,
+  with `/auth/me` and `/auth/change-credentials` in the second only, since both must
+  know who is asking; `RequireAuth`/`RequireSession` mirror them in the browser, for the
+  right screen rather than for safety. **Session-id compare is constant-time; the index
+  probe isn't** — an honest limit, and the rule stays so nobody swaps in a 6-digit code
+  and keeps `===`.
 - **Traps already fallen into**, each now covered by a test. `Error` owns `cause` and
   `name` (hence `.failure`, `.migrationName`). `Algorithm.Argon2id` is an ambient `const
   enum` `verbatimModuleSyntax` will not inline. `.catch(e => e as E)` widens the type
@@ -316,61 +313,61 @@ Newest last. Never delete an entry — supersede it.
   hash. **A 400 carries `details.issues`**, so a form puts each message under its own
   field rather than leaving the reader to guess which of eight.
 - **One composition root per process**: `container.ts` on the server (the F12 CLI wired
-  its own adapters until `container.test.ts` caught it) and `routes.tsx` in the browser
-  — the payout screen wants parts from three features, and `payouts/` importing
+  its own adapters until `container.test.ts` caught it) and `routes.tsx` in the browser,
+  since the payout screen wants parts from three features and `payouts/` importing
   `transactions/` would leave neither readable alone. **The palette is a lint rule**:
   `design/no-raw-hex` fails the build for a hex anywhere under apps/web bar
   `shared/theme/palette.ts`. **N8 is three more** — `no-feature-imports`,
   `no-fetch-in-shared` and `no-cross-feature-imports`, the last resolving paths rather
   than globbing.
 - **`sortBy` is separate from `cell` in `DataTable`**, so a money column sorts on its
-  integer — as text, `9.00` sorts after `84,642.93`. Absent values pin to the bottom in
-  *both* directions: the nullish check sits outside the direction multiplier.
-  **`TreeView` splits each row** into an indented label and an un-indented aside;
-  nesting would turn §10's trail into a staircase.
+  integer — as text, `9.00` sorts after `84,642.93` — and absent values pin to the
+  bottom in *both* directions, the nullish check sitting outside the direction
+  multiplier. **`TreeView` splits each row** into an indented label and an un-indented
+  aside; nesting turns §10's trail into a staircase.
 - **Cache keys come from `queryKeys`, never inline.** Typed at two call sites they
   become two caches holding one fact: a mutation invalidates one spelling, the screen
   reads the other, the number is stale. The hierarchy makes precise invalidation
   expressible — a leg invalidates that payout's trail and settlement, the balances and
-  the checks, and a test asserts every other payout stays untouched. **A 401 is handled
-  in the query and mutation caches, never at a call site.** It clears everything — a
-  signed-out session must not leave balances in memory — and seeds `auth.me` null. Three
-  exemptions, each a 401 that is an answer rather than an expiry: `/auth/me`,
-  `/auth/login` and `/auth/change-credentials` — clearing the cache on a wrong password
-  destroys the mutation holding the error, so the reader sees *nothing*; a `mutationKey`
-  lets the handler tell. **Signed-in state is that one `useQuery`** — a second `user` in
-  React state disagrees the moment a session is revoked elsewhere. **F15's 403 routes by
-  writing the auth cache, not by calling `navigate`.** It sets `mustChangePassword` on
-  `auth.me` and `RequireAuth` reads that, so a stale tab cannot sit on a data screen —
-  and the screen it lands on has no rail, no skip and no dismissal (§5a).
-- **There is no "mark settled" endpoint**, and should not be: status is derived.
-  Settling *is* recording the sale that reaches a bank — `useSettlePayout` does that,
-  flipping the cached status optimistically, figures left to the server.
-- **Web fixtures come from the API's own test server**, never invented — §10's
-  thirteen-leg tree as the routes serialise it, in `reference-payout.ts`.
+  the checks, and a test asserts every other payout is untouched. **A 401 is handled in
+  the query and mutation caches, never at a call site.** It clears everything — a
+  signed-out session must not leave balances in memory — and seeds `auth.me` null, bar
+  three exemptions that are answers rather than expiries (`/auth/me`, `/auth/login`,
+  `/auth/change-credentials`, told apart by a `mutationKey`): clearing the cache on a
+  wrong password destroys the mutation holding the error, so the reader sees *nothing*.
+  **Signed-in state is that one `useQuery`**: a second `user` in React state disagrees
+  the moment a session is revoked elsewhere. **F15's 403 routes by writing the auth
+  cache, not by calling `navigate`** — it sets `mustChangePassword` on `auth.me`,
+  `RequireAuth` reads that, and a stale tab cannot sit on a data screen (§5a's screen
+  has no rail, no skip, no dismissal). **There is no "mark settled" endpoint** either,
+  and should not be: settling *is* recording the sale that reaches a bank, which
+  `useSettlePayout` does — flipping the cached status optimistically, figures left to
+  the server.
 - **`/api/accounts` and `/api/accounts/balances` answer two questions.** A balance is
   derived from movements (UC7), so an account recorded a minute ago is absent — right
-  for a balance sheet, useless for a form asking where money went; before
-  `RecordAccount`, accounts arrived only with the legacy import, so a fresh database had
-  nowhere to move money between. An allow-list is a **set**: `RecordAccount` sorts it,
-  SQLite reads it back ordered and a fake does not.
+  for a balance sheet, useless for a form asking where money went (before
+  `RecordAccount`, accounts arrived only with the legacy import, and a fresh database
+  had nowhere to move money between). An allow-list is a **set**, sorted, since SQLite
+  reads it back ordered and a fake does not.
 - **One process in production, two in development.** `npm start` serves the built bundle
   from the API, so the browser sees one origin and §5a's `sameSite=lax` cookie needs no
   proxy pretending otherwise; `npm run dev` keeps Vite for hot reload. **The SPA
-  fallback never answers for `/api`, `/auth` or `/health`**: JSON asked for and a 200 of
-  HTML returned is a typo reported three layers away. The guards know the interface by
-  the routes the plugin registered, not a guessed pattern, so later root-level routes
-  stay guarded. **One e2e world per journey** — temp database, legacy import, `start()`
-  on a port the OS picks — or the suite turns order-dependent. The first test that ever
-  *clicked* found two bugs every DOM assertion passed: a 27px rail (`sx` width is
-  pixels, not spacing units), and the cage redirecting away from the change it guarded.
-- **`npm run backup` uses SQLite's backup API, never a file copy.** In WAL mode the
-  newest pages are in `app.db-wal`: `cp` gives three snapshots of three instants, and
-  with nothing checkpointed the copy has no schema at all; a test shows it. Attached
-  files are copied: each is written once, never edited.
+  fallback never answers for `/api`, `/auth` or `/health`**, since JSON asked for and
+  HTML returned is a typo reported three layers away, and the guards know the interface
+  by the routes the plugin registered rather than a guessed pattern. **Web fixtures come
+  from the API's own test server**, never invented — §10's tree as the routes serialise
+  it, in `reference-payout.ts` — and there is **one e2e world per journey** (temp
+  database, legacy import, `start()` on a port the OS picks), or the suite turns
+  order-dependent. The first test that ever *clicked* found two bugs every DOM assertion
+  passed: an `sx` width is pixels, not spacing units, and the cage redirected away from
+  the change it guarded.
+- **`npm run backup` uses SQLite's backup API, never a file copy**: in WAL mode the
+  newest pages are in `app.db-wal`, so `cp` gives three snapshots of three instants and,
+  with nothing checkpointed, no schema at all (a test shows it). Attached files are
+  copied — each is written once, never edited.
 - **The bundle's size warning is raised, not obeyed**: 500kB is advice about download
-  cost to somebody who might leave; this is local disk, read by somebody who already
-  opened it, and splitting would make §11 worse.
+  cost to somebody who might leave, and this is local disk read by somebody who already
+  opened it; splitting would make §11 worse.
 - **`npm run dev` watches with `node --watch`, not `tsx watch`.** Under concurrently's
   prefixed output the supervisor's child never ran the module — no error, no listen — so
   Vite's proxy answered ECONNREFUSED and the bug read as the app's. `--raw` cures it
@@ -382,19 +379,21 @@ Newest last. Never delete an entry — supersede it.
   the payout's `onSubmit` too. Select only once the invalidation resolves, or MUI draws
   an unmatched value as an empty box; assert with `find`: a closing modal still holds
   `aria-hidden` over everything behind it.
-- **A payout can be deleted** (F18) — a real delete, not a "cancelled" status, which
-  would be the fourth state §13 refused. Legs, fees and links go; **documents stay**
-  (F6). One transaction, the tree peeled **leaf-first**: `parent_id` is ON DELETE
-  RESTRICT, checked as each row goes, so a plain `DELETE FROM payouts` fails on any tree
-  deeper than one level, and a test asserts that failure. The **one mutation that
-  removes cache entries** rather than invalidating them (a deleted trail answers 404),
-  and the only one invalidating the FY report.
+- **What deletes, and what refuses.** A **payout** deletes for real (F18), not into a
+  "cancelled" status — the fourth state §13 refused: legs, fees and links go,
+  **documents stay** (F6), one transaction, the tree peeled **leaf-first** because
+  `parent_id` is ON DELETE RESTRICT, checked as each row goes, so a plain cascade fails
+  below depth one and a test asserts it. An **account** is a party to events, not an
+  event: deleting one with any leg is a 409 **counting** them, only its own
+  configuration cascades, and editing is a **replacement** (F19) because an empty
+  allow-list means "holds anything". The payout delete alone **removes** cache entries
+  instead of invalidating them — a deleted trail answers 404.
 
 ## 14. Task protocol
 
 At the end of every task:
 1. Run the full test suite. Do not report done with a failing test.
 2. Append anything durable to §13 — a decision, a gotcha, a corrected assumption. Move
-   anything resolved out of §11.
+  anything resolved out of §11.
 3. If the task changed the schema, update §6, §7 or §8 to match.
 4. Keep this file under 400 lines. Condense old entries, never delete them.

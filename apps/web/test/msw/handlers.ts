@@ -59,6 +59,27 @@ export const handlers = [
     HttpResponse.json({ account: ACCOUNTS[0] }, { status: 201 }),
   ),
 
+  /*
+    A PUT echoes back what it was sent, with the id from the URL.
+
+    Echoing rather than answering with a fixture, because the edit dialog's
+    whole job is to send the account as it now is — a canned response would
+    let a form that sends the wrong body pass.
+  */
+  http.put('/api/accounts/:id', async ({ request, params }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    return HttpResponse.json({
+      account: { ...body, id: Number(params['id']) },
+    });
+  }),
+  http.delete('/api/accounts/:id', ({ params }) =>
+    HttpResponse.json({
+      account:
+        ACCOUNTS.find((one) => one.id === Number(params['id'])) ?? ACCOUNTS[0],
+    }),
+  ),
+
   http.get('/api/payouts', () => HttpResponse.json({ payouts: [PAYOUT] })),
   http.post('/api/payouts', () =>
     HttpResponse.json({ payout: PAYOUT }, { status: 201 }),
@@ -151,8 +172,12 @@ export const unreachable = (path: string) =>
 export const invalidRequest = (
   path: string,
   issues: readonly { path: string; message: string }[],
+  // An edit is a PUT (the body says what the account *is* now), and a form
+  // that cannot show field errors on the way back is a form that makes the
+  // reader guess which of five fields the server meant.
+  method: 'post' | 'put' = 'post',
 ) =>
-  http.post(path, () =>
+  http[method](path, () =>
     HttpResponse.json(
       {
         code: 'invalid_request',
@@ -187,6 +212,24 @@ export const companyCanBeAdded = (company: CompanyJson) => {
     }),
   ];
 };
+
+/**
+ * 409 — the account is a party to legs that still exist.
+ *
+ * Its own helper rather than a generic "refuses", because the shape matters:
+ * the message is the one the reader is shown, and it has to carry the count
+ * that makes the refusal actionable.
+ */
+export const accountInUse = (transactionCount: number) =>
+  http.delete('/api/accounts/:id', () =>
+    HttpResponse.json(
+      {
+        code: 'account_in_use',
+        message: `Account 'coindcx' is used by ${String(transactionCount)} transactions and cannot be deleted. Delete those payouts first, or keep the account.`,
+      },
+      { status: 409 },
+    ),
+  );
 
 /** A delete the server refuses — the payout is already gone. */
 export const deleteFails = (path: string) =>

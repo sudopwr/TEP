@@ -43,6 +43,18 @@ export type {
 export { RecordAccount } from './record-account';
 
 export type {
+  EditAccountCommand,
+  EditAccountDependencies,
+} from './edit-account';
+export { EditAccount } from './edit-account';
+
+export type {
+  DeleteAccountCommand,
+  DeleteAccountDependencies,
+} from './delete-account';
+export { DeleteAccount } from './delete-account';
+
+export type {
   AccountBalance,
   GetAccountBalancesCommand,
   GetAccountBalancesDependencies,

@@ -212,7 +212,14 @@ export const changedPassword = world.extend({ flavour: 'changed' });
  * password again". Anchored, with the asterisk optional, hits exactly one
  * field and keeps working if the field stops being required.
  */
-export function field(page: Page, label: string): Locator {
+/**
+ * A labelled input, on the page or inside a dialog.
+ *
+ * `Page | Locator` because a dialog's fields have to be found *within* it:
+ * the screen behind stays in the DOM, so ‘Name’ on the page would be
+ * ambiguous the moment an edit dialog opens over a form.
+ */
+export function field(scope: Page | Locator, label: string): Locator {
   /*
     Anchored, with a trailing asterisk that may or may not be there.
 
@@ -226,7 +233,7 @@ export function field(page: Page, label: string): Locator {
     which would turn the asterisk into "any number of spaces" and match the
     wrong field without saying so. CLAUDE.md §13 records the same trap twice.
   */
-  return page.getByLabel(new RegExp(String.raw`^${label}\s*\*?$`));
+  return scope.getByLabel(new RegExp(String.raw`^${label}\s*\*?$`));
 }
 
 /** A select rendered by `TextField select`, which is a combobox. */

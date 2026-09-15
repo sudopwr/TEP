@@ -4,11 +4,13 @@ import {
   AttachDocument,
   AuthenticateSession,
   ChangeCredentials,
+  DeleteAccount,
   DeletePayout,
   GenerateFinancialYearReport,
   GetAccountBalances,
   GetDocument,
   GetPayoutTrail,
+  EditAccount,
   GetSettlement,
   ImportLegacyCsv,
   ListAccounts,
@@ -125,6 +127,8 @@ export function buildContainer(
     listCompanies: new ListCompanies({ companies }),
 
     recordAccount: new RecordAccount({ accounts, companies, currencies }),
+    editAccount: new EditAccount({ accounts, companies, currencies }),
+    deleteAccount: new DeleteAccount({ accounts, transactions }),
     listAccounts: new ListAccounts({ accounts }),
 
     recordPayout: new RecordPayout({ payouts, companies, currencies, clock }),

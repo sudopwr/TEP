@@ -217,6 +217,21 @@ export interface CreateCompanyCommand {
   readonly notes?: string | null;
 }
 
+/**
+ * An edit is a **replacement**, which is why it carries the whole account and
+ * not the fields that changed: the allow-list's empty value means "holds
+ * anything", so a partial shape would have no way to say it (see
+ * `updateAccountBody` on the server).
+ */
+export interface UpdateAccountCommand {
+  readonly accountId: number;
+  readonly code: string;
+  readonly name: string;
+  readonly type: AccountType;
+  readonly companyId?: number | null;
+  readonly allowedCurrencies?: readonly string[];
+}
+
 export interface CreateAccountCommand {
   readonly code: string;
   readonly name: string;

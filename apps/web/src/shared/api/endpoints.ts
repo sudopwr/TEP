@@ -28,6 +28,7 @@ import type {
   SignInCommand,
   TransactionJson,
   TransactionsResponse,
+  UpdateAccountCommand,
 } from './types';
 
 /**
@@ -135,6 +136,25 @@ export function createAccount(
     method: 'POST',
     body: command,
   });
+}
+
+export function updateAccount({
+  accountId,
+  ...account
+}: UpdateAccountCommand): Promise<{ account: AccountJson }> {
+  return request<{ account: AccountJson }>(
+    `/api/accounts/${String(accountId)}`,
+    { method: 'PUT', body: account },
+  );
+}
+
+export function deleteAccount(
+  accountId: number,
+): Promise<{ account: AccountJson }> {
+  return request<{ account: AccountJson }>(
+    `/api/accounts/${String(accountId)}`,
+    { method: 'DELETE' },
+  );
 }
 
 // ---------- Payouts ----------
