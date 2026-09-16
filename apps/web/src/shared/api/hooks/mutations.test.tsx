@@ -17,7 +17,9 @@ import {
   useAttachDocument,
   useDeleteAccount,
   useDeletePayout,
+  useDeleteTransaction,
   useEditAccount,
+  useEditTransaction,
   useRecordCompany,
   useRecordPayout,
   useRecordTransaction,
@@ -565,5 +567,148 @@ describe('useDeleteAccount', () => {
     });
 
     expect(isStale(client, queryKeys.accounts.list())).toBe(false);
+  });
+});
+
+describe('useDeleteTransaction', () => {
+  /**
+   * The same blast radius recording a leg has — and it has to be, since the
+   * two are the same change in opposite directions.
+   */
+  async function deleteAgainstSeededCache(): Promise<QueryClient> {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.transactions.list(), { transactions: [] });
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+    // Should survive untouched:
+    seed(client, queryKeys.payouts.list(), { payouts: [] });
+    seed(client, queryKeys.companies.list(), { companies: [] });
+    seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
+
+    const { result } = renderHookWithClient(() => useDeleteTransaction(), {
+      client,
+    });
+
+    result.current.mutate(3);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    return client;
+  }
+
+  it("invalidates that payout's trail, settlement and every derived figure", async () => {
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+    expect(isStale(client, queryKeys.payouts.settlement(1))).toBe(true);
+    expect(isStale(client, queryKeys.transactions.list())).toBe(true);
+    expect(isStale(client, queryKeys.balances.list())).toBe(true);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(true);
+  });
+
+  it('leaves the payout list, the companies and another payout alone', async () => {
+    // The payouts list carries gross, charges and reference — none of which a
+    // leg touches, in either direction.
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.list())).toBe(false);
+    expect(isStale(client, queryKeys.companies.list())).toBe(false);
+    expect(isStale(client, queryKeys.payouts.trail(2))).toBe(false);
+  });
+
+  it('re-reads the payout the server names, not one the caller assumed', async () => {
+    // The id in the answer is the payout the deleted row actually belonged
+    // to; a caller passing a stale one would invalidate the wrong trail.
+    const client = createQueryClient();
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+
+    const { result } = renderHookWithClient(() => useDeleteTransaction(), {
+      client,
+    });
+
+    result.current.mutate(3);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(result.current.data?.payoutId).toBe(1);
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+  });
+});
+
+describe('useEditTransaction', () => {
+  /**
+   * The same list as recording and deleting a leg — an edit changes the same
+   * derivations a new leg would, and §7's checks most of all, since an edited
+   * sale can leave its fees off §8's schedule.
+   */
+  async function editAgainstSeededCache(): Promise<QueryClient> {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.transactions.list(), { transactions: [] });
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+    // Should survive untouched:
+    seed(client, queryKeys.payouts.list(), { payouts: [] });
+    seed(client, queryKeys.accounts.list(), { accounts: [] });
+    seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
+
+    const { result } = renderHookWithClient(() => useEditTransaction(), {
+      client,
+    });
+
+    result.current.mutate({
+      transactionId: 7,
+      code: 'Transaction007',
+      txnDate: '2025-03-13',
+      fromAccountId: 3,
+      toAccountId: 4,
+      fromAmount: '222.00000000',
+      fromCurrencyCode: 'USDT',
+      toAmount: '221.50000000',
+      toCurrencyCode: 'USDT',
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    return client;
+  }
+
+  it("invalidates that payout's trail, settlement and every derived figure", async () => {
+    const client = await editAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+    expect(isStale(client, queryKeys.payouts.settlement(1))).toBe(true);
+    expect(isStale(client, queryKeys.transactions.list())).toBe(true);
+    expect(isStale(client, queryKeys.balances.list())).toBe(true);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(true);
+  });
+
+  it('leaves the payout list, the accounts and another payout alone', async () => {
+    // An edited leg changes no payout's gross, charges or reference, and
+    // changes nothing about the accounts themselves.
+    const client = await editAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.list())).toBe(false);
+    expect(isStale(client, queryKeys.accounts.list())).toBe(false);
+    expect(isStale(client, queryKeys.payouts.trail(2))).toBe(false);
+  });
+
+  it('re-reads the payout the answer names, not one the caller assumed', async () => {
+    // The payout is carried forward by the use case, so the row that comes
+    // back is the authority on which trail is now wrong.
+    const client = await editAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
   });
 });

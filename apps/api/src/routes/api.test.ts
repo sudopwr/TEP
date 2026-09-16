@@ -742,6 +742,236 @@ describe('/api routes', () => {
     });
   });
 
+  describe('PUT /api/transactions/:id (F21)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    /** Transfer A as it stands: TrustWallet → CoinDCX, USDT both sides. */
+    const transferA = {
+      code: 'Transaction007',
+      txnDate: '2025-03-13',
+      fromAccountId: 3,
+      toAccountId: 4,
+      fromAmount: '222.00000000',
+      fromCurrencyCode: 'USDT',
+      toAmount: '221.50000000',
+      toCurrencyCode: 'USDT',
+    };
+
+    it('corrects a leg and answers with what it now is', async () => {
+      const response = await put('/api/transactions/7', transferA);
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().transaction).toMatchObject({
+        id: 7,
+        fromAmount: { currency: 'USDT', amount: '222.00000000' },
+        toAmount: { currency: 'USDT', amount: '221.50000000' },
+      });
+    });
+
+    it('keeps the leg in its tree, under the same parent and kind', async () => {
+      await put('/api/transactions/7', { ...transferA, code: 'Renamed' });
+
+      const trail = await get('/api/payouts/1/trail');
+      const withdrawal = trail
+        .json()
+        .roots[0].children.find(
+          (node: { transaction: { id: number } }) => node.transaction.id === 2,
+        );
+
+      expect(withdrawal.children[0].transaction).toMatchObject({
+        id: 7,
+        code: 'Renamed',
+        kind: 'transfer',
+        parentId: 2,
+      });
+    });
+
+    it('moves the balances, because they are derived from the legs', async () => {
+      const before = await get('/api/accounts/balances');
+      await put('/api/transactions/7', transferA);
+      const after = await get('/api/accounts/balances');
+
+      expect(after.json().balances).not.toEqual(before.json().balances);
+    });
+
+    it('leaves the fees on the leg untouched, flags rather than recomputes', async () => {
+      // §7: a fee more than 2% off the schedule is suspicious, not impossible.
+      // Halving a sale's proceeds must leave the recorded fees alone — TDS came
+      // off a statement — and let the checks say so.
+      const before = await get('/api/payouts/1/settlement');
+
+      await put('/api/transactions/3', {
+        code: 'Transaction003',
+        txnDate: '2025-03-12',
+        fromAccountId: 4,
+        toAccountId: 5,
+        fromAmount: '100.00000000',
+        fromCurrencyCode: 'USDT',
+        toAmount: '9000.00',
+        toCurrencyCode: 'INR',
+        rate: '90.00',
+      });
+
+      const after = await get('/api/payouts/1/settlement');
+      const checks = await get('/api/data-quality');
+
+      expect(after.json().totalFees).toEqual(before.json().totalFees);
+      expect(checks.json().issues.length).toBeGreaterThan(0);
+    });
+
+    it('400s a same-account move and a rate on a same-currency move', async () => {
+      const sameAccount = await put('/api/transactions/7', {
+        ...transferA,
+        toAccountId: transferA.fromAccountId,
+      });
+      const pointlessRate = await put('/api/transactions/7', {
+        ...transferA,
+        rate: '97.66',
+      });
+
+      expect(sameAccount.statusCode).toBe(400);
+      expect(sameAccount.json().code).toBe('same_account_transfer');
+      expect(pointlessRate.statusCode).toBe(400);
+      expect(pointlessRate.json().code).toBe('rate_on_same_currency');
+    });
+
+    it('400s a currency the destination cannot hold', async () => {
+      const response = await put('/api/transactions/7', {
+        ...transferA,
+        fromCurrencyCode: 'INR',
+        toCurrencyCode: 'INR',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().code).toBe('currency_not_allowed');
+    });
+
+    it('400s an amount sent as a JSON number, not a string', async () => {
+      // N1 again: a float64 would already have rounded before Money saw it.
+      const response = await put('/api/transactions/7', {
+        ...transferA,
+        fromAmount: 222,
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('400s a field the shape does not carry — kind, parent or payout', async () => {
+      for (const extra of [
+        { kind: 'sale' },
+        { parentId: 1 },
+        { payoutId: 2 },
+      ]) {
+        const response = await put('/api/transactions/7', {
+          ...transferA,
+          ...extra,
+        });
+
+        expect(response.statusCode).toBe(400);
+      }
+    });
+
+    it('404s a leg that is not there, and an account that is not', async () => {
+      const missingLeg = await put('/api/transactions/999', transferA);
+      const missingAccount = await put('/api/transactions/7', {
+        ...transferA,
+        toAccountId: 99,
+      });
+
+      expect(missingLeg.statusCode).toBe(404);
+      expect(missingLeg.json().code).toBe('transaction_not_found');
+      expect(missingAccount.statusCode).toBe(404);
+      expect(missingAccount.json().code).toBe('account_not_found');
+    });
+
+    it('401s without a session, like every other data route', async () => {
+      const response = await server.app.inject({
+        method: 'PUT',
+        url: '/api/transactions/7',
+        payload: transferA,
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+  });
+
+  describe('DELETE /api/transactions/:id (F20)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    it('deletes a leaf and says what went, and which payout to re-read', async () => {
+      const response = await del('/api/transactions/3');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        transaction: { code: 'Transaction003' },
+        payoutId: 1,
+        transactionsDeleted: 1,
+      });
+      expect(response.json().feesDeleted).toBeGreaterThan(0);
+    });
+
+    it('deletes the legs below it too', async () => {
+      // Withdrawal A carries transfer A, which carries sale 003.
+      const response = await del('/api/transactions/2');
+
+      expect(response.json().transactionsDeleted).toBe(3);
+
+      const left = await get('/api/transactions');
+      expect(left.json().transactions).toHaveLength(10);
+    });
+
+    it('moves the settlement it was part of', async () => {
+      // §10's ₹84,642.93 is four sales; removing one has to change the net,
+      // which is the point of the trail invalidation in the browser.
+      const before = await get('/api/payouts/1/settlement');
+      await del('/api/transactions/3');
+      const after = await get('/api/payouts/1/settlement');
+
+      expect(before.json().netCredited.amount).toBe('84642.93');
+      expect(after.json().netCredited.amount).not.toBe('84642.93');
+    });
+
+    it('leaves the payout standing when its whole tree goes', async () => {
+      await del('/api/transactions/1');
+
+      const payouts = await get('/api/payouts');
+      const trail = await get('/api/payouts/1/trail');
+
+      expect(payouts.json().payouts).toHaveLength(1);
+      expect(trail.json().roots).toEqual([]);
+    });
+
+    it('404s a leg that is not there, and changes nothing', async () => {
+      const response = await del('/api/transactions/999');
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('transaction_not_found');
+
+      const left = await get('/api/transactions');
+      expect(left.json().transactions).toHaveLength(13);
+    });
+
+    it('400s an id that is not a row number', async () => {
+      const response = await del('/api/transactions/not-a-number');
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('401s without a session, like every other data route', async () => {
+      const response = await server.app.inject({
+        method: 'DELETE',
+        url: '/api/transactions/3',
+      });
+
+      expect(response.statusCode).toBe(401);
+      expect(response.json().code).toBe('authentication_required');
+    });
+  });
+
   describe('the reference payout (§10)', () => {
     beforeEach(async () => {
       await withSeed(seedReferencePayout);

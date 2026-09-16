@@ -44,4 +44,17 @@ export interface TransactionRepository {
 
   /** One fee per type per transaction; re-recording a type replaces it. */
   recordFee(draft: TransactionFeeDraft): Promise<TransactionFee>;
+
+  /**
+   * Remove a leg and every leg below it, all or nothing.
+   *
+   * The subtree and not just the row: a child describes money that arrived
+   * *from* this leg, and leaving it behind would manufacture the broken link
+   * `GetPayoutTrail` renders as an orphaned root. That rendering exists to
+   * make damage visible, not to be a place to put legs on purpose.
+   *
+   * Their fees go too, and the document links to any of them — never the
+   * documents, which may be evidence for several things (F6).
+   */
+  delete(id: TransactionId): Promise<void>;
 }

@@ -202,3 +202,111 @@ describe('SqliteTransactionRepository', () => {
     });
   });
 });
+
+describe('SqliteTransactionRepository.delete', () => {
+  let database: SqliteDatabase;
+  let repository: SqliteTransactionRepository;
+
+  beforeEach(() => {
+    const arranged = arrangeReferencePayout();
+    database = arranged.database;
+    repository = new SqliteTransactionRepository(database, arranged.currencies);
+  });
+
+  afterEach(() => {
+    database.close();
+  });
+
+  // `Number`, because the connection runs with SQLite's 64-bit integers on
+  // (§6), so even a COUNT arrives as a bigint.
+  const count = (sql: string, ...params: unknown[]): number =>
+    Number((database.prepare(sql).get(...params) as { c: number | bigint }).c);
+
+  it('removes a subtree three deep, which a plain delete cannot', async () => {
+    // Withdrawal A (id 2) carries transfer A (7), which carries sale 003 (3).
+    // `parent_id` is ON DELETE RESTRICT and RESTRICT is checked the instant a
+    // row goes, so deleting the withdrawal outright fails — proven here, so
+    // nobody replaces the peel with one statement.
+    expect(() => {
+      database.prepare('DELETE FROM transactions WHERE id = ?').run(2);
+    }).toThrow(/FOREIGN KEY constraint failed/);
+
+    await repository.delete(2);
+
+    expect(
+      count('SELECT COUNT(*) c FROM transactions WHERE id IN (2, 7, 3)'),
+    ).toBe(0);
+  });
+
+  it('leaves the other twelve legs where they were', async () => {
+    await repository.delete(3);
+
+    expect(count('SELECT COUNT(*) c FROM transactions')).toBe(12);
+  });
+
+  it('takes the fees on every leg it removes', async () => {
+    const before = count('SELECT COUNT(*) c FROM transaction_fees');
+
+    await repository.delete(2);
+
+    // The withdrawal's network fee and the sale's TDS, exchange fee and GST.
+    expect(
+      count(
+        'SELECT COUNT(*) c FROM transaction_fees WHERE transaction_id IN (2, 7, 3)',
+      ),
+    ).toBe(0);
+    expect(count('SELECT COUNT(*) c FROM transaction_fees')).toBeLessThan(
+      before,
+    );
+  });
+
+  it('unlinks documents from the removed legs without deleting them', async () => {
+    // F6: one file may be evidence for several things, so the link goes and
+    // the document stays — including its link to anything else.
+    const document = database
+      .prepare(
+        `INSERT INTO documents (filename, stored_path, sha256)
+         VALUES ('receipt.pdf', 'ab/cd/receipt.pdf', 'abc123')
+         RETURNING id`,
+      )
+      .get() as { id: number };
+
+    database
+      .prepare(
+        'INSERT INTO document_links (document_id, transaction_id) VALUES (?, 3)',
+      )
+      .run(document.id);
+    database
+      .prepare(
+        'INSERT INTO document_links (document_id, payout_id) VALUES (?, 1)',
+      )
+      .run(document.id);
+
+    await repository.delete(3);
+
+    expect(count('SELECT COUNT(*) c FROM documents')).toBe(1);
+    expect(
+      count(
+        'SELECT COUNT(*) c FROM document_links WHERE transaction_id IS NOT NULL',
+      ),
+    ).toBe(0);
+    expect(
+      count(
+        'SELECT COUNT(*) c FROM document_links WHERE payout_id IS NOT NULL',
+      ),
+    ).toBe(1);
+  });
+
+  it('leaves the payout standing when its whole tree goes', async () => {
+    await repository.delete(1);
+
+    expect(count('SELECT COUNT(*) c FROM transactions')).toBe(0);
+    expect(count('SELECT COUNT(*) c FROM payouts')).toBe(1);
+  });
+
+  it('is a no-op for an id that is not there', async () => {
+    await expect(repository.delete(4242)).resolves.toBeUndefined();
+
+    expect(count('SELECT COUNT(*) c FROM transactions')).toBe(13);
+  });
+});

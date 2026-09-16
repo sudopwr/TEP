@@ -73,6 +73,29 @@ const SQL = {
                 amount = excluded.amount,
                 currency_code = excluded.currency_code
               RETURNING id`,
+  /*
+    One layer of the subtree: the legs at or under `?` that are nobody's parent.
+
+    The same shape as `SqlitePayoutRepository`'s peel, and for the same reason
+    — `parent_id` is ON DELETE RESTRICT, which SQLite checks the instant a row
+    goes rather than at the end of the statement, so deleting a leg that still
+    has children fails with a bare "FOREIGN KEY constraint failed" no matter
+    what order a single DELETE would have reached them in.
+
+    The recursive CTE names the subtree; the `NOT IN` keeps each pass to its
+    current leaves. Run until it changes nothing and the subtree is gone,
+    deepest first, which is the only order the constraint allows.
+  */
+  deleteLeavesUnder: `WITH RECURSIVE subtree(id) AS (
+                          SELECT id FROM transactions WHERE id = ?
+                        UNION ALL
+                          SELECT t.id FROM transactions t
+                            JOIN subtree s ON t.parent_id = s.id
+                      )
+                      DELETE FROM transactions
+                       WHERE id IN (SELECT id FROM subtree)
+                         AND id NOT IN (SELECT parent_id FROM transactions
+                                         WHERE parent_id IS NOT NULL)`,
 } as const;
 
 /**
@@ -120,8 +143,11 @@ export class SqliteTransactionRepository implements TransactionRepository {
   readonly #selectFeesByTransaction;
   readonly #selectFeeById;
   readonly #upsertFee;
+  readonly #deleteLeavesUnder;
+  readonly #database: SqliteDatabase;
 
   constructor(database: SqliteDatabase, currencies: CurrencyRegistry) {
+    this.#database = database;
     this.#currencies = currencies;
     this.#selectById = database.prepare<[number], TransactionRow>(
       SQL.selectById,
@@ -162,6 +188,30 @@ export class SqliteTransactionRepository implements TransactionRepository {
       },
       { id: bigint }
     >(SQL.upsertFee);
+    this.#deleteLeavesUnder = database.prepare<[number]>(SQL.deleteLeavesUnder);
+  }
+
+  /**
+   * The leg, the legs below it, their fees and the links to any of them.
+   *
+   * One unit of work, because the first statement runs several times: half a
+   * peeled subtree is a set of legs whose parent is gone, which is the exact
+   * shape §7 has no constraint against and `GetPayoutTrail` would render as
+   * orphaned roots. `transaction_fees` and `document_links` need no statement
+   * of their own — both cascade from the rows going.
+   */
+  async delete(id: TransactionId): Promise<void> {
+    const remove = this.#database.transaction((transactionId: number) => {
+      // Bounded by the depth of the subtree: each pass removes its current
+      // leaves, so a pass that removes nothing means nothing is left.
+      for (;;) {
+        const { changes } = this.#deleteLeavesUnder.run(transactionId);
+        if (changes === 0) break;
+      }
+    });
+
+    remove(id);
+    return Promise.resolve();
   }
 
   async findById(id: TransactionId): Promise<Transaction | null> {

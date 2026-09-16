@@ -2,7 +2,12 @@ import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
 import { REFERENCE_TRAIL } from '../../../test/msw/reference-payout';
-import { answering, unreachable } from '../../../test/msw/handlers';
+import {
+  answering,
+  deleteFails,
+  invalidRequest,
+  unreachable,
+} from '../../../test/msw/handlers';
 import { server } from '../../../test/msw/server';
 import {
   renderFeature,
@@ -319,7 +324,9 @@ describe('RecordTransactionForm', () => {
     await choose(/What happened/, /Sale/);
 
     expect(screen.getByLabelText(/^TDS withheld/)).toBeInTheDocument();
-    expect(screen.getByText('From the statement. Never computed.')).toBeInTheDocument();
+    expect(
+      screen.getByText('From the statement. Never computed.'),
+    ).toBeInTheDocument();
   });
 
   it('drops the rate field when both sides are the same currency', async () => {
@@ -389,5 +396,232 @@ describe('RecordTransactionForm', () => {
     expect(
       screen.getByRole('link', { name: 'Record one first.' }),
     ).toHaveAttribute('href', '/accounts/new');
+  });
+});
+
+describe('deleting a leg', () => {
+  const askToDelete = async (code: string): Promise<HTMLElement> => {
+    await tree();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: `Delete ${code}` }),
+    );
+
+    return screen.findByRole('dialog');
+  };
+
+  it('offers a delete on each leg, named for that leg', async () => {
+    // Thirteen buttons share this screen; "Delete" thirteen times tells a
+    // screen reader nothing about which row it is on.
+    await tree();
+
+    expect(
+      screen.getByRole('button', { name: 'Delete Transaction003' }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Delete Transaction002' }),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing hangs off a leaf', async () => {
+    const dialog = await askToDelete('Transaction003');
+
+    expect(
+      within(dialog).getByText('Delete Transaction003?'),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(/Nothing hangs off it/),
+    ).toBeInTheDocument();
+  });
+
+  it('counts the legs below a parent, from the tree already on screen', async () => {
+    // Withdrawal A carries transfer A, which carries sale 003: two below it,
+    // counted without a second request.
+    const dialog = await askToDelete('Transaction002');
+
+    expect(
+      within(dialog).getByText(/The 2 legs below it go too/),
+    ).toBeInTheDocument();
+  });
+
+  it('deletes it and says what went', async () => {
+    const dialog = await askToDelete('Transaction003');
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete leg' }),
+    );
+
+    expect(
+      await screen.findByText('Transaction003 deleted'),
+    ).toBeInTheDocument();
+  });
+
+  it('counts the subtree in the confirmation when one goes with it', async () => {
+    const dialog = await askToDelete('Transaction002');
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete leg' }),
+    );
+
+    // The server's count, not the browser's guess: the two agree here, and
+    // when they would not, the server is the one that is right.
+    expect(
+      await screen.findByText(/Transaction002 and \d+ below it deleted/),
+    ).toBeInTheDocument();
+  });
+
+  it('deletes nothing when the question is declined', async () => {
+    const dialog = await askToDelete('Transaction003');
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+
+    expect(
+      await screen.findByRole('tree', {
+        name: 'Money trail for TradeifyPayout001',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/deleted$/)).not.toBeInTheDocument();
+  });
+
+  it('shows the reason beside the question when the server refuses', async () => {
+    server.use(
+      deleteFails('/api/transactions/:id', {
+        code: 'transaction_not_found',
+        message: 'There is no transaction numbered 3.',
+      }),
+    );
+
+    const dialog = await askToDelete('Transaction003');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete leg' }),
+    );
+
+    expect(
+      await within(dialog).findByText(/There is no transaction numbered 3\./),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Delete Transaction003?')).toBeInTheDocument();
+  });
+});
+
+describe('editing a leg', () => {
+  const openTheEditor = async (code: string): Promise<HTMLElement> => {
+    await tree();
+
+    await userEvent.click(screen.getByRole('button', { name: `Edit ${code}` }));
+
+    return screen.findByRole('dialog');
+  };
+
+  it('opens filled in with what the leg is', async () => {
+    // Transfer A: TrustWallet → CoinDCX, USDT both sides.
+    const dialog = await openTheEditor('Transaction007');
+
+    expect(within(dialog).getByText('Edit Transaction007')).toBeInTheDocument();
+    expect(within(dialog).getByLabelText(/^Reference code/)).toHaveValue(
+      'Transaction007',
+    );
+    expect(within(dialog).getByLabelText(/^Amount sent/)).not.toHaveValue('');
+  });
+
+  it('says what it will not touch, and what the checks will say', async () => {
+    // The fees are the honest consequence: they stay as recorded, and §7
+    // flags them rather than the edit recomputing them behind the reader.
+    const dialog = await openTheEditor('Transaction007');
+
+    expect(
+      within(dialog).getByText(/fees on it stay as they were recorded/),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no kind, parent or payout — none of them is a correction', async () => {
+    const dialog = await openTheEditor('Transaction007');
+
+    expect(within(dialog).queryByLabelText(/What happened/)).toBeNull();
+    expect(within(dialog).queryByLabelText(/Follows on from/)).toBeNull();
+  });
+
+  it('hides the rate when both sides are the same currency', async () => {
+    // §7: `rate_applied IS NULL when from_currency = to_currency` is a
+    // database constraint, so the field goes rather than being refused later.
+    const dialog = await openTheEditor('Transaction007');
+
+    expect(within(dialog).queryByLabelText(/^Rate/)).toBeNull();
+  });
+
+  it('shows the rate on a cross-currency leg, at full precision', async () => {
+    // Stored as `9826120000` — scaled by 1e8 (§6) — and edited as the decimal
+    // a person reads off a statement, with the eighth place intact, since it
+    // is the difference between a trail that reconciles and one a rupee out.
+    const dialog = await openTheEditor('Transaction003');
+
+    expect(within(dialog).getByLabelText(/^Rate/)).toHaveValue('98.26120000');
+  });
+
+  it('refuses a leg that sends to the account it came from', async () => {
+    const dialog = await openTheEditor('Transaction007');
+
+    await userEvent.click(
+      within(dialog).getByRole('combobox', { name: /To account/ }),
+    );
+    const options = await screen.findAllByRole('option');
+    const trustwallet = options.find(
+      (option) => option.textContent === 'TrustWallet',
+    ) as HTMLElement;
+    await userEvent.click(trustwallet);
+
+    expect(
+      within(dialog).getByText(/moves money between two different accounts/),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole('button', { name: 'Save leg' }),
+    ).toBeDisabled();
+  });
+
+  it('saves the change and says so in the words the button used', async () => {
+    const dialog = await openTheEditor('Transaction007');
+
+    const amount = within(dialog).getByLabelText(/^Amount sent/);
+    await userEvent.clear(amount);
+    await userEvent.type(amount, '222.00000000');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Save leg' }),
+    );
+
+    expect(await screen.findByText('Transaction007 saved')).toBeInTheDocument();
+  });
+
+  it("puts the server's complaint under the field it is about", async () => {
+    server.use(
+      invalidRequest(
+        '/api/transactions/:id',
+        [{ path: 'fromAmount', message: 'expected a positive amount' }],
+        'put',
+      ),
+    );
+
+    const dialog = await openTheEditor('Transaction007');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Save leg' }),
+    );
+
+    expect(
+      await screen.findByText('expected a positive amount'),
+    ).toBeInTheDocument();
+  });
+
+  it('closes without saving when cancelled', async () => {
+    const dialog = await openTheEditor('Transaction007');
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+
+    expect(
+      await screen.findByRole('tree', {
+        name: 'Money trail for TradeifyPayout001',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/saved$/)).not.toBeInTheDocument();
   });
 });

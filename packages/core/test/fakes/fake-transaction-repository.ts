@@ -123,6 +123,41 @@ export class FakeTransactionRepository implements TransactionRepository {
   }
 
   /**
+   * A leg and every leg below it, as `SqliteTransactionRepository.delete` does
+   * it — the subtree, because a child is money that arrived from this leg.
+   */
+  delete(id: TransactionId): Promise<void> {
+    const doomed = new Set<TransactionId>([id]);
+
+    // Repeated passes rather than a walk: the rows are a Map in no particular
+    // order, so a single pass could meet a grandchild before its parent had
+    // been marked. Bounded by the depth of the tree.
+    for (;;) {
+      const before = doomed.size;
+
+      for (const transaction of this.#rows.values()) {
+        if (transaction.parentId !== null && doomed.has(transaction.parentId)) {
+          doomed.add(transaction.id);
+        }
+      }
+
+      if (doomed.size === before) break;
+    }
+
+    for (const transactionId of doomed) {
+      this.#rows.delete(transactionId);
+
+      for (const fee of [...this.#fees.values()]) {
+        if (fee.transactionId === transactionId) {
+          this.#fees.delete(fee.id);
+        }
+      }
+    }
+
+    return Promise.resolve();
+  }
+
+  /**
    * The cascade `PayoutRepository.delete` performs in SQL, in a Map.
    *
    * Not on the port: no use case deletes a leg on its own, and a port method

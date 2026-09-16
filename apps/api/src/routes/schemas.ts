@@ -261,6 +261,32 @@ export const createTransactionBody = z.discriminatedUnion('kind', [
   saleBody,
 ]);
 
+/**
+ * What a leg may become — flat, and deliberately not a partial of the union
+ * above.
+ *
+ * No `kind` and no `parentId`: neither is a correction of this row. Changing
+ * kind would mean running §8's fee engine, which is `RecordSale`'s job, and
+ * re-parenting restructures the tree and can point a leg at its own
+ * descendant — `EditTransaction` says why in full. No discriminator either:
+ * a sale already *has* a `toAmount` on file (its gross proceeds, computed at
+ * record time), so both shapes carry the same fields once recorded.
+ */
+export const updateTransactionBody = z
+  .object({
+    code: z.string().trim().min(1).max(64),
+    txnDate: isoDate,
+    fromAccountId: z.number().int().positive(),
+    toAccountId: z.number().int().positive(),
+    fromAmount: positiveDecimalString,
+    fromCurrencyCode: currencyCode,
+    toAmount: positiveDecimalString,
+    toCurrencyCode: currencyCode,
+    rate: scaledRate.nullish(),
+    notes: z.string().max(4096).nullish(),
+  })
+  .strict();
+
 export const listTransactionsQuery = z
   .object({ payoutId: z.coerce.number().int().positive().optional() })
   .strict();

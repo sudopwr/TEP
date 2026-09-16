@@ -110,6 +110,65 @@ export const handlers = [
     ),
   ),
 
+  /*
+    A PUT echoes the leg back with what it was sent, keeping the fields the
+    server carries forward — id, payout, parent, kind — from the fixture.
+
+    Echoing rather than answering with a canned row, because the dialog's job
+    is to send the leg as it now is; a fixed response would let a form that
+    sends the wrong body pass.
+  */
+  http.put('/api/transactions/:id', async ({ request, params }) => {
+    const id = Number(params['id']);
+    const existing =
+      TRANSACTIONS.find((one) => one.id === id) ?? TRANSACTIONS[0];
+    const body = (await request.json()) as {
+      fromAmount: string;
+      fromCurrencyCode: string;
+      toAmount: string;
+      toCurrencyCode: string;
+      rate?: string | null;
+    };
+
+    return HttpResponse.json({
+      transaction: {
+        ...existing,
+        ...body,
+        fromAmount: {
+          currency: body.fromCurrencyCode,
+          minor: '1',
+          amount: body.fromAmount,
+        },
+        toAmount: {
+          currency: body.toCurrencyCode,
+          minor: '1',
+          amount: body.toAmount,
+        },
+        rate: body.rate ?? null,
+      },
+    });
+  }),
+
+  /*
+    A delete echoes the leg from the fixture, with the subtree it would take.
+
+    The count comes from the reference tree rather than a constant, so a
+    fixture that grows a leg does not quietly make this handler lie.
+  */
+  http.delete('/api/transactions/:id', ({ params }) => {
+    const id = Number(params['id']);
+    const transaction =
+      TRANSACTIONS.find((one) => one.id === id) ?? TRANSACTIONS[0];
+    const below = TRANSACTIONS.filter((one) => one.parentId === id).length;
+
+    return HttpResponse.json({
+      transaction,
+      payoutId: transaction?.payoutId ?? PAYOUT.id,
+      transactionsDeleted: 1 + below,
+      feesDeleted: 1,
+    });
+  }),
+
   http.post('/api/transactions/:id/documents', () =>
     HttpResponse.json(
       { document: DOCUMENTS[0], created: true },
@@ -231,14 +290,20 @@ export const accountInUse = (transactionCount: number) =>
     ),
   );
 
-/** A delete the server refuses — the payout is already gone. */
-export const deleteFails = (path: string) =>
-  http.delete(path, () =>
-    HttpResponse.json(
-      { code: 'payout_not_found', message: 'There is no payout numbered 1.' },
-      { status: 404 },
-    ),
-  );
+/**
+ * A delete the server refuses — the row is already gone.
+ *
+ * The message is a parameter because the reader is shown it verbatim (§12),
+ * and "There is no payout numbered 1" under a question about a *leg* would be
+ * a test asserting on a sentence the application would never produce.
+ */
+export const deleteFails = (
+  path: string,
+  failure: { code: string; message: string } = {
+    code: 'payout_not_found',
+    message: 'There is no payout numbered 1.',
+  },
+) => http.delete(path, () => HttpResponse.json(failure, { status: 404 }));
 
 /** Any POST that refuses, for testing rollback. */
 export const postFails = (path: string, status = 400) =>

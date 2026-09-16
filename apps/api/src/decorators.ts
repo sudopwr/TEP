@@ -6,11 +6,13 @@ import type {
   ChangeCredentials,
   DeleteAccount,
   DeletePayout,
+  DeleteTransaction,
   GenerateFinancialYearReport,
   GetAccountBalances,
   GetDocument,
   GetPayoutTrail,
   EditAccount,
+  EditTransaction,
   GetSettlement,
   ListAccounts,
   ListCompanies,
@@ -72,6 +74,8 @@ export interface UseCases {
   readonly getPayoutTrail: GetPayoutTrail;
   readonly getSettlement: GetSettlement;
   readonly recordTransaction: RecordTransaction;
+  readonly editTransaction: EditTransaction;
+  readonly deleteTransaction: DeleteTransaction;
   readonly recordSale: RecordSale;
   readonly listTransactions: ListTransactions;
   readonly attachDocument: AttachDocument;

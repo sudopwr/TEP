@@ -171,6 +171,19 @@ export interface CredentialsChangedJson extends SessionUserJson {
   readonly otherSessionsRevoked: number;
 }
 
+/**
+ * What a leg's delete took with it (F20).
+ *
+ * `transactionsDeleted` includes the leg itself, so 1 means it had nothing
+ * below it; `payoutId` says which trail, settlement and checks to re-read.
+ */
+export interface TransactionDeletedJson {
+  readonly transaction: TransactionJson;
+  readonly payoutId: number;
+  readonly transactionsDeleted: number;
+  readonly feesDeleted: number;
+}
+
 export interface SaleRecordedJson {
   readonly transaction: TransactionJson;
   readonly grossProceeds: MoneyJson;
@@ -288,6 +301,28 @@ export interface CreateSaleCommand {
 
 export type CreateTransactionCommand =
   CreateMovementCommand | CreateSaleCommand;
+
+/**
+ * What a leg may be corrected to (F21) — the row, and only the row.
+ *
+ * No `kind`, no `parentId`, no `payoutId`: none of the three is a correction
+ * of this leg, and the server refuses a body carrying them. The rate is a
+ * decimal string like every other number here; §6's 1e8 scaling happens at
+ * the edge, never in the browser.
+ */
+export interface UpdateTransactionCommand {
+  readonly transactionId: number;
+  readonly code: string;
+  readonly txnDate: string;
+  readonly fromAccountId: number;
+  readonly toAccountId: number;
+  readonly fromAmount: string;
+  readonly fromCurrencyCode: string;
+  readonly toAmount: string;
+  readonly toCurrencyCode: string;
+  readonly rate?: string | null;
+  readonly notes?: string | null;
+}
 
 export interface SignInCommand {
   readonly username: string;

@@ -26,9 +26,11 @@ import type {
   SessionUserJson,
   SettlementJson,
   SignInCommand,
+  TransactionDeletedJson,
   TransactionJson,
   TransactionsResponse,
   UpdateAccountCommand,
+  UpdateTransactionCommand,
 } from './types';
 
 /**
@@ -242,6 +244,25 @@ export function createTransaction(
   return request<{ transaction: TransactionJson } | SaleRecordedJson>(
     '/api/transactions',
     { method: 'POST', body: command },
+  );
+}
+
+export function updateTransaction({
+  transactionId,
+  ...transaction
+}: UpdateTransactionCommand): Promise<{ transaction: TransactionJson }> {
+  return request<{ transaction: TransactionJson }>(
+    `/api/transactions/${String(transactionId)}`,
+    { method: 'PUT', body: transaction },
+  );
+}
+
+export function deleteTransaction(
+  transactionId: number,
+): Promise<TransactionDeletedJson> {
+  return request<TransactionDeletedJson>(
+    `/api/transactions/${String(transactionId)}`,
+    { method: 'DELETE' },
   );
 }
 

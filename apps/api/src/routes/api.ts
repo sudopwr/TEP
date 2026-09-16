@@ -19,6 +19,7 @@ import {
   searchDocumentsQuery,
   settlementQuery,
   updateAccountBody,
+  updateTransactionBody,
 } from './schemas';
 import { parseOrThrow } from './validate';
 
@@ -277,6 +278,59 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return reply
       .status(201)
       .send({ transaction: out.transaction(transaction) });
+  });
+
+  /*
+    F21 — correct a leg.
+
+    A replacement of the row, and only of the row: the payout, the parent, the
+    kind and the fees are carried forward by the use case, which says why for
+    each. Editing a sale's amounts can leave its fees off §8's schedule — §7
+    puts that in `v_data_quality` rather than in a constraint, so the checks
+    report it and the reader decides.
+  */
+  app.put('/api/transactions/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+    const body = parseOrThrow(updateTransactionBody, request.body, 'body');
+
+    const transaction = await app.useCases.editTransaction.execute({
+      transactionId: id,
+      code: body.code,
+      txnDate: body.txnDate,
+      fromAccountId: body.fromAccountId,
+      toAccountId: body.toAccountId,
+      fromAmount: body.fromAmount,
+      fromCurrencyCode: body.fromCurrencyCode,
+      toAmount: body.toAmount,
+      toCurrencyCode: body.toCurrencyCode,
+      rate: body.rate ?? null,
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return { transaction: out.transaction(transaction) };
+  });
+
+  /*
+    F20 — remove a leg, and the legs below it.
+
+    The subtree, not the row: a child is money that arrived from this leg, and
+    orphaning it would manufacture the broken link §7 leaves to the trail to
+    display. The counts come back so the browser can name what went, and
+    `payoutId` so it knows which trail, settlement and checks to re-read.
+  */
+  app.delete('/api/transactions/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const deleted = await app.useCases.deleteTransaction.execute({
+      transactionId: id,
+    });
+
+    return {
+      transaction: out.transaction(deleted.transaction),
+      payoutId: deleted.payoutId,
+      transactionsDeleted: deleted.transactionsDeleted,
+      feesDeleted: deleted.feesDeleted,
+    };
   });
 
   // ---------- Documents (F6, F7) ----------

@@ -13,7 +13,9 @@ import {
   createTransaction,
   deleteAccount,
   deletePayout,
+  deleteTransaction,
   updateAccount,
+  updateTransaction,
 } from '../endpoints';
 import { cachesAffectedByTransaction, queryKeys } from '../keys';
 import type {
@@ -29,8 +31,10 @@ import type {
   PayoutJson,
   SaleRecordedJson,
   SettlementJson,
+  TransactionDeletedJson,
   TransactionJson,
   UpdateAccountCommand,
+  UpdateTransactionCommand,
 } from '../types';
 
 /**
@@ -223,6 +227,63 @@ export function useRecordTransaction(): UseMutationResult<
       createTransaction(command),
     onSuccess: (_result, command) =>
       invalidateAll(client, cachesAffectedByTransaction(command.payoutId)),
+  });
+}
+
+/**
+ * F21 — correct a leg.
+ *
+ * The same blast radius as recording or deleting one, and for the same
+ * reason: `cachesAffectedByTransaction` names everything derived from a leg,
+ * and an edit changes the same derivations a new leg would — the trail, the
+ * settlement, the balances and §7's checks, which matter most here, since an
+ * edited sale can leave its fees off §8's schedule.
+ *
+ * `payoutId` comes from the server's answer rather than the caller's copy:
+ * the payout is carried forward by the use case, so the row that comes back
+ * is the authority on which trail is now wrong.
+ */
+export function useEditTransaction(): UseMutationResult<
+  { transaction: TransactionJson },
+  Error,
+  UpdateTransactionCommand
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateTransaction,
+    onSuccess: (result) =>
+      invalidateAll(
+        client,
+        cachesAffectedByTransaction(result.transaction.payoutId),
+      ),
+  });
+}
+
+/**
+ * F20 — delete a leg and the legs below it.
+ *
+ * Exactly `cachesAffectedByTransaction`, the same list recording one uses:
+ * removing a leg changes that payout's trail and settlement, the ledger-wide
+ * transaction lists, the balances (money that never moved) and the checks
+ * (§7's flagged rows were partly this leg's). And the same exclusions — the
+ * payouts list carries gross, charges and reference, which no leg touches.
+ *
+ * `payoutId` comes from the **server's answer**, not from a caller who might
+ * have passed a stale one: it is the payout the deleted row actually belonged
+ * to, which is the only one whose trail is now wrong.
+ */
+export function useDeleteTransaction(): UseMutationResult<
+  TransactionDeletedJson,
+  Error,
+  number
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteTransaction,
+    onSuccess: (result) =>
+      invalidateAll(client, cachesAffectedByTransaction(result.payoutId)),
   });
 }
 

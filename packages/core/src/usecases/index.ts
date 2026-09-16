@@ -103,6 +103,19 @@ export type {
 export { RecordTransaction } from './record-transaction';
 
 export type {
+  DeleteTransactionCommand,
+  DeleteTransactionDependencies,
+  TransactionDeleted,
+} from './delete-transaction';
+export { DeleteTransaction } from './delete-transaction';
+
+export type {
+  EditTransactionCommand,
+  EditTransactionDependencies,
+} from './edit-transaction';
+export { EditTransaction } from './edit-transaction';
+
+export type {
   DataQualityCheck,
   DataQualityIssue,
   RunDataQualityChecksCommand,

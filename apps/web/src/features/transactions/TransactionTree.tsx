@@ -1,12 +1,14 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Link from '@mui/material/Link';
 import Skeleton from '@mui/material/Skeleton';
 import Typography from '@mui/material/Typography';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
   documentUrl,
   useAccountBalances,
+  useDeleteTransaction,
   usePayoutTrail,
   type AccountJson,
   type DocumentJson,
@@ -17,12 +19,16 @@ import {
 } from '../../shared/api';
 import { describeError } from '../../shared/api/errors';
 import {
+  ConfirmDialog,
   EmptyState,
   ErrorState,
   MoneyDisplay,
   TreeView,
   formatMinor,
 } from '../../shared/components';
+import { useToast } from '../../shared/feedback';
+
+import { EditTransactionDialog } from './EditTransactionDialog';
 
 /**
  * F8 — the money trail, as a tree. The screen this application exists for.
@@ -116,13 +122,17 @@ function Amount({
   );
 }
 
-/** The label column: what happened, and between which two accounts. */
+/** The label column: what happened, between which accounts, and what to do. */
 function LegLabel({
   transaction,
   accounts,
+  onEdit,
+  onDelete,
 }: {
   readonly transaction: TransactionJson;
   readonly accounts: ReadonlyMap<number, AccountJson>;
+  readonly onEdit: () => void;
+  readonly onDelete: () => void;
 }) {
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -138,10 +148,37 @@ function LegLabel({
         </Typography>
       </Box>
 
-      <Typography variant="body2" sx={{ color: 'muted.main' }}>
-        {KIND_LABELS[transaction.kind] ?? transaction.kind} ·{' '}
-        {shortDate(transaction.txnDate)} · {transaction.code}
-      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
+        <Typography variant="body2" sx={{ color: 'muted.main' }}>
+          {KIND_LABELS[transaction.kind] ?? transaction.kind} ·{' '}
+          {shortDate(transaction.txnDate)} · {transaction.code}
+        </Typography>
+
+        {/*
+          Named for the leg, not just "Edit" and "Delete": thirteen rows share
+          a screen, and a screen reader moving between them would otherwise
+          hear the same two words thirteen times with no way to tell which row
+          it is on. It also gives every test an unambiguous handle.
+        */}
+        <Button
+          size="small"
+          color="inherit"
+          aria-label={`Edit ${transaction.code}`}
+          onClick={onEdit}
+          sx={{ minWidth: 0, px: 0.75, py: 0, color: 'muted.main' }}
+        >
+          Edit
+        </Button>
+        <Button
+          size="small"
+          color="error"
+          aria-label={`Delete ${transaction.code}`}
+          onClick={onDelete}
+          sx={{ minWidth: 0, px: 0.75, py: 0 }}
+        >
+          Delete
+        </Button>
+      </Box>
     </Box>
   );
 }
@@ -242,8 +279,26 @@ function LegAmounts({ node }: { readonly node: TrailNodeJson }) {
   );
 }
 
+/** The leg and everything under it, counted from the tree already on screen. */
+function subtreeSize(node: TrailNodeJson): number {
+  return node.children.reduce((total, child) => total + subtreeSize(child), 1);
+}
+
 export function TransactionTree({ payoutId }: TransactionTreeProps) {
   const trail = usePayoutTrail(payoutId);
+  const remove = useDeleteTransaction();
+  const { notify } = useToast();
+
+  /*
+    The node being deleted, not its id.
+
+    The dialog has to name the leg and count what hangs off it, and the count
+    lives in the tree rather than in a request: the trail is already loaded,
+    and asking the server how much a delete would take would be a second
+    endpoint answering a question this screen can already see.
+  */
+  const [deleting, setDeleting] = useState<TrailNodeJson | null>(null);
+  const [editing, setEditing] = useState<TransactionJson | null>(null);
 
   /*
     Account *names* come from the balances endpoint, because there is no
@@ -289,6 +344,10 @@ export function TransactionTree({ payoutId }: TransactionTreeProps) {
   }
 
   const { payout, roots } = trail.data;
+
+  // Everything under the leg in question, itself excluded: the sentence is
+  // about what *else* goes.
+  const below = deleting === null ? 0 : subtreeSize(deleting) - 1;
 
   if (roots.length === 0) {
     return (
@@ -340,9 +399,71 @@ export function TransactionTree({ payoutId }: TransactionTreeProps) {
         keyOf={(node) => node.transaction.id}
         ariaLabel={`Money trail for ${payout.code}`}
         renderNode={(node) => (
-          <LegLabel transaction={node.transaction} accounts={accounts} />
+          <LegLabel
+            transaction={node.transaction}
+            accounts={accounts}
+            onEdit={() => {
+              setEditing(node.transaction);
+            }}
+            onDelete={() => {
+              setDeleting(node);
+            }}
+          />
         )}
         renderAside={(node) => <LegAmounts node={node} />}
+      />
+
+      <EditTransactionDialog
+        transaction={editing}
+        onClose={() => {
+          setEditing(null);
+        }}
+        onSaved={(saved) => {
+          setEditing(null);
+          notify(`${saved.code} saved`);
+        }}
+      />
+
+      {/*
+        One dialog for the whole tree, holding whichever leg was asked about.
+        Thirteen mounted dialogs would be thirteen copies of the same question.
+      */}
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting?.transaction.code ?? 'this leg'}?`}
+        message={
+          <>
+            {below === 0
+              ? 'Nothing hangs off it. Its fees go with it; documents attached to it stay on file.'
+              : `The ${String(below)} ${below === 1 ? 'leg' : 'legs'} below it go too — a leg records money that arrived from this one, and cannot outlive it. Fees go with them; documents stay on file.`}
+            {remove.error === null ? null : (
+              <Box sx={{ mt: 2 }}>
+                <ErrorState message={describeError(remove.error).message} />
+              </Box>
+            )}
+          </>
+        }
+        confirmLabel="Delete leg"
+        destructive
+        busy={remove.isPending}
+        onConfirm={() => {
+          if (deleting === null || remove.isPending) return;
+
+          remove.mutate(deleting.transaction.id, {
+            onSuccess: (result) => {
+              setDeleting(null);
+              notify(
+                result.transactionsDeleted === 1
+                  ? `${result.transaction.code} deleted`
+                  : `${result.transaction.code} and ${String(result.transactionsDeleted - 1)} below it deleted`,
+              );
+            },
+          });
+        }}
+        onCancel={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
       />
     </Box>
   );
