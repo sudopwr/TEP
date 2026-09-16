@@ -178,6 +178,14 @@ export const handlers = [
   http.get('/api/documents/search', () =>
     HttpResponse.json({ documents: DOCUMENTS }),
   ),
+  http.delete('/api/documents/:id', ({ params }) => {
+    const id = Number(params['id']);
+
+    return HttpResponse.json({
+      document: DOCUMENTS.find((one) => one.id === id) ?? DOCUMENTS[0],
+      linksRemoved: 2,
+    });
+  }),
 
   http.get('/api/accounts/balances', () =>
     HttpResponse.json(REFERENCE_BALANCES),

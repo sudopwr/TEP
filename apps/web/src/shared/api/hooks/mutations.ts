@@ -12,6 +12,7 @@ import {
   createPayout,
   createTransaction,
   deleteAccount,
+  deleteDocument,
   deletePayout,
   deleteTransaction,
   updateAccount,
@@ -27,6 +28,7 @@ import type {
   CreateSaleCommand,
   CreateTransactionCommand,
   DocumentAttachedJson,
+  DocumentDeletedJson,
   PayoutDeletedJson,
   PayoutJson,
   SaleRecordedJson,
@@ -381,6 +383,39 @@ export function useSettlePayout(): UseMutationResult<
  * the searches, since a new filename is newly findable. Balances and
  * settlement are untouched: a document moves no money.
  */
+/**
+ * F22 — delete a document, everywhere it was evidence.
+ *
+ * Two invalidations, and the second is a predicate rather than a key. A
+ * document may hang off any leg of any payout (F6 lets one file be evidence
+ * for several), and the answer says *how many* attachments went, not which —
+ * resolving them would mean the server mapping each leg back to its payout
+ * for the sake of a cache key. So every **trail** is re-read, and only the
+ * trails: `queryKeys.payouts.all()` would be the easy spelling and would drag
+ * in the payouts list and every settlement, neither of which a document can
+ * change. A test asserts the list stays untouched.
+ */
+export function useDeleteDocument(): UseMutationResult<
+  DocumentDeletedJson,
+  Error,
+  number
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteDocument,
+    onSuccess: async () => {
+      await Promise.all([
+        client.invalidateQueries({ queryKey: queryKeys.documents.all() }),
+        client.invalidateQueries({
+          predicate: (query) =>
+            query.queryKey[0] === 'payouts' && query.queryKey[2] === 'trail',
+        }),
+      ]);
+    },
+  });
+}
+
 export function useAttachDocument(): UseMutationResult<
   DocumentAttachedJson,
   Error,

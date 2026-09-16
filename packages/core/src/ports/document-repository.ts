@@ -47,6 +47,20 @@ export interface DocumentRepository {
 
   listForTarget(target: DocumentTarget): Promise<readonly Document[]>;
 
+  /** How many things this document is evidence for. Zero after the last
+   *  unlink, which is a document nothing points at rather than a deleted one. */
+  countLinks(documentId: DocumentId): Promise<number>;
+
+  /**
+   * Remove the document row and every link to it — never the file.
+   *
+   * The bytes are the caller's to remove afterwards and not before: a row
+   * pointing at a file that is gone answers `DocumentFileMissingError` to
+   * anyone who opens it, while a file no row points at is a few unreferenced
+   * kilobytes in a content-addressed store. `DeleteDocument` orders the two.
+   */
+  delete(documentId: DocumentId): Promise<void>;
+
   /** Full-text search over filename and extracted text (UC9, FTS5). */
   search(query: string): Promise<readonly Document[]>;
 }

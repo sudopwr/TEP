@@ -40,6 +40,7 @@ destroyed four amounts and two fees.
 | F19 | Edit an account; delete one, refused while any transaction still uses it |
 | F20 | Delete a transaction, taking the legs below it and their fees |
 | F21 | Edit a transaction: the row itself, never its kind, parent, payout or fees |
+| F22 | Delete a document: the file, its row, and every attachment to it |
 
 ### Non-functional
 | # | Requirement |
@@ -81,11 +82,12 @@ policy against the *new* username, clears must-change only if the password actua
 changed, revokes every session but the caller's. **UC14 — SignOut.** Revokes
 server-side; idempotent, and identical for a forged ID as a spent one. **UC15, UC16 —
 DeletePayout, DeleteTransaction.** F18 and F20: count first, then one atomic delete — a
-payout takes its legs, a leg takes the legs below it. **UC17 — EditTransaction.** F21:
-UC2's checks on a rebuilt row; kind, parent and payout carried. **Not numbered**,
-because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `EditAccount`,
-`DeleteAccount`, `ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
-`GetDocument` and `ImportLegacyCsv`.
+payout takes its legs, a leg takes the legs below it. **UC17, UC18 — EditTransaction,
+DeleteDocument.** F21: UC2's checks on a rebuilt row, kind, parent and payout carried.
+F22: the row, its links, then the file. **Not numbered**, because §3 assumed they
+existed: `RecordCompany`, `RecordAccount`, `EditAccount`, `DeleteAccount`,
+`ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`, `GetDocument` and
+`ImportLegacyCsv`.
 
 ## 4. Domain glossary
 
@@ -129,11 +131,11 @@ plus three saturated colours, each a fact about money — `positive` (arrived), 
 (left), `flag` (§7's "suspicious, not impossible"); `muted` derives from ink. Colourless
 chrome is what lets colour *mean* something, and colour never carries meaning alone.
 Plex Sans for the interface, Plex Mono for every number, self-hosted; `numeric` carries
-`tabular-nums lining-nums slashed-zero`. Light only — read beside statements. **The
-dependency rule.** Dependencies point inward only; a runtime dependency in
-`packages/core/package.json` means something leaked. **Ports earn their existence**: an
-interface only where a fake is needed in tests or a second implementation exists — a
-wrapper round one library with one caller is not.
+`tabular-nums lining-nums slashed-zero`. Light only, to read beside statements. **The
+dependency rule** (N3): a runtime dependency in `packages/core/package.json` means
+something leaked. **Ports earn their existence**: an interface only where a fake is
+needed in tests or a second implementation exists — a wrapper round one library with one
+caller is not.
 
 ## 5a. Authentication
 
@@ -144,8 +146,7 @@ string, salt and parameters included, so raising the cost later is a
 rehash-on-next-login. `003_auth.sql` is the authority on the tables. The admin hash is
 computed at migration time by `db/seeds.ts`, never written into the `.sql` — a literal
 hash there means one shared salt in every install, in a file the checksum makes
-unchangeable. (Renumbering applied history is what the checksum guard prevents — this
-was `002` until `002_reference_currencies.sql` existed.)
+unchangeable. (Renumbering applied history is what the checksum guard prevents.)
 
 A deliberate convenience with a deliberate cage: (1) every route except `/health`,
 `/auth/login`, `/auth/me`, `/auth/logout` and `/auth/change-credentials` returns 403
@@ -164,7 +165,7 @@ nor is a rename: `must_change_password` clears only when a password is set.
 unknown username still runs a full argon2 verification so the timing matches. 5 attempts
 a minute on `/auth/login`; never log a password. **Forgetting it.** No reset flow —
 nowhere to mail a link. Delete the row and restart: migrations see an empty `users`
-table, re-seed the shipped credential with its cage, and say so loudly. Sessions
+table, re-seed the shipped credential with its cage, and say so loudly; sessions
 cascade, so no cookie outlives it.
 
 **Session.** ID is 32 random bytes, base64url, compared timing-safely. Cookie:
@@ -277,38 +278,38 @@ Newest last. Never delete an entry — supersede it.
 - ~~**Google sign-in with a one-subject allow-list.**~~ Superseded by **username and
   password, one account**: it needed a Cloud project, internet and a hostname-bound
   redirect (§5a is the bill).
-- **Auth, in one place.** **Ships with `admin` / `admin`**, defensible only behind §5a's
-  three constraints. **Sessions are rows, not JWTs**: sign-out must actually revoke,
-  which a token cannot without this table. **Auth lives in `apps/api/auth/`, not
-  `core`**, which sees a `PasswordHasher` port. **Changing credentials revokes every
-  other session**, rename included; **migrations carry seeds**. **Guards are global with
-  an exemption list, never opt-in**, so a forgotten route fails closed: `PUBLIC_ROUTES`
-  + `MUST_CHANGE_EXEMPT` = §5a's five, `/auth/me` and `/auth/change-credentials` in the
-  second only since both must know who is asking. `RequireAuth`/`RequireSession` mirror
-  them in the browser, for the right screen rather than for safety. **Session-id compare
-  is constant-time; the index probe isn't** — honest, and kept so nobody swaps in a
-  6-digit code and keeps `===`.
+- **Auth, in one place.** **Sessions are rows, not JWTs**: sign-out must actually
+  revoke, which a token cannot without this table. **Auth lives in `apps/api/auth/`, not
+  `core`**, which sees a `PasswordHasher` port. **Migrations carry seeds**, and §5a's
+  three constraints are what make the shipped `admin` / `admin` defensible at all.
+  **Guards are global with an exemption list, never opt-in**, so a forgotten route fails
+  closed: `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` = §5a's five, `/auth/me` and
+  `/auth/change-credentials` in the second only since both must know who is asking.
+  `RequireAuth`/`RequireSession` mirror them in the browser, for the right screen rather
+  than for safety. **Session-id compare is constant-time; the index probe isn't** —
+  honest, and kept so nobody swaps in a 6-digit code and keeps `===`.
 - **Traps already fallen into**, each now covered by a test. `Error` owns `cause` and
   `name` (hence `.failure`, `.migrationName`). `Algorithm.Argon2id` is an ambient `const
   enum` `verbatimModuleSyntax` will not inline. `.catch(e => e as E)` widens the type
   *and* passes when the call resolves; after `.then` it swallows what the success path
   throws. `Date.parse('2025-02-30')` rolls to 2 March. Fastify's ajv deletes undeclared
-  fields. `fetch('/api/x')` throws outside a browser. MUI peer-accepts React 19, so npm
-  hoisted it beside apps/web's 18 until a root `overrides` pinned one. `\b` through a
-  non-raw string is a *backspace*; `no-control-regex` has caught that twice. Vitest does
-  not typecheck; `npm run typecheck` is the only net. **Test timeouts move, the cost
-  does not** (`vitest.config.ts` says why beside each number). **happy-dom, not jsdom**:
-  jsdom installs its own `AbortController` while the running `fetch` is undici's, which
+  fields. `fetch('/api/x')` throws outside a browser. An `sx` width is pixels, not
+  spacing units. MUI peer-accepts React 19, so npm hoisted it beside apps/web's 18 until
+  a root `overrides` pinned one. `\b` through a non-raw string is a *backspace*;
+  `no-control-regex` has caught that twice. Vitest does not typecheck; `npm run
+  typecheck` is the only net. **Test timeouts move, the cost does not**
+  (`vitest.config.ts` says why beside each number). **happy-dom, not jsdom**: jsdom
+  installs its own `AbortController` while the running `fetch` is undici's, which
   `instanceof`-checks Node's — two realms, one check, every request failing.
 - **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal *string*
-  and a rate transformed to a 1e8 bigint are a refinement and a transform, and neither
-  survives JSON Schema. **Money leaves as two strings**, and N1 reaches the keyboard —
-  `AmountField` filters keystrokes rather than parsing them. **Unions derive from a
-  runtime array**, so the API cannot drift.
+  and a rate transformed to a 1e8 bigint are a refinement and a transform, neither
+  surviving JSON Schema. **Money leaves as two strings**, and N1 reaches the keyboard —
+  `AmountField` filters keystrokes rather than parsing. **Unions derive from a runtime
+  array**, so the API cannot drift.
 - **The error map is keyed by `error.name`, not by constructor**, which breaks when two
-  copies of core load. **Constraint violations are translated in the adapter**, per §7's
-  "unless the message needs to be friendlier" (`document_links` has two FKs, so it
-  checks which side first). **Documents are served by a handler, never a static mount**,
+  copies of core load. **Constraint violations are translated in the adapter** (§7's
+  "unless the message needs to be friendlier"): `document_links` has two FKs, so it
+  checks which side first. **Documents are served by a handler, never a static mount**,
   which would publish every file to anyone who can guess a hash. **A 400 carries
   `details.issues`**, so a form puts each message under its own field.
 - **One composition root per process**: `container.ts` on the server (the F12 CLI wired
@@ -317,29 +318,27 @@ Newest last. Never delete an entry — supersede it.
   `transactions/` would leave neither readable alone. **The palette is a lint rule**:
   `design/no-raw-hex` fails the build for a hex under apps/web bar
   `shared/theme/palette.ts`. **N8 is three more**: `no-feature-imports`,
-  `no-fetch-in-shared`, `no-cross-feature-imports` — the last resolving paths, not
-  globs.
+  `no-fetch-in-shared` and `no-cross-feature-imports`, the last resolving paths.
 - **`sortBy` is separate from `cell` in `DataTable`**, so a money column sorts on its
   integer (as text, `9.00` sorts after `84,642.93`), and absent values pin to the bottom
   in *both* directions. **`TreeView` splits each row** into an indented label and an
-  un-indented aside; nesting turns §10's trail into a staircase.
-- **Cache keys come from `queryKeys`, never inline.** Typed at two call sites they
-  become two caches holding one fact: a mutation invalidates one spelling, the screen
-  reads the other, the number is stale. The hierarchy makes precise invalidation
-  expressible — a leg reaches that payout's trail, settlement, balances and checks — and
-  a test asserts every other payout is untouched. **A 401 is handled in the query and
-  mutation caches, never at a call site**: it clears everything (a signed-out session
-  must not leave balances in memory) and seeds `auth.me` null, bar three exemptions that
-  are answers rather than expiries — `/auth/me`, `/auth/login`,
-  `/auth/change-credentials`, told apart by a `mutationKey`: clearing the cache on a
-  wrong password would destroy the mutation holding the error, leaving the reader
-  *nothing*. **Signed-in state is that one `useQuery`**: a second `user` in React state
-  disagrees the moment a session is revoked elsewhere. **F15's 403 routes by writing the
-  auth cache, not by calling `navigate`** — it sets `mustChangePassword` on `auth.me`,
-  `RequireAuth` reads that, and a stale tab cannot sit on a data screen (§5a's screen
-  has no rail, no skip, no dismissal). **There is no "mark settled" endpoint** either:
-  settling *is* recording the sale that reaches a bank, which `useSettlePayout` does,
-  flipping the cached status optimistically with the figures left to the server.
+  un-indented aside — nesting turns §10's trail into a staircase.
+- **Cache keys come from `queryKeys`, never inline**: typed at two call sites they
+  become two caches holding one fact, and the screen reads the spelling the mutation did
+  not invalidate. The hierarchy makes precise invalidation expressible — a leg reaches
+  that payout's trail, settlement, balances and checks — and a test asserts every other
+  payout is untouched. **A 401 is handled in the query and mutation caches, never at a
+  call site**: it clears everything (a signed-out session must not leave balances in
+  memory) and seeds `auth.me` null, bar three exemptions that are answers rather than
+  expiries — `/auth/me`, `/auth/login`, `/auth/change-credentials`, told apart by a
+  `mutationKey`: clearing the cache on a wrong password would destroy the mutation
+  holding the error, leaving the reader *nothing*. **Signed-in state is that one
+  `useQuery`**: a second `user` in React state disagrees the moment a session is revoked
+  elsewhere. **F15's 403 routes by writing the auth cache, not by calling `navigate`** —
+  it sets `mustChangePassword` on `auth.me`, `RequireAuth` reads that, and a stale tab
+  cannot sit on a data screen. **There is no "mark settled" endpoint** either: settling
+  *is* recording the sale that reaches a bank, which `useSettlePayout` does — flipping
+  the status optimistically, figures left to the server.
 - **`/api/accounts` and `/api/accounts/balances` answer two questions.** A balance is
   derived from movements (UC7), so an account recorded a minute ago is absent — right
   for a balance sheet, useless for a form asking where money went. An allow-list is a
@@ -352,29 +351,28 @@ Newest last. Never delete an entry — supersede it.
   the routes the plugin registered, never a guessed pattern. **Web fixtures come from
   the API's own test server**, never invented — §10's tree as the routes serialise it,
   in `reference-payout.ts`. There is **one e2e world per journey** (temp database,
-  legacy import, `start()` on a port the OS picks), or the suite turns order-dependent.
-  The first test that ever *clicked* found two bugs every DOM assertion passed: an `sx`
-  width is pixels, not spacing units, and the cage redirected away from what it guarded.
+  legacy import, `start()` on a port the OS picks), or the suite turns order-dependent —
+  and the first test that ever *clicked* found two bugs every DOM assertion had passed.
 - **`npm run backup` uses SQLite's backup API, never a file copy**: in WAL mode the
   newest pages are in `app.db-wal`, so `cp` gives three snapshots of three instants and,
   with nothing checkpointed, no schema at all (a test shows it). Files are copied.
-- **The bundle's size warning is raised, not obeyed**: 500kB is advice about download
-  cost; this is local disk, and splitting would make §11 worse. **`npm run dev` watches
-  with `node --watch`, not `tsx watch`**: under concurrently's prefixed output the
-  supervisor's child never ran the module — no error, no listen — so Vite's proxy
-  answered ECONNREFUSED and the bug read as the app's; `--raw` cures it too, at the cost
-  of the prefixes.
-- **A missing choice is added from inside the dropdown** (`SelectWithCreate`), its item
-  carrying a sentinel never passed to `onChange`, so cancelling leaves the field as
-  found. The dialog renders **outside** the form: a portal is elsewhere in the DOM but
-  not in the React tree, and its submit ran the payout's `onSubmit` too. Select only
-  once the invalidation resolves (MUI draws an unmatched value as an empty box), and
-  assert with `find`: a closing modal still holds `aria-hidden` behind it.
+- **The bundle's size warning is raised, not obeyed**: 500kB is download advice, this is
+  local disk, and splitting would make §11 worse. **`npm run dev` watches with `node
+  --watch`, not `tsx watch`**: under concurrently's prefixed output the supervisor's
+  child never ran the module — no error, no listen — so Vite's proxy answered
+  ECONNREFUSED and the bug read as the app's; `--raw` cures it too, at the cost of the
+  prefixes.
+- **A missing choice is added from inside the dropdown** (`SelectWithCreate`), whose
+  create item is an action rather than a value. Its dialog renders **outside** the form:
+  a portal is elsewhere in the DOM but not in the React tree, and its submit ran the
+  payout's `onSubmit` too. Select only once the invalidation resolves (MUI draws an
+  unmatched value as an empty box), and assert with `find` — a closing modal still holds
+  `aria-hidden`.
 - **What deletes, and what refuses.** A **payout** deletes for real (F18), not into a
   "cancelled" status — the fourth state §13 refused: legs, fees and links go,
   **documents stay** (F6), one transaction, the tree peeled **leaf-first** because
-  `parent_id` is ON DELETE RESTRICT, checked as each row goes, so a plain cascade fails
-  below depth one and a test asserts it. An **account** is a party to events, not an
+  `parent_id` is ON DELETE RESTRICT, checked as each row goes — a plain cascade fails
+  below depth one, and a test asserts it. An **account** is a party to events, not an
   event: deleting one with any leg is a 409 **counting** them, only its own
   configuration cascades, and editing is a **replacement** (F19), an empty allow-list
   meaning "holds anything". A **leg** takes the legs below it (F20), since a child is
@@ -382,12 +380,14 @@ Newest last. Never delete an entry — supersede it.
   leaves the trail to display. **Editing a leg** (F21) replaces the row and nothing
   around it — not the kind (that would run §8's fee engine), not the parent, and not the
   **fees**: TDS came off a statement, so §7's checks report a mismatch rather than an
-  edit overwriting evidence with arithmetic. The payout delete alone **removes** cache
-  entries instead of invalidating them — a deleted trail answers 404.
-- **AGPL-3.0-only**, verbatim from gnu.org in `LICENSE`, `license` in all four
-  manifests, no per-file headers. Its §13 is the point — a copy reached over a network
-  owes its users the source — so §11's "reached from outside?" is a licence question
-  too.
+  edit overwriting evidence with arithmetic. A **document** is a thing, not a
+  relationship (F6): deleting one takes every attachment with it, and the file goes
+  *after* the row — a row without bytes answers 422, bytes without a row are litter. The
+  payout delete alone **removes** cache entries instead of invalidating them — a deleted
+  trail answers 404.
+- **AGPL-3.0-only**, verbatim in `LICENSE`, `license` in all four manifests, no per-file
+  headers. Its §13 is the point — a copy reached over a network owes its users the
+  source — so §11's "reached from outside?" is a licence question too.
 
 ## 14. Task protocol
 

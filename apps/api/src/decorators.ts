@@ -5,6 +5,7 @@ import type {
   AuthenticateSession,
   ChangeCredentials,
   DeleteAccount,
+  DeleteDocument,
   DeletePayout,
   DeleteTransaction,
   GenerateFinancialYearReport,
@@ -80,6 +81,7 @@ export interface UseCases {
   readonly listTransactions: ListTransactions;
   readonly attachDocument: AttachDocument;
   readonly getDocument: GetDocument;
+  readonly deleteDocument: DeleteDocument;
   readonly searchDocuments: SearchDocuments;
   readonly getAccountBalances: GetAccountBalances;
   readonly runDataQualityChecks: RunDataQualityChecks;

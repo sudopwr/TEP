@@ -77,6 +77,26 @@ export class FakeDocumentRepository implements DocumentRepository {
     return Promise.resolve();
   }
 
+  countLinks(documentId: DocumentId): Promise<number> {
+    return Promise.resolve(
+      [...this.#links.values()].filter((link) => link.documentId === documentId)
+        .length,
+    );
+  }
+
+  /** The row and its links, as `ON DELETE CASCADE` does it in SQLite. */
+  delete(documentId: DocumentId): Promise<void> {
+    this.#rows.delete(documentId);
+
+    for (const [key, link] of [...this.#links.entries()]) {
+      if (link.documentId === documentId) {
+        this.#links.delete(key);
+      }
+    }
+
+    return Promise.resolve();
+  }
+
   listForTarget(target: DocumentTarget): Promise<readonly Document[]> {
     const documents: Document[] = [];
 

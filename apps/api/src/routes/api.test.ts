@@ -1606,6 +1606,76 @@ describe('/api routes', () => {
         expect((await get('/api/documents/search')).statusCode).toBe(400);
       });
     });
+
+    describe('DELETE /api/documents/:id (F22)', () => {
+      it('deletes the document and says how many attachments went', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        const response = await del(`/api/documents/${String(id)}`);
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          document: { filename: 'march.pdf' },
+          linksRemoved: 1,
+        });
+      });
+
+      it('counts every attachment, since one file may be several', async () => {
+        // F6: the same bytes uploaded against a second leg are one document
+        // with two links (UC4 dedupes on the hash), and deleting it takes
+        // both.
+        const uploaded = await upload('identical bytes', 'one.pdf');
+        await upload('identical bytes', 'two.pdf', {}, 7);
+        const { id } = uploaded.json().document as { id: number };
+
+        const response = await del(`/api/documents/${String(id)}`);
+
+        expect(response.json().linksRemoved).toBe(2);
+      });
+
+      it('stops answering searches and stops being downloadable', async () => {
+        const uploaded = await upload('contents', 'coindcx-march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        await del(`/api/documents/${String(id)}`);
+
+        const found = await get('/api/documents/search?q=coindcx');
+        const fetched = await get(`/api/documents/${String(id)}`);
+
+        expect(found.json().documents).toEqual([]);
+        expect(fetched.statusCode).toBe(404);
+      });
+
+      it('leaves the leg it was attached to standing', async () => {
+        const uploaded = await upload('contents', 'x.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        await del(`/api/documents/${String(id)}`);
+
+        const trail = await get('/api/payouts/1/trail');
+        const transactions = await get('/api/transactions');
+
+        expect(transactions.json().transactions).toHaveLength(13);
+        expect(JSON.stringify(trail.json())).not.toContain('x.pdf');
+      });
+
+      it('404s a document that is not there', async () => {
+        const response = await del('/api/documents/999');
+
+        expect(response.statusCode).toBe(404);
+        expect(response.json().code).toBe('document_not_found');
+      });
+
+      it('401s without a session, like every other data route', async () => {
+        const response = await server.app.inject({
+          method: 'DELETE',
+          url: '/api/documents/1',
+        });
+
+        expect(response.statusCode).toBe(401);
+      });
+    });
   });
 
   describe('error handling', () => {

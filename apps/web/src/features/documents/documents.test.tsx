@@ -3,10 +3,16 @@ import { describe, expect, it } from 'vitest';
 
 import {
   answering,
+  deleteFails,
   documentAlreadyStored,
 } from '../../../test/msw/handlers';
 import { server } from '../../../test/msw/server';
-import { renderApp, renderFeature, screen } from '../../../test/renderApp';
+import {
+  renderApp,
+  renderFeature,
+  screen,
+  within,
+} from '../../../test/renderApp';
 
 import { DocumentUpload } from './DocumentUpload';
 
@@ -57,7 +63,9 @@ describe('previewing a document', () => {
   it('invites a choice rather than showing an empty frame', async () => {
     renderApp({ route: '/documents' });
 
-    expect(await screen.findByText('No document selected.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('No document selected.'),
+    ).toBeInTheDocument();
   });
 
   it('serves the file through the route, by id', async () => {
@@ -141,8 +149,100 @@ describe('attaching a document', () => {
       new File(['bytes'], 'march.pdf', { type: 'application/pdf' }),
     );
 
+    expect(await screen.findByText(/already stored/)).toBeInTheDocument();
+  });
+});
+
+describe('deleting a document', () => {
+  const askToDelete = async (): Promise<HTMLElement> => {
+    renderApp({ route: '/documents' });
+    // The screen is behind the auth probe: wait for it before typing.
+    await screen.findByText('Search for a document.');
+
+    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
+    await screen.findByRole('table', { name: 'Search results' });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete coindcx-march.pdf' }),
+    );
+
+    return screen.findByRole('dialog');
+  };
+
+  it('asks first, naming the file and what else loses it', async () => {
+    // F6: one file may be evidence for several things, so "delete" here is
+    // wider than the row the reader is looking at, and has to say so.
+    const dialog = await askToDelete();
+
     expect(
-      await screen.findByText(/already stored/),
+      within(dialog).getByText('Delete coindcx-march.pdf?'),
     ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        /every attachment to a company, a payout or a leg/,
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText(/cannot be undone/)).toBeInTheDocument();
+  });
+
+  it('deletes it and says how many attachments went', async () => {
+    const dialog = await askToDelete();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete document' }),
+    );
+
+    expect(
+      await screen.findByText('coindcx-march.pdf deleted, from 2 attachments'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not open the preview when the delete button is clicked', async () => {
+    // The row selects a document to preview; the button inside it must not,
+    // or deleting would first show the reader what it is about to remove.
+    renderApp({ route: '/documents' });
+    await screen.findByText('Search for a document.');
+
+    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
+    await screen.findByRole('table', { name: 'Search results' });
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Delete coindcx-march.pdf' }),
+    );
+
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('No document selected.')).toBeInTheDocument();
+  });
+
+  it('deletes nothing when the question is declined', async () => {
+    const dialog = await askToDelete();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Cancel' }),
+    );
+
+    expect(
+      await screen.findByRole('table', { name: 'Search results' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/deleted/)).not.toBeInTheDocument();
+  });
+
+  it('shows the reason beside the question when the server refuses', async () => {
+    server.use(
+      deleteFails('/api/documents/:id', {
+        code: 'document_not_found',
+        message: 'No document with id 10.',
+      }),
+    );
+
+    const dialog = await askToDelete();
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Delete document' }),
+    );
+
+    expect(
+      await within(dialog).findByText('No document with id 10.'),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Delete coindcx-march.pdf?')).toBeInTheDocument();
   });
 });

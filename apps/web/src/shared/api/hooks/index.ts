@@ -14,6 +14,7 @@ export {
 export {
   useAttachDocument,
   useDeleteAccount,
+  useDeleteDocument,
   useDeletePayout,
   useDeleteTransaction,
   useEditAccount,

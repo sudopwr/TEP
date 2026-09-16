@@ -218,6 +218,17 @@ export interface BalancesResponse {
 export interface DataQualityResponse {
   readonly issues: readonly DataQualityIssueJson[];
 }
+/**
+ * What a document's delete took with it (F22).
+ *
+ * `linksRemoved` is how many things lost their evidence — one file may be
+ * attached to several (F6), and the reader may have seen only one of them.
+ */
+export interface DocumentDeletedJson {
+  readonly document: DocumentJson;
+  readonly linksRemoved: number;
+}
+
 export interface DocumentsResponse {
   readonly documents: readonly DocumentJson[];
 }

@@ -14,6 +14,7 @@ import type {
   CredentialsChangedJson,
   DataQualityResponse,
   DocumentAttachedJson,
+  DocumentDeletedJson,
   DocumentsResponse,
   FinancialYearFilter,
   FinancialYearReportJson,
@@ -267,6 +268,14 @@ export function deleteTransaction(
 }
 
 // ---------- Documents ----------
+
+export function deleteDocument(
+  documentId: number,
+): Promise<DocumentDeletedJson> {
+  return request<DocumentDeletedJson>(`/api/documents/${String(documentId)}`, {
+    method: 'DELETE',
+  });
+}
 
 export function searchDocuments(
   query: string,

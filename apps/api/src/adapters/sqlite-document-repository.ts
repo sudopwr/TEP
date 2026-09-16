@@ -59,6 +59,15 @@ const SQL = {
                          JOIN document_links l ON l.document_id = d.id
                         WHERE l.transaction_id = ? ORDER BY l.id`,
 
+  countLinks: `SELECT COUNT(*) AS n FROM document_links WHERE document_id = ?`,
+  /*
+    The row only — `document_links` cascades from it, and the `documents_ad`
+    trigger takes the FTS5 index with it, so a deleted document stops
+    answering searches without a second statement. The file is the caller's
+    to remove, and afterwards: see `DocumentRepository.delete`.
+  */
+  delete: `DELETE FROM documents WHERE id = ?`,
+
   /** FTS5 over filename and extracted text, best match first. */
   search: `SELECT ${DOC_COLUMNS_D} FROM documents_fts
              JOIN documents d ON d.id = documents_fts.rowid
@@ -98,6 +107,8 @@ export class SqliteDocumentRepository implements DocumentRepository {
   readonly #unlink;
   readonly #listFor;
   readonly #search;
+  readonly #countLinks;
+  readonly #delete;
 
   constructor(database: SqliteDatabase) {
     this.#selectById = database.prepare<[number], DocumentRow>(SQL.selectById);
@@ -135,6 +146,21 @@ export class SqliteDocumentRepository implements DocumentRepository {
     };
 
     this.#search = database.prepare<[string], DocumentRow>(SQL.search);
+    this.#countLinks = database.prepare<[number], { n: number | bigint }>(
+      SQL.countLinks,
+    );
+    this.#delete = database.prepare<[number]>(SQL.delete);
+  }
+
+  async countLinks(documentId: DocumentId): Promise<number> {
+    // `Number`, because the connection runs with SQLite's 64-bit integers on
+    // (§6: a paisa past 2^53 has to survive), so even a COUNT is a bigint.
+    return Promise.resolve(Number(this.#countLinks.get(documentId)?.n ?? 0));
+  }
+
+  async delete(documentId: DocumentId): Promise<void> {
+    this.#delete.run(documentId);
+    return Promise.resolve();
   }
 
   async findById(id: DocumentId): Promise<Document | null> {

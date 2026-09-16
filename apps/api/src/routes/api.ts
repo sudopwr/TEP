@@ -419,6 +419,27 @@ export function registerApiRoutes(app: FastifyInstance): void {
       .send(app.documentFiles.openReadStream(document.storedPath));
   });
 
+  /*
+    F22 — delete a document: the row, every link to it, and the file.
+
+    Everywhere rather than from one place: F6 makes one file evidence for
+    several things, and a document is a thing rather than a relationship. The
+    count of what lost it comes back so the browser can say so — the reader
+    saw one attachment and may be removing three.
+  */
+  app.delete('/api/documents/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const deleted = await app.useCases.deleteDocument.execute({
+      documentId: id,
+    });
+
+    return {
+      document: out.document(deleted.document),
+      linksRemoved: deleted.linksRemoved,
+    };
+  });
+
   app.get('/api/documents/search', async (request) => {
     const query = parseOrThrow(searchDocumentsQuery, request.query, 'query');
 

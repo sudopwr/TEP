@@ -192,6 +192,90 @@ describe('SqliteDocumentRepository', () => {
     });
   });
 
+  describe('delete', () => {
+    // `Number`, because the connection runs with SQLite's 64-bit integers on.
+    const count = (sql: string): number =>
+      Number((database.prepare(sql).get() as { c: number | bigint }).c);
+
+    it('removes the row and every link to it', async () => {
+      const document = await repository.insert(draft());
+      await repository.link(document.id, { kind: 'payout', id: 1 }, null);
+      await repository.link(document.id, { kind: 'transaction', id: 3 }, null);
+
+      await repository.delete(document.id);
+
+      await expect(repository.findById(document.id)).resolves.toBeNull();
+      expect(count('SELECT COUNT(*) c FROM document_links')).toBe(0);
+    });
+
+    it('stops answering searches, because the FTS index goes with it', async () => {
+      // The `documents_ad` trigger, which is the only thing keeping the
+      // external-content FTS5 table honest — without it a deleted document
+      // keeps matching and the search returns a row that no longer exists.
+      const document = await repository.insert(draft());
+      await expect(repository.search('CoinDCX')).resolves.toHaveLength(1);
+
+      await repository.delete(document.id);
+
+      await expect(repository.search('CoinDCX')).resolves.toEqual([]);
+    });
+
+    it('leaves the payout and the leg it was attached to standing', async () => {
+      const document = await repository.insert(draft());
+      await repository.link(document.id, { kind: 'payout', id: 1 }, null);
+
+      await repository.delete(document.id);
+
+      expect(count('SELECT COUNT(*) c FROM payouts')).toBe(1);
+      expect(count('SELECT COUNT(*) c FROM transactions')).toBe(13);
+    });
+
+    it('leaves another document alone', async () => {
+      const document = await repository.insert(draft());
+      const other = await repository.insert(
+        draft({
+          filename: 'rise-april.pdf',
+          storedPath: 'ef/gh/efgh.pdf',
+          sha256: 'b'.repeat(64),
+        }),
+      );
+
+      await repository.delete(document.id);
+
+      await expect(repository.findById(other.id)).resolves.not.toBeNull();
+    });
+
+    it('is a no-op for an id that is not there', async () => {
+      await repository.insert(draft());
+
+      await expect(repository.delete(4242)).resolves.toBeUndefined();
+
+      expect(count('SELECT COUNT(*) c FROM documents')).toBe(1);
+    });
+  });
+
+  describe('countLinks', () => {
+    it('counts what the document is evidence for', async () => {
+      const document = await repository.insert(draft());
+
+      await expect(repository.countLinks(document.id)).resolves.toBe(0);
+
+      await repository.link(document.id, { kind: 'payout', id: 1 }, null);
+      await repository.link(document.id, { kind: 'transaction', id: 3 }, null);
+
+      await expect(repository.countLinks(document.id)).resolves.toBe(2);
+    });
+
+    it('counts a re-link once, as the partial unique indexes do', async () => {
+      const document = await repository.insert(draft());
+
+      await repository.link(document.id, { kind: 'payout', id: 1 }, null);
+      await repository.link(document.id, { kind: 'payout', id: 1 }, 'proof');
+
+      await expect(repository.countLinks(document.id)).resolves.toBe(1);
+    });
+  });
+
   describe('toFtsPhrase', () => {
     it('wraps the query as one phrase', () => {
       expect(toFtsPhrase('march statement')).toBe('"march statement"');

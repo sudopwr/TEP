@@ -1,17 +1,24 @@
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useMemo, useState } from 'react';
 
-import { useDocumentSearch, type DocumentJson } from '../../shared/api';
+import {
+  useDeleteDocument,
+  useDocumentSearch,
+  type DocumentJson,
+} from '../../shared/api';
 import { describeError } from '../../shared/api/errors';
 import {
+  ConfirmDialog,
   DataTable,
   EmptyState,
   ErrorState,
   type Column,
 } from '../../shared/components';
+import { useToast } from '../../shared/feedback';
 
 import { DocumentPreview, formatBytes } from './DocumentPreview';
 
@@ -31,8 +38,19 @@ import { DocumentPreview, formatBytes } from './DocumentPreview';
 export function DocumentSearch() {
   const [term, setTerm] = useState('');
   const [selected, setSelected] = useState<DocumentJson | null>(null);
+  /*
+    The document being deleted, held as the row rather than its id.
+
+    This screen is where a document is the *subject*, which is why the delete
+    lives here and not on the trail: there a file is evidence for one leg, and
+    a button that quietly removed it from three other things as well would be
+    reading the reader's mind. Here the confirmation can say what goes.
+  */
+  const [deleting, setDeleting] = useState<DocumentJson | null>(null);
 
   const results = useDocumentSearch(term);
+  const remove = useDeleteDocument();
+  const { notify } = useToast();
 
   const columns: readonly Column<DocumentJson>[] = useMemo(
     () => [
@@ -72,6 +90,28 @@ export function DocumentSearch() {
           </Typography>
         ),
         sortBy: (document) => document.byteSize,
+      },
+      {
+        id: 'actions',
+        header: '',
+        align: 'right',
+        // No `sortBy`: a column of buttons has nothing to sort on.
+        cell: (document) => (
+          <Button
+            size="small"
+            color="error"
+            aria-label={`Delete ${document.filename}`}
+            onClick={(event) => {
+              // The row opens the preview; the button must not, or deleting
+              // would first select what it is about to remove.
+              event.stopPropagation();
+              setDeleting(document);
+            }}
+            sx={{ minWidth: 0, px: 0.75, py: 0 }}
+          >
+            Delete
+          </Button>
+        ),
       },
     ],
     [],
@@ -150,6 +190,46 @@ export function DocumentSearch() {
           <DocumentPreview document={selected} />
         </Paper>
       </Box>
+
+      <ConfirmDialog
+        open={deleting !== null}
+        title={`Delete ${deleting?.filename ?? 'this document'}?`}
+        message={
+          <>
+            The file goes from disk, and with it every attachment to a company,
+            a payout or a leg — one file can be evidence for several things, and
+            this removes it from all of them. This cannot be undone.
+            {remove.error === null ? null : (
+              <Box sx={{ mt: 2 }}>
+                <ErrorState message={describeError(remove.error).message} />
+              </Box>
+            )}
+          </>
+        }
+        confirmLabel="Delete document"
+        destructive
+        busy={remove.isPending}
+        onConfirm={() => {
+          if (deleting === null || remove.isPending) return;
+
+          remove.mutate(deleting.id, {
+            onSuccess: (result) => {
+              // The preview is showing what no longer exists.
+              if (selected?.id === result.document.id) setSelected(null);
+              setDeleting(null);
+              notify(
+                result.linksRemoved === 0
+                  ? `${result.document.filename} deleted`
+                  : `${result.document.filename} deleted, from ${String(result.linksRemoved)} ${result.linksRemoved === 1 ? 'attachment' : 'attachments'}`,
+              );
+            },
+          });
+        }}
+        onCancel={() => {
+          setDeleting(null);
+          remove.reset();
+        }}
+      />
     </Box>
   );
 }

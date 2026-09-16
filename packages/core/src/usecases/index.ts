@@ -163,6 +163,13 @@ export type {
 } from './get-document';
 export { GetDocument } from './get-document';
 
+export type {
+  DeleteDocumentCommand,
+  DeleteDocumentDependencies,
+  DocumentDeleted,
+} from './delete-document';
+export { DeleteDocument } from './delete-document';
+
 export type { ListCompaniesDependencies } from './list-companies';
 export { ListCompanies } from './list-companies';
 

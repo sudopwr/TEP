@@ -16,6 +16,7 @@ import type { CreateSaleCommand, SettlementJson } from '../types';
 import {
   useAttachDocument,
   useDeleteAccount,
+  useDeleteDocument,
   useDeletePayout,
   useDeleteTransaction,
   useEditAccount,
@@ -710,5 +711,71 @@ describe('useEditTransaction', () => {
     const client = await editAgainstSeededCache();
 
     expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+  });
+});
+
+describe('useDeleteDocument', () => {
+  /**
+   * The one mutation whose blast radius is a *predicate*: a document may hang
+   * off any leg of any payout, and the answer says how many attachments went,
+   * not which. So every trail is re-read — and only the trails.
+   */
+  async function deleteAgainstSeededCache(): Promise<QueryClient> {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.documents.search('coindcx'), { documents: [] });
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
+    // Should survive untouched: a document changes no figure.
+    seed(client, queryKeys.payouts.list(), { payouts: [] });
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+
+    const { result } = renderHookWithClient(() => useDeleteDocument(), {
+      client,
+    });
+
+    result.current.mutate(10);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    return client;
+  }
+
+  it('invalidates the document searches and every trail', async () => {
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.documents.search('coindcx'))).toBe(true);
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+    expect(isStale(client, queryKeys.payouts.trail(2))).toBe(true);
+  });
+
+  it('leaves every figure alone, because a document is not one', async () => {
+    // `queryKeys.payouts.all()` would have been the easy spelling and would
+    // have dragged the list and the settlements in with the trails.
+    const client = await deleteAgainstSeededCache();
+
+    expect(isStale(client, queryKeys.payouts.list())).toBe(false);
+    expect(isStale(client, queryKeys.payouts.settlement(1))).toBe(false);
+    expect(isStale(client, queryKeys.balances.list())).toBe(false);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(false);
+  });
+
+  it('reports how many attachments went, for the reader to be told', async () => {
+    const client = createQueryClient();
+    const { result } = renderHookWithClient(() => useDeleteDocument(), {
+      client,
+    });
+
+    result.current.mutate(10);
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(result.current.data?.linksRemoved).toBe(2);
   });
 });

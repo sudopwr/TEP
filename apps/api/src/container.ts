@@ -5,6 +5,7 @@ import {
   AuthenticateSession,
   ChangeCredentials,
   DeleteAccount,
+  DeleteDocument,
   DeletePayout,
   DeleteTransaction,
   GenerateFinancialYearReport,
@@ -161,6 +162,7 @@ export function buildContainer(
 
     attachDocument: new AttachDocument({ documents, store }),
     getDocument: new GetDocument({ documents, store }),
+    deleteDocument: new DeleteDocument({ documents, store }),
     searchDocuments: new SearchDocuments({ documents }),
 
     getAccountBalances: new GetAccountBalances({ accounts, transactions }),
