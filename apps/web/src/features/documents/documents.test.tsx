@@ -1,4 +1,5 @@
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { DOCUMENTS } from '../../../test/msw/fixtures';
@@ -156,6 +157,83 @@ describe('attaching a document', () => {
     );
 
     expect(await screen.findByText(/already stored/)).toBeInTheDocument();
+  });
+});
+
+describe('pasting a screenshot (F25)', () => {
+  /** A screenshot on the clipboard, as the browser hands one over. */
+  const pasteScreenshot = (name = 'image.png'): void => {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        files: [new File(['png bytes'], name, { type: 'image/png' })],
+        items: [],
+      },
+    });
+    window.dispatchEvent(event);
+  };
+
+  it('stores it against the payout, without it ever touching the disk', async () => {
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+
+    expect(await screen.findByText('Document attached')).toBeInTheDocument();
+  });
+
+  it('sends it to the leg the form is pointed at', async () => {
+    // The paste is another way to hand over a file, not another way to
+    // decide what it is evidence for: the form above still says that.
+    const sent = new Promise<string>((resolve) => {
+      server.use(
+        http.post('/api/transactions/:id/documents', ({ params }) => {
+          resolve(String(params['id']));
+
+          return HttpResponse.json(
+            { document: DOCUMENTS[0], created: true },
+            { status: 201 },
+          );
+        }),
+      );
+    });
+
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await userEvent.click(
+      await screen.findByRole('combobox', { name: /Attach to/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: /Transaction003/ }),
+    );
+
+    pasteScreenshot();
+
+    expect(await sent).toBe('3');
+  });
+
+  it('carries the kind and the date chosen beside it', async () => {
+    const sent = new Promise<FormData>((resolve) => {
+      server.use(
+        http.post('/api/payouts/:id/documents', async ({ request }) => {
+          resolve(await request.formData());
+
+          return HttpResponse.json(
+            { document: DOCUMENTS[0], created: true },
+            { status: 201 },
+          );
+        }),
+      );
+    });
+
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await userEvent.click(await screen.findByRole('combobox', { name: 'Kind' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'receipt' }));
+
+    pasteScreenshot();
+
+    const form = await sent;
+    expect(form.get('docType')).toBe('receipt');
+    expect((form.get('file') as File).name).toMatch(/^pasted-/);
   });
 });
 

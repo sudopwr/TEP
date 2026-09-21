@@ -220,6 +220,149 @@ describe('FileDropzone', () => {
   });
 });
 
+describe('FileDropzone, pasted (F25)', () => {
+  const screenshot = (name = 'image.png'): File =>
+    new File(['png bytes'], name, { type: 'image/png' });
+
+  /** A paste as the browser delivers one: files, items, or neither. */
+  const paste = (clipboard: {
+    files?: readonly File[];
+    items?: readonly { kind: string; getAsFile: () => File | null }[];
+  }): Event => {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: { files: clipboard.files ?? [], items: clipboard.items ?? [] },
+    });
+    window.dispatchEvent(event);
+
+    return event;
+  };
+
+  it('takes a screenshot straight off the clipboard', () => {
+    // The whole point: a screenshot is already in the clipboard the moment
+    // it is taken, and saving it to disk first is a detour.
+    const onFiles = vi.fn();
+    render(<FileDropzone onFiles={onFiles} />);
+
+    paste({ files: [screenshot()] });
+
+    expect(onFiles).toHaveBeenCalledOnce();
+    expect(onFiles.mock.calls[0]?.[0]?.[0]?.type).toBe('image/png');
+  });
+
+  it('names an anonymous one after the moment it arrived', () => {
+    // Every screenshot is called `image.png`, and a list of those is a list
+    // nobody can read — nor one F7's filename search can help with.
+    const onFiles = vi.fn();
+    render(<FileDropzone onFiles={onFiles} />);
+
+    paste({ files: [screenshot()] });
+
+    expect(onFiles.mock.calls[0]?.[0]?.[0]?.name).toMatch(
+      /^pasted-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}\.png$/,
+    );
+  });
+
+  it('keeps a filename that already means something', () => {
+    const onFiles = vi.fn();
+    render(<FileDropzone onFiles={onFiles} />);
+
+    paste({ files: [screenshot('coindcx-march.png')] });
+
+    expect(onFiles.mock.calls[0]?.[0]?.[0]?.name).toBe('coindcx-march.png');
+  });
+
+  it('reads the clipboard items when the file list is empty', () => {
+    // An image copied from a web page arrives that way in some browsers.
+    const onFiles = vi.fn();
+    render(<FileDropzone onFiles={onFiles} />);
+
+    paste({
+      items: [{ kind: 'file', getAsFile: () => screenshot('from-page.png') }],
+    });
+
+    expect(onFiles.mock.calls[0]?.[0]?.[0]?.name).toBe('from-page.png');
+  });
+
+  it('leaves a text paste alone, and does not swallow the keystroke', () => {
+    // Pasting a reference number into a field must still paste it. Nothing
+    // is consumed until files are actually found.
+    const onFiles = vi.fn();
+    render(<FileDropzone onFiles={onFiles} />);
+
+    const event = paste({ items: [] });
+
+    expect(onFiles).not.toHaveBeenCalled();
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it('ignores a paste while it is busy storing the last one', () => {
+    const onFiles = vi.fn();
+    render(
+      <FileDropzone onFiles={onFiles} progress={{ label: 'Hashing…' }} />,
+    );
+
+    paste({ files: [screenshot()] });
+
+    expect(onFiles).not.toHaveBeenCalled();
+  });
+
+  it('ignores a paste while disabled, and when asked not to listen', () => {
+    const disabled = vi.fn();
+    const opted = vi.fn();
+
+    const { unmount } = render(<FileDropzone onFiles={disabled} disabled />);
+    paste({ files: [screenshot()] });
+    unmount();
+
+    render(<FileDropzone onFiles={opted} pasteable={false} />);
+    paste({ files: [screenshot()] });
+
+    expect(disabled).not.toHaveBeenCalled();
+    expect(opted).not.toHaveBeenCalled();
+  });
+
+  it('gives the paste to the newest zone only', () => {
+    // A payout screen has an upload panel; opening the attach dialog puts a
+    // second zone over it. One keystroke must not store the file twice.
+    const panel = vi.fn();
+    const dialog = vi.fn();
+
+    render(<FileDropzone onFiles={panel} label="Panel" />);
+    const second = render(<FileDropzone onFiles={dialog} label="Dialog" />);
+
+    paste({ files: [screenshot()] });
+
+    expect(dialog).toHaveBeenCalledOnce();
+    expect(panel).not.toHaveBeenCalled();
+
+    // And the panel underneath takes over again once the dialog closes.
+    second.unmount();
+    paste({ files: [screenshot()] });
+
+    expect(panel).toHaveBeenCalledOnce();
+  });
+
+  it('stops listening once it is gone', () => {
+    const onFiles = vi.fn();
+    const { unmount } = render(<FileDropzone onFiles={onFiles} />);
+
+    unmount();
+    paste({ files: [screenshot()] });
+
+    expect(onFiles).not.toHaveBeenCalled();
+  });
+
+  it('says the shortcut out loud, unless it is not listening', () => {
+    const { unmount } = render(<FileDropzone onFiles={vi.fn()} />);
+    expect(screen.getByText(/paste an image/i)).toBeInTheDocument();
+    unmount();
+
+    render(<FileDropzone onFiles={vi.fn()} pasteable={false} />);
+    expect(screen.queryByText(/paste an image/i)).not.toBeInTheDocument();
+  });
+});
+
 describe('PasswordField', () => {
   it('renders with only its required props', () => {
     // `/^password/i` rather than `/password/i`: the reveal toggle is also

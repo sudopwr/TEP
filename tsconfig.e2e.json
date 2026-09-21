@@ -7,8 +7,15 @@
   // — and the specs drive a browser, so it needs Node types and Playwright's
   // together. Folding it into either of the others would give that one the
   // dependency it was split up to avoid.
+  //
+  // `DOM` is on for a third reason: the body of a `page.evaluate` is browser
+  // code that happens to live in this file, and a paste is only constructible
+  // there (`DataTransfer`, `ClipboardEvent`). Without the lib those bodies are
+  // untypeable; with it, a Node-side slip that reaches for `window` fails at
+  // runtime rather than at the keyboard — which is the trade Playwright makes.
   "extends": "./tsconfig.base.json",
   "compilerOptions": {
+    "lib": ["ES2023", "DOM"],
     "composite": false,
     "incremental": false,
     "declaration": false,
