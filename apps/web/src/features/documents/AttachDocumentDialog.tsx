@@ -22,6 +22,7 @@ import { EmptyState, ErrorState, FileDropzone } from '../../shared/components';
 import { useToast } from '../../shared/feedback';
 
 import { DOC_TYPES, formatBytes } from './DocumentPreview';
+import { PendingDocument } from './PendingDocument';
 
 /**
  * F6 and F23 — put a document on a payout or one of its legs, either way.
@@ -95,6 +96,8 @@ function AttachDocumentForm({
   const [docType, setDocType] = useState('');
   const [docDate, setDocDate] = useState('');
   const [term, setTerm] = useState('');
+  /** Named before it is stored (F26), like everywhere else a file goes in. */
+  const [pending, setPending] = useState<File | null>(null);
 
   const found = useDocumentSearch(term);
   const failure =
@@ -104,9 +107,8 @@ function AttachDocumentForm({
         ? describeError(link.error)
         : null;
 
-  const upload = (files: readonly File[]): void => {
-    const file = files[0];
-    if (file === undefined || attach.isPending) return;
+  const upload = (file: File): void => {
+    if (attach.isPending) return;
 
     attach.mutate(
       {
@@ -188,8 +190,23 @@ function AttachDocumentForm({
           />
         </Box>
 
+        {pending === null ? null : (
+          <PendingDocument
+            key={`${pending.name}-${String(pending.size)}`}
+            file={pending}
+            busy={attach.isPending}
+            onConfirm={upload}
+            onDiscard={() => {
+              setPending(null);
+            }}
+          />
+        )}
+
         <FileDropzone
-          onFiles={upload}
+          onFiles={(files) => {
+            const [file] = files;
+            if (file !== undefined) setPending(file);
+          }}
           label="Drop a statement, receipt or screenshot here"
           hint="PDFs are indexed for full-text search; everything else is searchable by filename."
           {...(attach.isPending

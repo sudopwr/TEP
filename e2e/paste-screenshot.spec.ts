@@ -67,16 +67,33 @@ test('pastes a screenshot straight into the payout (F25)', async ({
     );
   }, ONE_PIXEL_PNG);
 
+  /*
+    Named before it is stored (F26), and this is the paste that makes that
+    matter: `image.png` says nothing, and the name it goes in under is the
+    one the trail shows and F7 searches. The application proposes one; the
+    reader types the one they will recognise.
+  */
+  const proposed = page.getByLabel('Filename');
+  await expect(proposed).toHaveValue(/^pasted-.*\.png$/);
+
+  await proposed.fill('hdfc-credit-10-march');
+  await page.getByRole('button', { name: 'Attach document' }).click();
+
   await expect(page.getByText('Document attached')).toBeVisible();
 
   /*
-    Named after the moment it arrived, not `image.png`.
+    Stored under the typed name, with the ending kept.
+
+    Typing over `image.png` means the name, not the format — a file saved out
+    later with no extension is one nothing will open.
 
     Every screenshot has that name, so a ledger of them is a list nobody can
     read and a filename search (F7) that cannot help. The row below is the
     payout's own documents (F23), since the form defaulted to the payout.
   */
-  const stored = page.getByRole('link', { name: /^pasted-.*\.png$/ });
+  const stored = page.getByRole('link', {
+    name: 'hdfc-credit-10-march.png',
+  });
   await expect(stored).toBeVisible();
 
   // ---------- and the bytes are the ones that were pasted ----------

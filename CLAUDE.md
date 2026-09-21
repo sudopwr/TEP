@@ -1,17 +1,18 @@
 # CLAUDE.md — Payout Tracker
 
-This file is the project's memory. Read it before doing anything. Update it at the end
-of every task. If something here contradicts the code, the code is wrong or this file is
-stale — say so, don't guess.
+This file is the project's memory, and `DECISIONS.md` beside it is the reasoning. Read
+both before doing anything, and update them at the end of every task. If something here
+contradicts the code, the code is wrong or this file is stale — say so, don't guess.
 
 ## 1. What this is
 
 A local application tracking trading-firm payouts from gross award to net rupees in the
 bank, every document attached and every fee accounted for. One machine, `127.0.0.1`, one
-user signing in, several traders it keeps payouts for (F24). A payout arrives as USD on a
-prop firm platform and moves through a processor, crypto wallets and an exchange before
-landing as INR in a bank, each hop with its own fee, rate, reference and document. That
-lived in a spreadsheet, where copy-paste destroyed four amounts and two fees.
+user signing in, several traders it keeps payouts for (F24). A payout arrives as USD on
+a prop firm platform and moves through a processor, crypto wallets and an exchange
+before landing as INR in a bank, each hop with its own fee, rate, reference and
+document. That lived in a spreadsheet, where copy-paste destroyed four amounts and two
+fees.
 
 ## 2. Requirements
 
@@ -43,6 +44,7 @@ lived in a spreadsheet, where copy-paste destroyed four amounts and two fees.
 | F23 | Attach a document to a payout or a leg, one already on file included; remove one |
 | F24 | Several traders in one ledger: add one, switch, and scope every payout-derived screen to a trader and a period: a first and last month, so a tax year is expressible |
 | F25 | Paste a screenshot or an image from the clipboard to attach it as a document |
+| F26 | Name a file before it is stored, whichever way it arrived |
 
 ### Non-functional
 | # | Requirement |
@@ -74,19 +76,14 @@ GetSettlement.** Gross proceeds, fees by type, net. **UC7 — GetAccountBalances
 account per currency, derived never stored. **UC8 — RunDataQualityChecks.** §7's flagged
 rows, with reasons. **UC9 — SearchDocuments.** FTS5 over filename and text. **UC10 —
 GenerateFinancialYearReport.** A date range: credited / TDS / fees by company.
-**UC11–UC14 — SignIn, AuthenticateSession, ChangeCredentials, SignOut**, spelled out in
-§5a: one message either way and a weaker credential re-hashed *without* clearing the
-flag; revoked beating expired, a session extending past half-life; the current password
-checked *first*, so it is no "is that username taken?" oracle, the policy run against
-the *new* username, must-change cleared only on a new password, every other session
-revoked; a sign-out that revokes server-side, idempotent, identical for a forged ID as a
-spent one. **UC15–UC18 — DeletePayout, DeleteTransaction, EditTransaction,
-DeleteDocument** (F18, F20–F22) and **UC19–UC21 — LinkDocument, DetachDocument,
-ListDocumentsFor** (F23): each counts first, then does one atomic thing; §13's "what
-deletes, and what refuses" is the reasoning. **UC22, UC23 — RecordTrader, ListTraders.**
-F24: a person payouts belong to, with no credential of any kind. **UC24 — the scope**
-(`payout-scope.ts`): trader and range, both optional, honoured *identically* by UC7,
-UC8, UC10 and `ListPayouts`. **Not numbered**, because §3 assumed they existed:
+**UC11–UC14 — SignIn, AuthenticateSession, ChangeCredentials, SignOut**, every rule of
+them in §5a, which is their authority. **UC15–UC18 — DeletePayout, DeleteTransaction,
+EditTransaction, DeleteDocument** (F18, F20–F22) and **UC19–UC21 — LinkDocument,
+DetachDocument, ListDocumentsFor** (F23): each counts first, then does one atomic thing;
+§13's "what deletes, and what refuses" is the reasoning. **UC22, UC23 — RecordTrader,
+ListTraders.** F24: a person payouts belong to, with no credential of any kind. **UC24 —
+the scope** (`payout-scope.ts`): trader and range, both optional, honoured *identically*
+by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**, because §3 assumed they existed:
 `RecordCompany`, `RecordAccount`, `EditAccount`, `DeleteAccount`, `ListCompanies`,
 `ListAccounts`, `ListPayouts`, `ListTransactions`, `GetDocument`, `ImportLegacyCsv`.
 
@@ -161,15 +158,20 @@ clears only when a password is set.
 
 **Failure handling.** One byte-identical message for every sign-in failure, and an
 unknown username still runs a full argon2 verification so the timing matches. 5 attempts
-a minute on `/auth/login`; never log a password. **Forgetting it.** No reset flow —
-nowhere to mail a link. Delete the row and restart: migrations see an empty `users`
+a minute on `/auth/login`; never log a password. A weaker credential is re-hashed
+*without* clearing the flag. **Changing them** checks the current password *first*, so
+it is no "is that username taken?" oracle; the policy runs against the *new* username,
+and every other session is revoked. **Signing out** revokes server-side, is idempotent,
+and answers identically for a forged ID as a spent one. **Forgetting it.** No reset flow
+— nowhere to mail a link. Delete the row and restart: migrations see an empty `users`
 table, re-seed the shipped credential with its cage, and say so loudly. Sessions
 cascade.
 
-**Session.** ID is 32 random bytes, base64url, compared timing-safely. Cookie:
-`httpOnly`, `sameSite=lax`, `secure=false` (loopback has no TLS), `path=/`, 30 days,
-session ID only. `SESSION_SECRET` lives in gitignored `.env`, made on first run; losing it
-only signs everyone out.
+**Session.** ID is 32 random bytes, base64url, compared timing-safely; revoked beats
+expired, and a session extends past its half-life. Cookie: `httpOnly`, `sameSite=lax`,
+`secure=false` (loopback has no TLS), `path=/`, 30 days, session ID only.
+`SESSION_SECRET` lives in gitignored `.env`, made on first run; losing it only signs
+everyone out.
 
 ## 6. Money
 
@@ -248,8 +250,9 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 - TypeScript everywhere, `strict: true`. Vitest for unit and integration, Playwright in
   `e2e/`; test file next to source, `money.test.ts`.
 - No default exports except React components. Errors are typed classes in
-  `core/domain/errors.ts`, never bare strings, written for the reader — the browser passes
-  them through. SQL lives in adapters, never routes or use cases, prepared once.
+  `core/domain/errors.ts`, never bare strings, each written for the reader — the browser
+  passes it through. SQL lives in adapters, never routes or use cases; statements
+  prepared once.
 - Commit message: `feat(core): ...`, `fix(api): ...`, `test(web): ...`.
 - Copy: sentence case, active voice, the user's words — the button says "Record payout"
   and the toast "Payout recorded"; an error says what happened and what to do, never
@@ -257,146 +260,16 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
 
 ## 13. Decision log
 
-Newest last. Never delete an entry — supersede it.
-- **Money as scaled integers, scale per currency**: one fixed scale breaks INR or USDT,
-  floats break both. **Fees are rows, not columns**, each in its own currency. **Status
-  and totals are derived**; a stored status drifts on the first edit. **The browser
-  formats money; the server owns the value**: `MoneyDisplay` takes integer minor units
-  (superseding "render the server's `amount` string"), kept honest by a `scale` prop and
-  the currency table. `Intl.NumberFormat` takes an exact decimal *string*: `2^53 + 1`
-  paise renders digit for digit, rupees group Indian-style, unknown currencies
-  **throw**. **`document_links` uses three nullable FKs with a CHECK summing to 1**, not
-  polymorphic `entity_type`/`entity_id`, which drops referential integrity. **Addresses
-  snapshot on the leg, normalized in `account_identifiers`.**
-- ~~**Google sign-in with a one-subject allow-list.**~~ Superseded by **username and
-  password, one account**: it needed a Cloud project, internet and a hostname-bound
-  redirect; §5a is the bill. **Auth, in one place.** **Sessions are rows, not JWTs**:
-  sign-out must actually revoke, which a token cannot without this table. **Auth lives
-  in `apps/api/auth/`, not `core`**, which sees a `PasswordHasher` port. **Migrations
-  carry seeds**; §5a's three constraints make `admin` defensible. **Guards are global
-  with an exemption list, never opt-in**, so a forgotten route fails closed:
-  `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` = §5a's five, the last two in the second only
-  since both must know who is asking; `RequireAuth`/`RequireSession` mirror them in the
-  browser, for the right screen not safety. **Session-id compare is constant-time; the
-  index probe isn't** — kept honest so nobody swaps in a 6-digit code and keeps `===`.
-- **Traps**, each covered by a test. `Error` owns `cause` and `name` (`.failure`,
-  `.migrationName`). `Algorithm.Argon2id` is an ambient `const enum`
-  `verbatimModuleSyntax` will not inline. `.catch(e => e as E)` widens the type *and*
-  passes when the call resolves; after `.then` it swallows what the success path throws.
-  `Date.parse('2025-02-30')` rolls to 2 March. Fastify's ajv deletes undeclared fields.
-  `fetch('/api/x')` throws outside a browser. An `sx` width is pixels, not spacing. MUI
-  peer-accepts React 19, so npm hoisted it beside apps/web's 18 until a root `overrides`
-  pinned it. `\b` through a non-raw string is a *backspace* (`no-control-regex` caught
-  it twice). Vitest does not typecheck; `npm run typecheck` is the only net. **Test
-  timeouts move, the cost does not** (`vitest.config.ts` says why beside each).
-  **happy-dom, not jsdom**: jsdom installs its own `AbortController` while `fetch` is
-  undici's, `instanceof`-checking Node's — two realms, one check, everything failing.
-  **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal *string*
-  and a rate transformed to a 1e8 bigint are a refinement and a transform, neither of
-  which JSON Schema has. **Money leaves as two strings**, and N1 reaches the keyboard:
-  `AmountField` filters keystrokes. **Unions derive from a runtime array**, so the API
-  cannot drift; `from`/`to` are one field in two halves, refused apart. **The error map
-  is keyed by `error.name`**: a constructor breaks when two copies of core load.
-  **Constraint violations are translated in the adapter** (§7's "friendlier message"):
-  `document_links` has two FKs, so it checks which. **Documents are served by a handler,
-  never a static mount**, which would publish every file to anyone guessing a hash. **A
-  400 carries `details.issues`**: each message under its own field.
-- **One composition root per process**: `container.ts` on the server (the F12 CLI wired
-  its own adapters until `container.test.ts` caught it) and `routes.tsx` in the browser,
-  where the payout screen wants four features' parts and `payouts/` importing
-  `transactions/` would leave neither readable — hence the shell's `toolbar` slot for
-  the bar. **The palette is a lint rule**: `no-raw-hex` fails the build for a hex under
-  apps/web bar `theme/palette.ts`. **N8 is three more**: `no-feature-imports`,
-  `no-fetch-in-shared` (hence `ScopeProvider` beside `AuthProvider` in `shared/api/`)
-  and `no-cross-feature-imports`. **`sortBy` is separate from `cell` in `DataTable`**,
-  so a money column sorts on its int (as text, `9.00` sorts after `84,642.93`), absent
-  values pinning to the bottom either way. **`TreeView` splits each row** into an
-  indented label and an un-indented aside, or nesting turns §10's trail into a
-  staircase. **Cache keys come from `queryKeys`, never inline**: two call sites spell
-  one key two ways, and the screen reads the one no mutation invalidated. The hierarchy
-  makes invalidation precise — a leg reaches that payout's trail, settlement, balances
-  and checks — with a test on what stays. **A 401 is handled in the caches, never at a
-  call site**: it clears everything (a signed-out session must not leave balances in
-  memory), seeds `auth.me` null, bar `/auth/me`, `/auth/login` and
-  `/auth/change-credentials` — answers rather than expiries, told apart by a
-  `mutationKey`: clearing on a wrong password destroys the mutation holding the error.
-  **Signed-in state is that one `useQuery`**: a second `user` in state disagrees the
-  moment a session is revoked. **F15's 403 routes by writing the auth cache, not
-  `navigate`** — `RequireAuth` reads `mustChangePassword` off `auth.me`, so no stale tab
-  sits on a data screen. **No "mark settled" endpoint**: settling *is* the sale reaching
-  a bank (`useSettlePayout`), figures left to the server. **`/api/accounts` and
-  `/api/accounts/balances` answer two questions**: a balance is derived from movements
-  (UC7), so an account recorded a minute ago is absent — right for a balance sheet,
-  useless for a form asking where money went. An allow-list is a **set**, sorted: SQLite
-  reads it back ordered, a fake does not. **One process in production, two in
-  development.** `npm start` serves the built bundle from the API, so the browser sees
-  one origin and §5a's `sameSite=lax` cookie needs no proxy pretending otherwise; `npm
-  run dev` keeps Vite. **The SPA fallback never answers for `/api`, `/auth` or
-  `/health`**: JSON asked for and HTML returned is a typo reported three layers away.
-  The guards know the interface by the registered routes, never a guessed pattern. **Web
-  fixtures come from the API's own test server** — §10's tree as the routes serialise it
-  (`reference-payout.ts`); an MSW handler *filters* where the server does, or a hook
-  that never sent the scope passes. **One e2e world per journey** (temp database, legacy
-  import, an OS-picked port), or the suite turns order-dependent — and the first test
-  that *clicked* found two bugs every DOM assertion passed. **`npm run backup` uses
-  SQLite's backup API, never a file copy**: in WAL mode the newest pages are in
-  `app.db-wal`, so `cp` gives three snapshots of three instants and, unless something
-  checkpointed, no schema at all (a test shows it). Files are copied. **The bundle's
-  size warning is raised, not obeyed**: 500kB is download advice, this is local disk,
-  and splitting would worsen §11. **`npm run dev` watches with `node --watch`, not `tsx
-  watch`**: under concurrently's prefixed output the supervisor's child never ran the
-  module — no error, no listen — so Vite's proxy answered ECONNREFUSED and the bug read
-  as the app's (`--raw` cures it, losing prefixes).
-- **A missing choice is added from inside the dropdown** (`SelectWithCreate`), its
-  create item an action, not a value. Its dialog renders **outside** the form: a portal
-  is elsewhere in the DOM but not in the React tree, and its submit ran the payout's
-  `onSubmit`. Select only once the invalidation resolves or MUI draws an empty box;
-  assert with `find`, a closing modal still holding `aria-hidden` and a list that
-  reloaded having replaced the element a test was holding. An empty select *value* reads
-  as "nothing chosen", so each "All" entry carries a word. **A screenshot is pasted, not
-  saved first** (F25): a paste has no target the way a drop does, so the listener is on
-  the *window* and the newest zone wins — or a dialog over a panel stores it twice.
-  Nothing is consumed until files are on the clipboard, so text pastes pass through;
-  `image.png` is renamed for the moment it arrived, every screenshot having that name
-  (F7). **What deletes, and what refuses.** A **payout** deletes for real (F18), not
-  into a "cancelled" status — the fourth state §13 refused: legs, fees and links go,
-  **documents stay** (F6), one transaction, the tree peeled **leaf-first** since
-  `parent_id` is RESTRICT, checked per row: a cascade fails below depth one, and a test
-  asserts it. An **account** is a party to events, not an event: deleting one with any
-  leg is a 409 **counting** them, only its configuration cascades, and an edit is a
-  **replacement** (F19), an empty allow-list meaning "holds anything". A **leg** takes
-  the legs below it (F20), a child being money that came from it. **Editing a leg**
-  (F21) replaces the row and nothing around it — not the kind (§8's fee engine), not the
-  parent, not the **fees**: TDS came off a statement, so §7 reports a mismatch rather
-  than arithmetic overwriting evidence. **Removing a document is not deleting it**
-  (F23): breaking a relationship leaves the file to be attached again. A **document** is
-  a thing (F6): deleting one takes every attachment, file *after* row — a row without
-  bytes answers 422, bytes without a row are litter. The payout delete alone **removes**
-  cache entries rather than invalidating them: a deleted trail 404s.
-- **AGPL-3.0-only**, verbatim in `LICENSE`, `license` in all four manifests, no per-file
-  headers. Its §13 is the point — a copy reached over a network owes its users the
-  source — so §11's "reached from outside?" is a licence question. **A trader is not a
-  user** (F24): §5a's account is who is *using* this, a trader is who the money belongs
-  to — no password, no `users` row, a name in a dropdown never a way to sign in (a test
-  checks the dialog for a password field). **Whose money and when are one selection**,
-  `PayoutScope`, honoured identically by the list, the balances, the checks and the
-  report; half-honouring it is how screens disagree. The hooks fold it in, never a call
-  site, so no screen can forget; in the key it sits *after* the caller's own filter,
-  leaving `balances.all()` matching every scoped spelling. The report keeps its own
-  range, the bar not re-cutting a year somebody asked for. **A period is two months, not
-  a year**: a tax year starts in April, so April 2024 to March 2025 must be sayable, the
-  year list reaches back a year further than the data, and clearing either end clears
-  both. **In UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th.
-  `004_traders.sql` adds `trader_id` by **rebuilding the table**: with foreign keys on,
-  `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it is SQLite's
-  12-step dance under `defer_foreign_keys` and `legacy_alter_table`, §10 and the views
-  proven after.
+In `DECISIONS.md`, and long enough to be worth its own file. Newest last; never
+delete an entry — supersede it. Read it before changing anything it covers.
 
 ## 14. Task protocol
 
 At the end of every task:
 1. Run the full test suite. Do not report done with a failing test.
-2. Append anything durable to §13 — a decision, a gotcha, a corrected assumption; move
-  anything resolved out of §11.
+2. Append anything durable to `DECISIONS.md` — a decision, a gotcha, a corrected
+  assumption; move anything resolved out of §11.
 3. If the task changed the schema, update §6, §7 or §8 to match.
-4. Keep this file under 400 lines. Condense old entries, never delete them.
+4. Keep this file under 400 lines and `DECISIONS.md` under 400. Condense old entries,
+  never delete them — the split into two files was itself the condensation §13 needed,
+  and there is no third file: the next one is a real rewrite.

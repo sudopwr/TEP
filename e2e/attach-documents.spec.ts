@@ -69,6 +69,8 @@ test('takes a document off a leg, then puts it back from the search', async ({
     mimeType: 'application/pdf',
     buffer: aPdf('coindcx march statement'),
   });
+  // Named before it is stored (F26).
+  await dialog.getByRole('button', { name: 'Attach document' }).click();
 
   await expect(page.getByText(`${filename} attached`)).toBeVisible();
   await expect(trail(page).getByRole('link', { name: filename })).toBeVisible();
@@ -127,6 +129,7 @@ test('attaches a contract to the payout itself, and removes it again', async ({
     mimeType: 'application/pdf',
     buffer: aPdf('the funded account agreement'),
   });
+  await dialog.getByRole('button', { name: 'Attach document' }).click();
 
   await expect(page.getByText(`${filename} attached`)).toBeVisible();
 

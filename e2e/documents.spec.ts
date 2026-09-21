@@ -82,6 +82,11 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
     buffer: aPdf(token),
   });
 
+  // Nothing is stored until it is named (F26): the file waits, under the
+  // name it came with, for somebody to say go ahead.
+  await expect(page.getByLabel('Filename')).toHaveValue(filename);
+  await page.getByRole('button', { name: 'Attach document' }).click();
+
   await expect(page.getByText('Document attached')).toBeVisible();
 
   // It appears against the leg it was attached to, in the trail itself.

@@ -10,6 +10,7 @@ import { FileDropzone } from '../../shared/components';
 import { useToast } from '../../shared/feedback';
 
 import { DOC_TYPES } from './DocumentPreview';
+import { PendingDocument } from './PendingDocument';
 
 /**
  * F6 — attach a document, to a leg or to the payout itself.
@@ -47,13 +48,17 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
   const [attachTo, setAttachTo] = useState<string>(THE_PAYOUT);
   const [docType, setDocType] = useState('');
   const [docDate, setDocDate] = useState('');
+  /*
+    The file waits here until it is named (F26).
+
+    Nothing is uploaded on the way past: a pasted screenshot arrives as
+    `image.png`, and the name it is stored under is the one it keeps.
+  */
+  const [pending, setPending] = useState<File | null>(null);
 
   const failure = attach.error === null ? null : describeError(attach.error);
 
-  const send = (files: readonly File[]): void => {
-    const file = files[0];
-    if (file === undefined) return;
-
+  const send = (file: File): void => {
     attach.mutate(
       {
         payoutId,
@@ -67,6 +72,7 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
       },
       {
         onSuccess: (result) => {
+          setPending(null);
           notify(
             result.created
               ? 'Document attached'
@@ -134,8 +140,30 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
         />
       </Box>
 
+      {/*
+        Above the zone rather than replacing it, so a second screenshot can
+        still be pasted over the first: the zone is where a paste is caught,
+        and unmounting it would quietly turn the shortcut off.
+      */}
+      {pending === null ? null : (
+        <PendingDocument
+          // Keyed by the file, so pasting a second one over the first shows
+          // *its* name rather than the name typed over the last one.
+          key={fileKey(pending)}
+          file={pending}
+          busy={attach.isPending}
+          onConfirm={send}
+          onDiscard={() => {
+            setPending(null);
+          }}
+        />
+      )}
+
       <FileDropzone
-        onFiles={send}
+        onFiles={(files) => {
+          const [file] = files;
+          if (file !== undefined) setPending(file);
+        }}
         label="Drop a statement, receipt or screenshot here"
         hint="PDFs are indexed for full-text search; everything else is searchable by filename."
         {...(attach.isPending
@@ -151,4 +179,9 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
       />
     </Box>
   );
+}
+
+/** Enough of a file to tell two of them apart. */
+function fileKey(file: File): string {
+  return `${file.name}-${String(file.size)}-${String(file.lastModified)}`;
 }

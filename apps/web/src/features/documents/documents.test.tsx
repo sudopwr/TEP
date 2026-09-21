@@ -13,6 +13,7 @@ import {
   renderApp,
   renderFeature,
   screen,
+  waitFor,
   within,
 } from '../../../test/renderApp';
 
@@ -21,6 +22,23 @@ import { DocumentUpload } from './DocumentUpload';
 /**
  * Search, preview and upload — F6 and F7.
  */
+
+/**
+ * Nothing is stored until it is named (F26): every way in now ends with a
+ * look at the filename and a click.
+ */
+const confirmUpload = async (name?: string): Promise<void> => {
+  const field = await screen.findByRole('textbox', { name: 'Filename' });
+
+  if (name !== undefined) {
+    await userEvent.clear(field);
+    await userEvent.type(field, name);
+  }
+
+  await userEvent.click(
+    screen.getByRole('button', { name: 'Attach document' }),
+  );
+};
 
 describe('searching documents', () => {
   it('asks nothing until there is something to search for', async () => {
@@ -121,6 +139,7 @@ describe('attaching a document', () => {
       screen.getByLabelText('Choose a file'),
       new File(['bytes'], 'contract.pdf', { type: 'application/pdf' }),
     );
+    await confirmUpload();
 
     expect(await screen.findByText('Document attached')).toBeInTheDocument();
   });
@@ -138,6 +157,7 @@ describe('attaching a document', () => {
 
     const file = new File(['bytes'], 'march.pdf', { type: 'application/pdf' });
     await userEvent.upload(screen.getByLabelText('Choose a file'), file);
+    await confirmUpload();
 
     expect(await screen.findByText('Document attached')).toBeInTheDocument();
   });
@@ -155,6 +175,7 @@ describe('attaching a document', () => {
       screen.getByLabelText('Choose a file'),
       new File(['bytes'], 'march.pdf', { type: 'application/pdf' }),
     );
+    await confirmUpload();
 
     expect(await screen.findByText(/already stored/)).toBeInTheDocument();
   });
@@ -178,6 +199,7 @@ describe('pasting a screenshot (F25)', () => {
     await screen.findByRole('combobox', { name: /Attach to/ });
 
     pasteScreenshot();
+    await confirmUpload();
 
     expect(await screen.findByText('Document attached')).toBeInTheDocument();
   });
@@ -207,6 +229,7 @@ describe('pasting a screenshot (F25)', () => {
     );
 
     pasteScreenshot();
+    await confirmUpload();
 
     expect(await sent).toBe('3');
   });
@@ -230,10 +253,159 @@ describe('pasting a screenshot (F25)', () => {
     await userEvent.click(await screen.findByRole('option', { name: 'receipt' }));
 
     pasteScreenshot();
+    await confirmUpload();
 
     const form = await sent;
     expect(form.get('docType')).toBe('receipt');
     expect((form.get('file') as File).name).toMatch(/^pasted-/);
+  });
+});
+
+describe('naming a file before it is stored (F26)', () => {
+  const pasteScreenshot = (name = 'image.png'): void => {
+    const event = new Event('paste', { bubbles: true, cancelable: true });
+    Object.defineProperty(event, 'clipboardData', {
+      value: {
+        files: [new File(['png bytes'], name, { type: 'image/png' })],
+        items: [],
+      },
+    });
+    window.dispatchEvent(event);
+  };
+
+  /** The multipart body the browser actually sent. */
+  const capture = (): Promise<FormData> =>
+    new Promise<FormData>((resolve) => {
+      server.use(
+        http.post('/api/payouts/:id/documents', async ({ request }) => {
+          resolve(await request.formData());
+
+          return HttpResponse.json(
+            { document: DOCUMENTS[0], created: true },
+            { status: 201 },
+          );
+        }),
+      );
+    });
+
+  it('shows the name and stores nothing until it is confirmed', async () => {
+    let posted = false;
+    server.use(
+      http.post('/api/payouts/:id/documents', () => {
+        posted = true;
+
+        return HttpResponse.json(
+          { document: DOCUMENTS[0], created: true },
+          { status: 201 },
+        );
+      }),
+    );
+
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await userEvent.upload(
+      await screen.findByLabelText('Choose a file'),
+      new File(['bytes'], 'coindcx-march.pdf', { type: 'application/pdf' }),
+    );
+
+    expect(await screen.findByRole('textbox', { name: 'Filename' })).toHaveValue(
+      'coindcx-march.pdf',
+    );
+    expect(posted).toBe(false);
+  });
+
+  it('stores it under the name that was typed', async () => {
+    const sent = capture();
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+    await confirmUpload('hdfc-credit-10-march.png');
+
+    expect((await sent).get('file')).toHaveProperty(
+      'name',
+      'hdfc-credit-10-march.png',
+    );
+  });
+
+  it('keeps the ending when the new name leaves it off', async () => {
+    // Somebody typing over `image.png` means the name, not the format, and a
+    // file stored without its extension is one nothing will open later.
+    const sent = capture();
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+    await confirmUpload('hdfc-credit');
+
+    expect((await sent).get('file')).toHaveProperty(
+      'name',
+      'hdfc-credit.png',
+    );
+  });
+
+  it('takes a different ending at its word', async () => {
+    const sent = capture();
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+    await confirmUpload('receipt.jpeg');
+
+    expect((await sent).get('file')).toHaveProperty('name', 'receipt.jpeg');
+  });
+
+  it('refuses a nameless document, and says why', async () => {
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+    await userEvent.clear(await screen.findByRole('textbox', { name: 'Filename' }));
+
+    expect(screen.getByText('A document needs a name.')).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Attach document' }),
+    ).toBeDisabled();
+  });
+
+  it('discards the file without storing it', async () => {
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Discard' }),
+    );
+
+    expect(
+      screen.queryByRole('textbox', { name: 'Filename' }),
+    ).not.toBeInTheDocument();
+    // And the zone is still there, ready for the next one.
+    expect(screen.getByLabelText('Choose a file')).toBeInTheDocument();
+  });
+
+  it('shows the second file pasted over the first, not the first name again', async () => {
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    pasteScreenshot('first.png');
+    await screen.findByRole('textbox', { name: 'Filename' });
+
+    pasteScreenshot('second.png');
+
+    await waitFor(() => {
+      expect(screen.getByRole('textbox', { name: 'Filename' })).toHaveValue(
+        'second.png',
+      );
+    });
+  });
+
+  it('says how big it is, so an empty screenshot is caught here', async () => {
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByLabelText('Choose a file');
+
+    pasteScreenshot();
+
+    expect(await screen.findByText(/image\/png/)).toBeInTheDocument();
   });
 });
 
