@@ -27,7 +27,9 @@ export class ListAccounts {
     this.#deps = dependencies;
   }
 
-  async execute(command: ListAccountsCommand = {}): Promise<readonly Account[]> {
+  async execute(
+    command: ListAccountsCommand = {},
+  ): Promise<readonly Account[]> {
     const { accounts } = this.#deps;
 
     return command.type === undefined

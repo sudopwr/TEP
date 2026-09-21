@@ -55,13 +55,13 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
     page.getByRole('heading', { name: 'Attach a document' }),
   ).toBeVisible();
 
-  // A file belongs to a leg, not to the payout — the exchange statement
-  // belongs to the sale it settles. So the form asks which, first.
-  await expect(
-    page.getByText('Choose the leg it belongs to first.'),
-  ).toBeVisible();
-
-  await choose(page, 'To which leg').click();
+  /*
+    A file usually belongs to a leg rather than to the payout — the exchange
+    statement belongs to the sale it settles — so the form offers both and
+    this journey chooses the leg. "The payout itself" is the default, and the
+    documents that belong to no movement go there (F23's own journey).
+  */
+  await choose(page, 'Attach to').click();
   await page.getByRole('option', { name: /Transaction003/ }).click();
 
   await choose(page, 'Kind').click();

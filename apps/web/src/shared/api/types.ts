@@ -229,6 +229,23 @@ export interface DocumentDeletedJson {
   readonly linksRemoved: number;
 }
 
+/** Where a document may be attached (F6): a payout, or one of its legs. */
+export type DocumentTargetJson =
+  | { readonly kind: 'payout'; readonly id: number }
+  | { readonly kind: 'transaction'; readonly id: number };
+
+export interface LinkDocumentCommand {
+  readonly documentId: number;
+  readonly target: DocumentTargetJson;
+  readonly role?: string;
+}
+
+/** What a detach left behind: the document, and what still points at it. */
+export interface DocumentDetachedJson {
+  readonly document: DocumentJson;
+  readonly remainingLinks: number;
+}
+
 export interface DocumentsResponse {
   readonly documents: readonly DocumentJson[];
 }

@@ -9,30 +9,31 @@ import { describeError } from '../../shared/api/errors';
 import { FileDropzone } from '../../shared/components';
 import { useToast } from '../../shared/feedback';
 
+import { DOC_TYPES } from './DocumentPreview';
+
 /**
- * F6 — attach a document to a transaction.
+ * F6 — attach a document, to a leg or to the payout itself.
  *
- * A file is attached to a *leg*, not to the payout as a whole, because that
- * is what makes the trail evidential: the exchange statement belongs to the
- * sale it settles, and the withdrawal receipt to the withdrawal. Both then
- * appear at their own node in the tree, next to the amount they support.
+ * A file usually belongs to a *leg*, and that is what makes the trail
+ * evidential: the exchange statement belongs to the sale it settles, the
+ * withdrawal receipt to the withdrawal, and each appears at its own node next
+ * to the amount it supports. But some documents belong to none of the
+ * movements — the contract, the firm's own summary of the award — and
+ * "the payout itself" is the first thing this form offers for exactly those.
  *
  * Re-uploading a file that is already stored does not duplicate it — UC4
  * dedupes by SHA-256 and links the existing document instead. The
  * confirmation says which of the two happened, because "attached" and
  * "already on file, now linked here as well" are different facts and the
  * second one is reassuring rather than alarming.
+ *
+ * Attaching a document that is *already on record* is the dialog's job
+ * (`AttachDocumentDialog`), reached from the trail and from the payout's own
+ * document list. This form is for bytes.
  */
 
-const DOC_TYPES = [
-  'agreement',
-  'invoice',
-  'receipt',
-  'screenshot',
-  'statement',
-  'contract',
-  'other',
-] as const;
+/** The select's value for the payout itself, which has no transaction id. */
+const THE_PAYOUT = 'payout';
 
 export interface DocumentUploadProps {
   readonly payoutId: number;
@@ -43,21 +44,23 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
   const attach = useAttachDocument();
   const { notify } = useToast();
 
-  const [transactionId, setTransactionId] = useState('');
+  const [attachTo, setAttachTo] = useState<string>(THE_PAYOUT);
   const [docType, setDocType] = useState('');
   const [docDate, setDocDate] = useState('');
 
   const failure = attach.error === null ? null : describeError(attach.error);
-  const ready = transactionId !== '';
 
   const send = (files: readonly File[]): void => {
     const file = files[0];
-    if (file === undefined || !ready) return;
+    if (file === undefined) return;
 
     attach.mutate(
       {
         payoutId,
-        transactionId: Number(transactionId),
+        target:
+          attachTo === THE_PAYOUT
+            ? { kind: 'payout', id: payoutId }
+            : { kind: 'transaction', id: Number(attachTo) },
         file,
         ...(docType === '' ? {} : { docType }),
         ...(docDate === '' ? {} : { docDate }),
@@ -83,16 +86,17 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
       <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
         <TextField
           select
-          label="To which leg"
-          value={transactionId}
+          label="Attach to"
+          value={attachTo}
           onChange={(event) => {
-            setTransactionId(event.target.value);
+            setAttachTo(event.target.value);
           }}
           size="small"
           sx={{ minWidth: 240 }}
           required
-          helperText="The movement this file is evidence for."
+          helperText="What this file is evidence for."
         >
+          <MenuItem value={THE_PAYOUT}>The payout itself</MenuItem>
           {(transactions.data ?? []).map((transaction) => (
             <MenuItem key={transaction.id} value={String(transaction.id)}>
               {transaction.code} · {transaction.kind}
@@ -133,12 +137,7 @@ export function DocumentUpload({ payoutId }: DocumentUploadProps) {
       <FileDropzone
         onFiles={send}
         label="Drop a statement, receipt or screenshot here"
-        hint={
-          ready
-            ? 'PDFs are indexed for full-text search; everything else is searchable by filename.'
-            : 'Choose the leg it belongs to first.'
-        }
-        disabled={!ready}
+        hint="PDFs are indexed for full-text search; everything else is searchable by filename."
         {...(attach.isPending
           ? { progress: { label: 'Hashing and storing' } }
           : {})}

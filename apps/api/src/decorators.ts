@@ -6,6 +6,7 @@ import type {
   ChangeCredentials,
   DeleteAccount,
   DeleteDocument,
+  DetachDocument,
   DeletePayout,
   DeleteTransaction,
   GenerateFinancialYearReport,
@@ -14,6 +15,8 @@ import type {
   GetPayoutTrail,
   EditAccount,
   EditTransaction,
+  LinkDocument,
+  ListDocumentsFor,
   GetSettlement,
   ListAccounts,
   ListCompanies,
@@ -82,6 +85,9 @@ export interface UseCases {
   readonly attachDocument: AttachDocument;
   readonly getDocument: GetDocument;
   readonly deleteDocument: DeleteDocument;
+  readonly linkDocument: LinkDocument;
+  readonly detachDocument: DetachDocument;
+  readonly listDocumentsFor: ListDocumentsFor;
   readonly searchDocuments: SearchDocuments;
   readonly getAccountBalances: GetAccountBalances;
   readonly runDataQualityChecks: RunDataQualityChecks;

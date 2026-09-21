@@ -33,6 +33,23 @@ function isPdf(mimeType: string | null): boolean {
 }
 
 /** `20480` as `20 KB`. Decimal, matching what a file manager shows. */
+/**
+ * The kinds a document may be declared as — `documents.doc_type`'s CHECK.
+ *
+ * Here rather than in one of the two forms that offer them, because both do:
+ * the upload form on the payout screen and the attach dialog on a leg. The
+ * server checks the choice regardless; this list only decides what is shown.
+ */
+export const DOC_TYPES = [
+  'agreement',
+  'invoice',
+  'receipt',
+  'screenshot',
+  'statement',
+  'contract',
+  'other',
+] as const;
+
 export function formatBytes(bytes: number | null): string {
   if (bytes === null) return 'unknown size';
   if (bytes < 1000) return `${String(bytes)} B`;

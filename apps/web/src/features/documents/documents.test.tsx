@@ -1,6 +1,7 @@
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it } from 'vitest';
 
+import { DOCUMENTS } from '../../../test/msw/fixtures';
 import {
   answering,
   deleteFails,
@@ -98,26 +99,38 @@ describe('previewing a document', () => {
 });
 
 describe('attaching a document', () => {
-  it('asks which leg it belongs to before it will take a file', async () => {
-    // A file attached to the payout as a whole is filing; a file attached to
-    // the sale it settles is evidence.
+  it('defaults to the payout itself, which needs no leg chosen', async () => {
+    // The contract and the firm's own summary belong to the award rather
+    // than to any movement, and before F23 there was nowhere to put them.
     renderFeature(<DocumentUpload payoutId={1} />);
 
     expect(
-      await screen.findByText('Choose the leg it belongs to first.'),
-    ).toBeInTheDocument();
+      await screen.findByRole('combobox', { name: /Attach to/ }),
+    ).toHaveTextContent('The payout itself');
     // The input itself, not the label that fronts it: a label cannot be
     // disabled, and asserting on one would pass however the input behaved.
-    expect(screen.getByLabelText('Choose a file')).toBeDisabled();
+    expect(screen.getByLabelText('Choose a file')).not.toBeDisabled();
   });
 
-  it('accepts a file once a leg is chosen, and says it was attached', async () => {
+  it('takes a file for the payout as a whole', async () => {
     renderFeature(<DocumentUpload payoutId={1} />);
-    await screen.findByText('Choose the leg it belongs to first.');
+    await screen.findByRole('combobox', { name: /Attach to/ });
 
-    await userEvent.click(
-      screen.getByRole('combobox', { name: /To which leg/ }),
+    await userEvent.upload(
+      screen.getByLabelText('Choose a file'),
+      new File(['bytes'], 'contract.pdf', { type: 'application/pdf' }),
     );
+
+    expect(await screen.findByText('Document attached')).toBeInTheDocument();
+  });
+
+  it('takes a file for one leg, when a leg is chosen', async () => {
+    // A file attached to the payout as a whole is filing; a file attached to
+    // the sale it settles is evidence.
+    renderFeature(<DocumentUpload payoutId={1} />);
+    await screen.findByRole('combobox', { name: /Attach to/ });
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Attach to/ }));
     await userEvent.click(
       await screen.findByRole('option', { name: /Transaction003/ }),
     );
@@ -132,17 +145,10 @@ describe('attaching a document', () => {
     // UC4 dedupes by SHA-256 and links the existing document. "Attached" and
     // "already stored, now linked here too" are different facts, and the
     // second is reassuring rather than alarming.
-    server.use(documentAlreadyStored());
+    server.use(...documentAlreadyStored());
 
     renderFeature(<DocumentUpload payoutId={1} />);
-    await screen.findByText('Choose the leg it belongs to first.');
-
-    await userEvent.click(
-      screen.getByRole('combobox', { name: /To which leg/ }),
-    );
-    await userEvent.click(
-      await screen.findByRole('option', { name: /Transaction003/ }),
-    );
+    await screen.findByRole('combobox', { name: /Attach to/ });
 
     await userEvent.upload(
       screen.getByLabelText('Choose a file'),
@@ -244,5 +250,146 @@ describe('deleting a document', () => {
       await within(dialog).findByText('No document with id 10.'),
     ).toBeInTheDocument();
     expect(screen.getByText('Delete coindcx-march.pdf?')).toBeInTheDocument();
+  });
+});
+
+describe('documents on the payout screen (F23)', () => {
+  const payoutDocuments = (documents: readonly unknown[]) =>
+    answering('/api/payouts/:id/documents', { documents });
+
+  const openThePayout = async (): Promise<void> => {
+    renderApp({ route: '/payouts/1' });
+    await screen.findByRole('heading', { name: /TradeifyPayout001/ });
+  };
+
+  it('says plainly when nothing is attached to the payout itself', async () => {
+    // The distinction the panel exists for: a receipt for one movement
+    // belongs on its leg, not here.
+    await openThePayout();
+
+    expect(
+      await screen.findByText('Nothing is attached to this payout itself.'),
+    ).toBeInTheDocument();
+  });
+
+  it('lists what is attached to the payout, with a way to open it', async () => {
+    server.use(payoutDocuments([DOCUMENTS[0]]));
+
+    await openThePayout();
+
+    const link = await screen.findByRole('link', {
+      name: 'coindcx-march.pdf',
+    });
+    // Served by the handler, behind both guards — never a static mount.
+    expect(link).toHaveAttribute('href', '/api/documents/10');
+  });
+
+  it('opens one dialog that can upload a file or choose one on record', async () => {
+    // The two ways in are the same intention, so they are one dialog: the
+    // file is either on the desk or already on file.
+    await openThePayout();
+
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Attach a document' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(/Attach a document to this payout/),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Choose a file')).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText('Search documents'),
+    ).toBeInTheDocument();
+  });
+
+  it('attaches one that is already on record, without uploading anything', async () => {
+    await openThePayout();
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Attach a document' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    await userEvent.type(
+      within(dialog).getByLabelText('Search documents'),
+      'coindcx',
+    );
+    await userEvent.click(
+      await within(dialog).findByRole('button', {
+        name: 'Attach coindcx-march.pdf',
+      }),
+    );
+
+    expect(
+      await screen.findByText('coindcx-march.pdf attached'),
+    ).toBeInTheDocument();
+  });
+
+  it('removes one from the payout, saying the file stays on record', async () => {
+    // "Remove", not "Delete": F23 breaks one attachment, F22 deletes the
+    // file. The copy has to carry that difference, or the reader cannot tell
+    // which of the two they just did.
+    server.use(payoutDocuments([DOCUMENTS[0]]));
+
+    await openThePayout();
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Remove coindcx-march.pdf from this payout',
+      }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(
+      within(dialog).getByText(/The file stays on\s+record/),
+    ).toBeInTheDocument();
+
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Remove document' }),
+    );
+
+    expect(
+      await screen.findByText(/coindcx-march.pdf removed/),
+    ).toBeInTheDocument();
+  });
+
+  it('says when the last thing lets go, which is not a deletion', async () => {
+    server.use(payoutDocuments([DOCUMENTS[0]]));
+
+    await openThePayout();
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Remove coindcx-march.pdf from this payout',
+      }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Remove document',
+      }),
+    );
+
+    expect(
+      await screen.findByText(/still on record, attached to nothing/),
+    ).toBeInTheDocument();
+  });
+
+  it('keeps the document when the question is declined', async () => {
+    server.use(payoutDocuments([DOCUMENTS[0]]));
+
+    await openThePayout();
+    await userEvent.click(
+      await screen.findByRole('button', {
+        name: 'Remove coindcx-march.pdf from this payout',
+      }),
+    );
+    await userEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', {
+        name: 'Cancel',
+      }),
+    );
+
+    expect(
+      await screen.findByRole('link', { name: 'coindcx-march.pdf' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/removed/)).not.toBeInTheDocument();
   });
 });

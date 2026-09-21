@@ -19,8 +19,10 @@ import {
   useDeleteDocument,
   useDeletePayout,
   useDeleteTransaction,
+  useDetachDocument,
   useEditAccount,
   useEditTransaction,
+  useLinkDocument,
   useRecordCompany,
   useRecordPayout,
   useRecordTransaction,
@@ -206,7 +208,7 @@ describe('useAttachDocument', () => {
     });
     result.current.mutate({
       payoutId: 1,
-      transactionId: 3,
+      target: { kind: 'transaction', id: 3 },
       file: new File(['bytes'], 'march.pdf', { type: 'application/pdf' }),
     });
 
@@ -218,6 +220,103 @@ describe('useAttachDocument', () => {
     expect(isStale(client, queryKeys.documents.search('march'))).toBe(true);
     expect(isStale(client, queryKeys.balances.list())).toBe(false);
     expect(isStale(client, queryKeys.payouts.settlement(1))).toBe(false);
+  });
+});
+
+describe('useLinkDocument and useDetachDocument (F23)', () => {
+  /**
+   * Both ends of an attachment, and the same three caches either way: the
+   * leg's trail, the payout's own list, and the `documents` tree. A link is
+   * a fact about a document, and it moves no money — which is what separates
+   * these two from every mutation that does.
+   */
+  function seedTheScreen(): QueryClient {
+    const client = createQueryClient();
+
+    seed(client, queryKeys.payouts.trail(1), { payout: {}, roots: [] });
+    seed(client, queryKeys.documents.forPayout(1), { documents: [] });
+    seed(client, queryKeys.documents.search('march'), { documents: [] });
+    // Should survive untouched:
+    seed(client, queryKeys.payouts.settlement(1), OPEN_SETTLEMENT);
+    seed(client, queryKeys.balances.list(), { balances: [] });
+    seed(client, queryKeys.dataQuality.list(), { issues: [] });
+    seed(client, queryKeys.payouts.trail(2), { payout: {}, roots: [] });
+
+    return client;
+  }
+
+  const expectTouched = (client: QueryClient) => {
+    expect(isStale(client, queryKeys.payouts.trail(1))).toBe(true);
+    expect(isStale(client, queryKeys.documents.forPayout(1))).toBe(true);
+    expect(isStale(client, queryKeys.documents.search('march'))).toBe(true);
+  };
+
+  const expectUntouched = (client: QueryClient) => {
+    expect(isStale(client, queryKeys.payouts.settlement(1))).toBe(false);
+    expect(isStale(client, queryKeys.balances.list())).toBe(false);
+    expect(isStale(client, queryKeys.dataQuality.list())).toBe(false);
+    expect(isStale(client, queryKeys.payouts.trail(2))).toBe(false);
+  };
+
+  it('links one already on file, touching the trail and the lists', async () => {
+    const client = seedTheScreen();
+
+    const { result } = renderHookWithClient(() => useLinkDocument(), {
+      client,
+    });
+    result.current.mutate({
+      documentId: 10,
+      target: { kind: 'transaction', id: 3 },
+      payoutId: 1,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expectTouched(client);
+    expectUntouched(client);
+  });
+
+  it('detaches one, touching exactly the same caches', async () => {
+    const client = seedTheScreen();
+
+    const { result } = renderHookWithClient(() => useDetachDocument(), {
+      client,
+    });
+    result.current.mutate({
+      documentId: 10,
+      target: { kind: 'payout', id: 1 },
+      payoutId: 1,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expectTouched(client);
+    expectUntouched(client);
+  });
+
+  it('reports what the document is still attached to', async () => {
+    // Zero is a file on record that nothing points at — not a deleted one,
+    // which is the whole difference between F23 and F22.
+    const client = createQueryClient();
+
+    const { result } = renderHookWithClient(() => useDetachDocument(), {
+      client,
+    });
+    result.current.mutate({
+      documentId: 10,
+      target: { kind: 'transaction', id: 3 },
+      payoutId: 1,
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    expect(result.current.data?.remainingLinks).toBe(0);
   });
 });
 

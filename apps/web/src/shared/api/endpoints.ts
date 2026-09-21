@@ -15,7 +15,11 @@ import type {
   DataQualityResponse,
   DocumentAttachedJson,
   DocumentDeletedJson,
+  DocumentDetachedJson,
+  DocumentJson,
+  DocumentTargetJson,
   DocumentsResponse,
+  LinkDocumentCommand,
   FinancialYearFilter,
   FinancialYearReportJson,
   PayoutDeletedJson,
@@ -291,8 +295,52 @@ export function searchDocuments(
  * The one multipart call. `FormData` sets its own content-type — including the
  * boundary — so this bypasses the JSON helper rather than fighting it.
  */
+/** `payout` and `transaction` are both targets F6 allows; the URL says which. */
+function targetPath(target: DocumentTargetJson): string {
+  return target.kind === 'payout'
+    ? `/api/payouts/${String(target.id)}/documents`
+    : `/api/transactions/${String(target.id)}/documents`;
+}
+
+/** F6 — what is attached to the payout as a whole, legs excluded. */
+export function fetchPayoutDocuments(
+  payoutId: number,
+  signal?: AbortSignal,
+): Promise<DocumentsResponse> {
+  return request<DocumentsResponse>(
+    `/api/payouts/${String(payoutId)}/documents`,
+    wrapSignal(signal),
+  );
+}
+
+/** F23 — attach a document already on file. Idempotent. */
+export function linkDocument({
+  documentId,
+  target,
+  role,
+}: LinkDocumentCommand): Promise<{ document: DocumentJson }> {
+  return request<{ document: DocumentJson }>(
+    `${targetPath(target)}/${String(documentId)}`,
+    { method: 'POST', body: role === undefined ? {} : { role } },
+  );
+}
+
+/** F23 — take it off this one thing. The file stays on record. */
+export function detachDocument({
+  documentId,
+  target,
+}: {
+  readonly documentId: number;
+  readonly target: DocumentTargetJson;
+}): Promise<DocumentDetachedJson> {
+  return request<DocumentDetachedJson>(
+    `${targetPath(target)}/${String(documentId)}`,
+    { method: 'DELETE' },
+  );
+}
+
 export function attachDocument(input: {
-  readonly transactionId: number;
+  readonly target: DocumentTargetJson;
   readonly file: File;
   readonly docType?: string;
   readonly docDate?: string;
@@ -304,10 +352,10 @@ export function attachDocument(input: {
   if (input.docDate !== undefined) form.set('docDate', input.docDate);
   if (input.role !== undefined) form.set('role', input.role);
 
-  return request<DocumentAttachedJson>(
-    `/api/transactions/${String(input.transactionId)}/documents`,
-    { method: 'POST', formData: form },
-  );
+  return request<DocumentAttachedJson>(targetPath(input.target), {
+    method: 'POST',
+    formData: form,
+  });
 }
 
 /** The URL a document is served from. Behind both guards — never a static mount. */

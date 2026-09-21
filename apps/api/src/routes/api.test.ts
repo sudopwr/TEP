@@ -1382,11 +1382,18 @@ describe('/api routes', () => {
       await withSeed(seedReferencePayout);
     });
 
-    const upload = (
+    /**
+     * A multipart upload to any of the two targets F6 allows.
+     *
+     * `upload` below is this pointed at a leg, which is where all but one of
+     * these tests attach. The payout target has its own route because a
+     * document covering the whole award belongs to none of the legs.
+     */
+    const uploadTo = (
+      url: string,
       content: string,
       filename = 'statement.pdf',
       extra: Record<string, string> = {},
-      transactionId = 3,
     ) => {
       const boundary = '----payouttest';
       const parts = Object.entries(extra)
@@ -1406,13 +1413,26 @@ describe('/api routes', () => {
 
       return asUser(server, cookie, {
         method: 'POST',
-        url: `/api/transactions/${String(transactionId)}/documents`,
+        url,
         headers: {
           'content-type': `multipart/form-data; boundary=${boundary}`,
         },
         payload: body,
       });
     };
+
+    const upload = (
+      content: string,
+      filename = 'statement.pdf',
+      extra: Record<string, string> = {},
+      transactionId = 3,
+    ) =>
+      uploadTo(
+        `/api/transactions/${String(transactionId)}/documents`,
+        content,
+        filename,
+        extra,
+      );
 
     it('attaches a file and returns 201', async () => {
       const response = await upload('a march statement');
@@ -1604,6 +1624,162 @@ describe('/api routes', () => {
 
       it('400s a missing query', async () => {
         expect((await get('/api/documents/search')).statusCode).toBe(400);
+      });
+    });
+
+    describe('attaching and detaching (F23)', () => {
+      it('attaches a file to the payout as a whole', async () => {
+        // The document the trail has nowhere to hang: a contract, or the
+        // platform's own statement for the award.
+        const response = await uploadTo(
+          '/api/payouts/1/documents',
+          'the agreement',
+          'contract.pdf',
+        );
+
+        expect(response.statusCode).toBe(201);
+
+        const listed = await get('/api/payouts/1/documents');
+        expect(listed.json().documents).toHaveLength(1);
+        expect(listed.json().documents[0].filename).toBe('contract.pdf');
+      });
+
+      it('lists nothing for a payout with nothing attached', async () => {
+        const response = await get('/api/payouts/1/documents');
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ documents: [] });
+      });
+
+      it('links a document already on file to another leg', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        const response = await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/transactions/5/documents/${String(id)}`,
+          payload: { role: 'statement' },
+        });
+
+        expect(response.statusCode).toBe(200);
+
+        const trail = await get('/api/payouts/1/trail');
+        expect(JSON.stringify(trail.json()).match(/march\.pdf/g)).toHaveLength(
+          2,
+        );
+      });
+
+      it('links one to the payout, and takes it off again', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/payouts/1/documents/${String(id)}`,
+        });
+        expect(
+          (await get('/api/payouts/1/documents')).json().documents,
+        ).toHaveLength(1);
+
+        const detached = await del(`/api/payouts/1/documents/${String(id)}`);
+
+        expect(detached.statusCode).toBe(200);
+        expect(
+          (await get('/api/payouts/1/documents')).json().documents,
+        ).toEqual([]);
+      });
+
+      it('leaves the file on record when it is detached, and says what is left', async () => {
+        // F23's whole point: detaching is not deleting. The bytes stay
+        // downloadable and the document stays findable, ready to be attached
+        // to the leg it actually belongs to.
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        const response = await del(
+          `/api/transactions/3/documents/${String(id)}`,
+        );
+
+        expect(response.json()).toMatchObject({
+          document: { filename: 'march.pdf' },
+          remainingLinks: 0,
+        });
+        expect((await get(`/api/documents/${String(id)}`)).statusCode).toBe(
+          200,
+        );
+        expect(
+          (await get('/api/documents/search?q=march')).json().documents,
+        ).toHaveLength(1);
+      });
+
+      it('counts what a document is still attached to', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+        await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/payouts/1/documents/${String(id)}`,
+        });
+
+        const response = await del(
+          `/api/transactions/3/documents/${String(id)}`,
+        );
+
+        expect(response.json().remainingLinks).toBe(1);
+      });
+
+      it('is idempotent in both directions', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        const linkTwice = await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/payouts/1/documents/${String(id)}`,
+        });
+        await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/payouts/1/documents/${String(id)}`,
+        });
+        const detachTwice = await del(`/api/payouts/1/documents/${String(id)}`);
+        const again = await del(`/api/payouts/1/documents/${String(id)}`);
+
+        expect(linkTwice.statusCode).toBe(200);
+        expect(detachTwice.statusCode).toBe(200);
+        expect(again.statusCode).toBe(200);
+        expect(
+          (await get('/api/payouts/1/documents')).json().documents,
+        ).toEqual([]);
+      });
+
+      it('404s a document that is not on file', async () => {
+        const response = await asUser(server, cookie, {
+          method: 'POST',
+          url: '/api/payouts/1/documents/999',
+        });
+
+        expect(response.statusCode).toBe(404);
+        expect(response.json().code).toBe('document_not_found');
+      });
+
+      it('404s a leg that does not exist', async () => {
+        const uploaded = await upload('a march statement', 'march.pdf');
+        const { id } = uploaded.json().document as { id: number };
+
+        const response = await asUser(server, cookie, {
+          method: 'POST',
+          url: `/api/transactions/999/documents/${String(id)}`,
+        });
+
+        expect(response.statusCode).toBe(404);
+        expect(response.json().code).toBe('transaction_not_found');
+      });
+
+      it('401s without a session, like every other data route', async () => {
+        const response = await server.app.inject({
+          method: 'DELETE',
+          url: '/api/payouts/1/documents/1',
+        });
+
+        expect(response.statusCode).toBe(401);
       });
     });
 

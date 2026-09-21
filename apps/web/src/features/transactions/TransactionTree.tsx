@@ -63,6 +63,21 @@ import { EditTransactionDialog } from './EditTransactionDialog';
 
 export interface TransactionTreeProps {
   readonly payoutId: number;
+  /**
+   * Attach a document to one leg, and take one off again (F23).
+   *
+   * Callbacks rather than components, because N8 forbids `transactions/`
+   * from importing `documents/`: the trail renders what is attached, and
+   * what can be *done* about it arrives from the composition root (§5),
+   * which owns the one dialog both features share. Omit them and the tree is
+   * the read-only trail it has always been — which is what its own tests
+   * render.
+   */
+  readonly onAttachDocument?: (transaction: TransactionJson) => void;
+  readonly onRemoveDocument?: (
+    transaction: TransactionJson,
+    document: DocumentJson,
+  ) => void;
 }
 
 const KIND_LABELS: Readonly<Record<string, string>> = {
@@ -128,11 +143,13 @@ function LegLabel({
   accounts,
   onEdit,
   onDelete,
+  onAttach,
 }: {
   readonly transaction: TransactionJson;
   readonly accounts: ReadonlyMap<number, AccountJson>;
   readonly onEdit: () => void;
   readonly onDelete: () => void;
+  readonly onAttach?: (() => void) | undefined;
 }) {
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -169,6 +186,17 @@ function LegLabel({
         >
           Edit
         </Button>
+        {onAttach === undefined ? null : (
+          <Button
+            size="small"
+            color="inherit"
+            aria-label={`Attach a document to ${transaction.code}`}
+            onClick={onAttach}
+            sx={{ minWidth: 0, px: 0.75, py: 0, color: 'muted.main' }}
+          >
+            Attach
+          </Button>
+        )}
         <Button
           size="small"
           color="error"
@@ -210,33 +238,66 @@ function FeeLines({ fees }: { readonly fees: readonly TransactionFeeJson[] }) {
 
 function DocumentLines({
   documents,
+  onRemove,
 }: {
   readonly documents: readonly DocumentJson[];
+  readonly onRemove?: (document: DocumentJson) => void;
 }) {
   if (documents.length === 0) return null;
 
   return (
-    <Box sx={{ mt: 0.25, textAlign: 'right' }}>
+    <Box sx={{ mt: 0.25 }}>
       {documents.map((document) => (
-        <Link
+        <Box
           key={document.id}
-          // Served by the handler, behind both guards — never a static mount
-          // (§13). Same-origin, so the session cookie goes with it.
-          href={documentUrl(document.id)}
-          target="_blank"
-          rel="noreferrer"
-          variant="body2"
-          sx={{ display: 'block', color: 'muted.main' }}
+          sx={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'baseline',
+            gap: 0.5,
+          }}
         >
-          {document.filename}
-        </Link>
+          <Link
+            // Served by the handler, behind both guards — never a static mount
+            // (§13). Same-origin, so the session cookie goes with it.
+            href={documentUrl(document.id)}
+            target="_blank"
+            rel="noreferrer"
+            variant="body2"
+            sx={{ color: 'muted.main' }}
+          >
+            {document.filename}
+          </Link>
+
+          {onRemove === undefined ? null : (
+            <Button
+              size="small"
+              color="inherit"
+              // Named for the file: a leg may carry several, and "Remove"
+              // four times tells a screen reader nothing about which.
+              aria-label={`Remove ${document.filename}`}
+              onClick={() => {
+                onRemove(document);
+              }}
+              sx={{ minWidth: 0, px: 0.5, py: 0, color: 'muted.main' }}
+            >
+              Remove
+            </Button>
+          )}
+        </Box>
       ))}
     </Box>
   );
 }
 
 /** The aside: the amounts, the rate that connects them, and what was taken. */
-function LegAmounts({ node }: { readonly node: TrailNodeJson }) {
+function LegAmounts({
+  node,
+  onRemoveDocument,
+}: {
+  readonly node: TrailNodeJson;
+  readonly onRemoveDocument?: (document: DocumentJson) => void;
+}) {
   const { transaction } = node;
   const crossCurrency =
     transaction.fromAmount.currency !== transaction.toAmount.currency;
@@ -274,7 +335,12 @@ function LegAmounts({ node }: { readonly node: TrailNodeJson }) {
       )}
 
       <FeeLines fees={node.fees} />
-      <DocumentLines documents={node.documents} />
+      <DocumentLines
+        documents={node.documents}
+        {...(onRemoveDocument === undefined
+          ? {}
+          : { onRemove: onRemoveDocument })}
+      />
     </Box>
   );
 }
@@ -284,7 +350,11 @@ function subtreeSize(node: TrailNodeJson): number {
   return node.children.reduce((total, child) => total + subtreeSize(child), 1);
 }
 
-export function TransactionTree({ payoutId }: TransactionTreeProps) {
+export function TransactionTree({
+  payoutId,
+  onAttachDocument,
+  onRemoveDocument,
+}: TransactionTreeProps) {
   const trail = usePayoutTrail(payoutId);
   const remove = useDeleteTransaction();
   const { notify } = useToast();
@@ -408,9 +478,27 @@ export function TransactionTree({ payoutId }: TransactionTreeProps) {
             onDelete={() => {
               setDeleting(node);
             }}
+            onAttach={
+              onAttachDocument === undefined
+                ? undefined
+                : () => {
+                    onAttachDocument(node.transaction);
+                  }
+            }
           />
         )}
-        renderAside={(node) => <LegAmounts node={node} />}
+        renderAside={(node) => (
+          <LegAmounts
+            node={node}
+            {...(onRemoveDocument === undefined
+              ? {}
+              : {
+                  onRemoveDocument: (document: DocumentJson) => {
+                    onRemoveDocument(node.transaction, document);
+                  },
+                })}
+          />
+        )}
       />
 
       <EditTransactionDialog

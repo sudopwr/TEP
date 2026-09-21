@@ -19,7 +19,12 @@ import {
   SignInScreen,
 } from './features/auth';
 import { DataQualityScreen } from './features/data-quality';
-import { DocumentSearch, DocumentUpload } from './features/documents';
+import {
+  DocumentSearch,
+  DocumentUpload,
+  PayoutDocuments,
+  useDocumentAttachments,
+} from './features/documents';
 import {
   DeletePayoutButton,
   PayoutHeader,
@@ -141,6 +146,18 @@ function PayoutDetailPage() {
   const payoutId = usePayoutIdParam();
   const navigate = useNavigate();
 
+  /*
+    Where N8 earns its keep for the third time.
+
+    The trail belongs to `transactions/` and renders each leg's documents;
+    the panel below belongs to `documents/` and renders the payout's. Both
+    need the same two dialogs — attach, and remove — and neither feature may
+    import the other. So the dialogs are made once here, and the two features
+    are handed callbacks: `transactions/` keeps knowing nothing about how a
+    document is attached, and `documents/` keeps knowing nothing about trees.
+  */
+  const documents = useDocumentAttachments(payoutId ?? 0);
+
   if (payoutId === null) return <BadPayoutId />;
 
   return (
@@ -196,12 +213,45 @@ function PayoutDetailPage() {
           </Button>
         </Box>
 
-        <TransactionTree payoutId={payoutId} />
+        <TransactionTree
+          payoutId={payoutId}
+          onAttachDocument={(transaction) => {
+            documents.attachTo(
+              { kind: 'transaction', id: transaction.id },
+              transaction.code,
+            );
+          }}
+          onRemoveDocument={(transaction, document) => {
+            documents.removeFrom(
+              { kind: 'transaction', id: transaction.id },
+              transaction.code,
+              document,
+            );
+          }}
+        />
+      </Box>
+
+      <Box sx={{ mt: 5 }}>
+        <PayoutDocuments
+          payoutId={payoutId}
+          onAttach={() => {
+            documents.attachTo({ kind: 'payout', id: payoutId }, 'this payout');
+          }}
+          onRemove={(document) => {
+            documents.removeFrom(
+              { kind: 'payout', id: payoutId },
+              'this payout',
+              document,
+            );
+          }}
+        />
       </Box>
 
       <Box sx={{ mt: 5 }}>
         <DocumentUpload payoutId={payoutId} />
       </Box>
+
+      {documents.dialogs}
     </Box>
   );
 }

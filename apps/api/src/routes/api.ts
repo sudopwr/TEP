@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
 import type { DocumentTarget, DocumentType, RoundingMode } from '@payout/core';
 
@@ -6,6 +6,7 @@ import * as out from './serialize';
 import {
   attachDocumentFields,
   balancesQuery,
+  documentLinkParams,
   createAccountBody,
   createCompanyBody,
   createPayoutBody,
@@ -15,6 +16,7 @@ import {
   idParam,
   listAccountsQuery,
   listPayoutsQuery,
+  linkDocumentBody,
   listTransactionsQuery,
   searchDocumentsQuery,
   settlementQuery,
@@ -343,9 +345,19 @@ export function registerApiRoutes(app: FastifyInstance): void {
    * has to exist before anything can be decided about it. `@fastify/multipart`
    * caps the size, so "buffer it" has a ceiling rather than being an invitation.
    */
-  app.post('/api/transactions/:id/documents', async (request, reply) => {
-    const { id } = parseOrThrow(idParam, request.params, 'params');
+  /*
+    The body of both upload routes — a leg's and a payout's.
 
+    Written once because it is the same act: F6 attaches a file to a company,
+    a payout *or* a transaction, and only the target differs. Two copies of
+    the 415, the field parsing and the dedupe report would drift the first
+    time one of them was corrected.
+  */
+  const uploadTo = async (
+    target: DocumentTarget,
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
     const file = await readUploadedFile(request);
 
     if (file === null) {
@@ -369,8 +381,6 @@ export function registerApiRoutes(app: FastifyInstance): void {
       'body',
     );
 
-    const target: DocumentTarget = { kind: 'transaction', id };
-
     const attached = await app.useCases.attachDocument.execute({
       bytes: new Uint8Array(bytes),
       filename: file.filename,
@@ -388,7 +398,98 @@ export function registerApiRoutes(app: FastifyInstance): void {
       // False when the bytes were already on file and only a link was added.
       created: attached.created,
     });
+  };
+
+  app.post('/api/transactions/:id/documents', async (request, reply) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    return uploadTo({ kind: 'transaction', id }, request, reply);
   });
+
+  /*
+    F6's other target: the payout as a whole.
+
+    A leg's documents arrive with the trail (UC5 hangs them on their node),
+    but a document covering the whole award — the contract, the platform's own
+    statement — belongs to none of the legs, and until this there was nowhere
+    to put it and nowhere to see it.
+  */
+  app.post('/api/payouts/:id/documents', async (request, reply) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    return uploadTo({ kind: 'payout', id }, request, reply);
+  });
+
+  app.get('/api/payouts/:id/documents', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+
+    const documents = await app.useCases.listDocumentsFor.execute({
+      target: { kind: 'payout', id },
+    });
+
+    return { documents: documents.map(out.document) };
+  });
+
+  /*
+    F23 — attach a file that is already on file, and take one off again.
+
+    Four routes because there are two targets and two directions, and one
+    sentence covers all four: a link is a relationship, and these make and
+    break it without touching the document. The statement covering four sales
+    is uploaded once against the first and *chosen* for the other three;
+    filing one against the wrong leg is undone by taking it off, not by
+    deleting the evidence (F22 is the other verb, and means the file itself).
+
+    Both are idempotent, which is what a PUT-shaped link and a DELETE should
+    be: `document_links` has a partial unique index per target, so linking
+    twice is one link, and detaching what is not attached is the state the
+    caller asked for.
+  */
+  const linkRoutes = [
+    { path: '/api/payouts/:id/documents/:documentId', kind: 'payout' },
+    {
+      path: '/api/transactions/:id/documents/:documentId',
+      kind: 'transaction',
+    },
+  ] as const;
+
+  for (const { path, kind } of linkRoutes) {
+    app.post(path, async (request) => {
+      const { id, documentId } = parseOrThrow(
+        documentLinkParams,
+        request.params,
+        'params',
+      );
+      const body = parseOrThrow(linkDocumentBody, request.body ?? {}, 'body');
+
+      const document = await app.useCases.linkDocument.execute({
+        documentId,
+        target: { kind, id },
+        ...(body.role === undefined ? {} : { role: body.role }),
+      });
+
+      return { document: out.document(document) };
+    });
+
+    app.delete(path, async (request) => {
+      const { id, documentId } = parseOrThrow(
+        documentLinkParams,
+        request.params,
+        'params',
+      );
+
+      const detached = await app.useCases.detachDocument.execute({
+        documentId,
+        target: { kind, id },
+      });
+
+      return {
+        document: out.document(detached.document),
+        // Zero is a file nothing points at, not a deleted one (F22).
+        remainingLinks: detached.remainingLinks,
+      };
+    });
+  }
 
   /**
    * Stream one document by id (F6).

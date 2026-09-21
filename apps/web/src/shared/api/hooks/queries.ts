@@ -6,6 +6,7 @@ import {
   fetchCompanies,
   fetchDataQuality,
   fetchFinancialYear,
+  fetchPayoutDocuments,
   fetchPayoutTrail,
   fetchPayouts,
   fetchSettlement,
@@ -72,6 +73,24 @@ export function usePayouts(
     queryKey: queryKeys.payouts.list(filter),
     queryFn: ({ signal }) => fetchPayouts(filter, signal),
     select: (data) => data.payouts,
+  });
+}
+
+/**
+ * F6 — what is attached to the payout as a whole.
+ *
+ * Not the legs' documents: those arrive on their own nodes with the trail
+ * (UC5), and asking for them twice would be two answers to one question. This
+ * is the contract, or the platform's own statement for the award — the file
+ * that belongs to none of the movements.
+ */
+export function usePayoutDocuments(
+  payoutId: number,
+): UseQueryResult<readonly DocumentJson[]> {
+  return useQuery({
+    queryKey: queryKeys.documents.forPayout(payoutId),
+    queryFn: ({ signal }) => fetchPayoutDocuments(payoutId, signal),
+    select: (data) => data.documents,
   });
 }
 

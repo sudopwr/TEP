@@ -101,6 +101,16 @@ export const queryKeys = {
   documents: {
     all: () => ['documents'] as const,
     search: (query: string) => ['documents', 'search', query] as const,
+    /**
+     * What is attached to one payout (F23).
+     *
+     * Under `documents`, not under that payout: a link is a fact about the
+     * document, and every write that makes or breaks one already invalidates
+     * this tree. A leg's documents have no key of their own — they arrive
+     * with the trail, and are invalidated with it.
+     */
+    forPayout: (payoutId: number) =>
+      ['documents', 'forPayout', payoutId] as const,
   },
 
   reports: {

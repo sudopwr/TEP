@@ -5,6 +5,7 @@ export {
   useDataQuality,
   useDocumentSearch,
   useFinancialYearReport,
+  usePayoutDocuments,
   usePayoutTrail,
   usePayouts,
   useSettlement,
@@ -13,6 +14,8 @@ export {
 
 export {
   useAttachDocument,
+  useDetachDocument,
+  useLinkDocument,
   useDeleteAccount,
   useDeleteDocument,
   useDeletePayout,

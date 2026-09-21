@@ -169,12 +169,46 @@ export const handlers = [
     });
   }),
 
+  http.post('/api/payouts/:id/documents', () =>
+    HttpResponse.json(
+      { document: DOCUMENTS[0], created: true },
+      { status: 201 },
+    ),
+  ),
   http.post('/api/transactions/:id/documents', () =>
     HttpResponse.json(
       { document: DOCUMENTS[0], created: true },
       { status: 201 },
     ),
   ),
+  /*
+    The three F23 routes, for both targets.
+
+    `:target(payouts|transactions)` is not MSW syntax, so each is registered
+    twice — which is also what the server does, and for the same reason: a
+    link is addressed by the thing it is attached to.
+  */
+  ...['payouts', 'transactions'].flatMap((kind) => [
+    http.get(`/api/${kind}/:id/documents`, () =>
+      HttpResponse.json({ documents: [] }),
+    ),
+    http.post(`/api/${kind}/:id/documents/:documentId`, ({ params }) =>
+      HttpResponse.json({
+        document:
+          DOCUMENTS.find((one) => one.id === Number(params['documentId'])) ??
+          DOCUMENTS[0],
+      }),
+    ),
+    http.delete(`/api/${kind}/:id/documents/:documentId`, ({ params }) =>
+      HttpResponse.json({
+        document:
+          DOCUMENTS.find((one) => one.id === Number(params['documentId'])) ??
+          DOCUMENTS[0],
+        remainingLinks: 0,
+      }),
+    ),
+  ]),
+
   http.get('/api/documents/search', () =>
     HttpResponse.json({ documents: DOCUMENTS }),
   ),
@@ -364,10 +398,12 @@ export const passwordRejected = (violations: readonly string[]) =>
 
 /** UC4 recognised the bytes and linked the existing document (F6). */
 export const documentAlreadyStored = () =>
-  http.post('/api/transactions/:id/documents', () =>
-    HttpResponse.json(
-      { document: DOCUMENTS[0], created: false },
-      { status: 201 },
+  ['payouts', 'transactions'].map((kind) =>
+    http.post(`/api/${kind}/:id/documents`, () =>
+      HttpResponse.json(
+        { document: DOCUMENTS[0], created: false },
+        { status: 200 },
+      ),
     ),
   );
 

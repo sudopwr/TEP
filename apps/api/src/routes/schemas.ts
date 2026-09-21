@@ -94,6 +94,17 @@ export const idParam = z.object({
   id: z.coerce.number().int().positive(),
 });
 
+/** `/api/payouts/:id/documents/:documentId` — the thing, and the document. */
+export const documentLinkParams = z.object({
+  id: z.coerce.number().int().positive(),
+  documentId: z.coerce.number().int().positive(),
+});
+
+/** The body of a link: the role the document plays for this target, if any. */
+export const linkDocumentBody = z
+  .object({ role: z.string().trim().min(1).max(64).nullish() })
+  .strict();
+
 /**
  * Built from the domain's own arrays, not copied from them.
  *

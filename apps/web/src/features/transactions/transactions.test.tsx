@@ -625,3 +625,112 @@ describe('editing a leg', () => {
     expect(screen.queryByText(/saved$/)).not.toBeInTheDocument();
   });
 });
+
+describe('documents on a leg', () => {
+  /** The §10 trail with a statement attached to its first sale. */
+  const trailWithDocument = () => {
+    const withDocument = structuredClone(
+      REFERENCE_TRAIL,
+    ) as typeof REFERENCE_TRAIL;
+    const sale = withDocument.roots[0]?.children[0]?.children[0]
+      ?.children[0] as { documents: unknown[] } | undefined;
+
+    (sale as { documents: unknown[] }).documents = [
+      {
+        id: 10,
+        filename: 'coindcx-march.pdf',
+        mimeType: 'application/pdf',
+        byteSize: 20480,
+        sha256: 'a'.repeat(64),
+        docType: 'statement',
+        docDate: '2025-03-31',
+      },
+    ];
+
+    // `answering` takes a JSON body; the trail is one, structurally.
+    return answering(
+      '/api/payouts/:id/trail',
+      withDocument as unknown as Record<string, unknown>,
+    );
+  };
+
+  it('renders no document actions at all when it is given none', async () => {
+    // The trail is a read-only screen until the composition root hands it
+    // something to do (N8): `transactions/` may not import `documents/`.
+    server.use(trailWithDocument());
+
+    await tree();
+
+    expect(screen.getByText('coindcx-march.pdf')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Remove / }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: /^Attach a document/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('offers an attach on each leg, named for that leg', async () => {
+    renderFeature(
+      <TransactionTree payoutId={1} onAttachDocument={() => undefined} />,
+    );
+    await screen.findByRole('tree', {
+      name: 'Money trail for TradeifyPayout001',
+    });
+
+    expect(
+      screen.getByRole('button', {
+        name: 'Attach a document to Transaction003',
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('hands the leg back when an attach is asked for', async () => {
+    const asked: string[] = [];
+
+    renderFeature(
+      <TransactionTree
+        payoutId={1}
+        onAttachDocument={(transaction) => {
+          asked.push(transaction.code);
+        }}
+      />,
+    );
+    await screen.findByRole('tree', {
+      name: 'Money trail for TradeifyPayout001',
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', {
+        name: 'Attach a document to Transaction003',
+      }),
+    );
+
+    expect(asked).toEqual(['Transaction003']);
+  });
+
+  it('hands back both the leg and the file when a remove is asked for', async () => {
+    // Both, because a document may hang off several legs: the pair is what
+    // identifies the attachment, and the document alone is not.
+    server.use(trailWithDocument());
+    const asked: string[] = [];
+
+    renderFeature(
+      <TransactionTree
+        payoutId={1}
+        onRemoveDocument={(transaction, document) => {
+          asked.push(`${transaction.code}/${document.filename}`);
+        }}
+      />,
+    );
+    await screen.findByRole('tree', {
+      name: 'Money trail for TradeifyPayout001',
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Remove coindcx-march.pdf' }),
+    );
+
+    expect(asked).toEqual(['Transaction003/coindcx-march.pdf']);
+  });
+});

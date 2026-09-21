@@ -14,7 +14,9 @@ import {
   deleteAccount,
   deleteDocument,
   deletePayout,
+  detachDocument,
   deleteTransaction,
+  linkDocument,
   updateAccount,
   updateTransaction,
 } from '../endpoints';
@@ -29,6 +31,10 @@ import type {
   CreateTransactionCommand,
   DocumentAttachedJson,
   DocumentDeletedJson,
+  DocumentDetachedJson,
+  DocumentJson,
+  DocumentTargetJson,
+  LinkDocumentCommand,
   PayoutDeletedJson,
   PayoutJson,
   SaleRecordedJson,
@@ -416,12 +422,78 @@ export function useDeleteDocument(): UseMutationResult<
   });
 }
 
+/**
+ * The caches a document's attachment touches, for one payout.
+ *
+ * That payout's **trail**, because a leg carries its documents on its node;
+ * the list of what is attached to the **payout** itself; and the `documents`
+ * tree, since a search result now belongs somewhere new. Nothing else — a
+ * document changes no figure, which is what separates this from every
+ * mutation that moves money.
+ */
+function cachesAffectedByAttachment(
+  payoutId: number,
+): readonly (readonly unknown[])[] {
+  return [
+    queryKeys.payouts.trail(payoutId),
+    queryKeys.documents.forPayout(payoutId),
+    queryKeys.documents.all(),
+  ];
+}
+
+/**
+ * F23 — attach a document already on file to a payout or one of its legs.
+ *
+ * The other half of uploading: the statement covering four sales is uploaded
+ * against the first and *chosen* for the other three. `payoutId` rides along
+ * unsent, because the link is addressed by target and the cache is addressed
+ * by payout — a leg's trail belongs to a payout the URL does not mention.
+ */
+export function useLinkDocument(): UseMutationResult<
+  { document: DocumentJson },
+  Error,
+  LinkDocumentCommand & { readonly payoutId: number }
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ payoutId: _payoutId, ...input }) => linkDocument(input),
+    onSuccess: (_result, { payoutId }) =>
+      invalidateAll(client, cachesAffectedByAttachment(payoutId)),
+  });
+}
+
+/**
+ * F23 — take a document off one thing, leaving it on file.
+ *
+ * Deliberately not `useDeleteDocument`, which removes the file itself (F22).
+ * The two differ in what survives, and the copy in front of the reader has to
+ * differ with them: this one can be undone by attaching it again.
+ */
+export function useDetachDocument(): UseMutationResult<
+  DocumentDetachedJson,
+  Error,
+  {
+    readonly documentId: number;
+    readonly target: DocumentTargetJson;
+    readonly payoutId: number;
+  }
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ payoutId: _payoutId, ...input }) => detachDocument(input),
+    onSuccess: (_result, { payoutId }) =>
+      invalidateAll(client, cachesAffectedByAttachment(payoutId)),
+  });
+}
+
 export function useAttachDocument(): UseMutationResult<
   DocumentAttachedJson,
   Error,
   {
     readonly payoutId: number;
-    readonly transactionId: number;
+    readonly target: DocumentTargetJson;
     readonly file: File;
     readonly docType?: string;
     readonly docDate?: string;
@@ -433,9 +505,6 @@ export function useAttachDocument(): UseMutationResult<
   return useMutation({
     mutationFn: ({ payoutId: _payoutId, ...input }) => attachDocument(input),
     onSuccess: (_result, { payoutId }) =>
-      invalidateAll(client, [
-        queryKeys.payouts.trail(payoutId),
-        queryKeys.documents.all(),
-      ]),
+      invalidateAll(client, cachesAffectedByAttachment(payoutId)),
   });
 }

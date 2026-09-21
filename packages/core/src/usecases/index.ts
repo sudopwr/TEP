@@ -170,6 +170,25 @@ export type {
 } from './delete-document';
 export { DeleteDocument } from './delete-document';
 
+export type {
+  LinkDocumentCommand,
+  LinkDocumentDependencies,
+} from './link-document';
+export { LinkDocument } from './link-document';
+
+export type {
+  DetachDocumentCommand,
+  DetachDocumentDependencies,
+  DocumentDetached,
+} from './detach-document';
+export { DetachDocument } from './detach-document';
+
+export type {
+  ListDocumentsForCommand,
+  ListDocumentsForDependencies,
+} from './list-documents-for';
+export { ListDocumentsFor } from './list-documents-for';
+
 export type { ListCompaniesDependencies } from './list-companies';
 export { ListCompanies } from './list-companies';
 
