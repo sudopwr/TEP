@@ -1,4 +1,4 @@
-import type { CompanyId, PayoutId } from '../../src/domain/ids';
+import type { CompanyId, PayoutId, TraderId } from '../../src/domain/ids';
 import { Payout } from '../../src/domain/payout';
 import type {
   DateRange,
@@ -39,6 +39,14 @@ export class FakePayoutRepository implements PayoutRepository {
 
   list(): Promise<readonly Payout[]> {
     return Promise.resolve([...this.#rows.values()]);
+  }
+
+  listByTrader(traderId: TraderId): Promise<readonly Payout[]> {
+    return Promise.resolve(
+      [...this.#rows.values()].filter(
+        (payout) => payout.traderId === traderId,
+      ),
+    );
   }
 
   listByCompany(companyId: CompanyId): Promise<readonly Payout[]> {

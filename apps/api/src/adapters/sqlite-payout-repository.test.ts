@@ -27,6 +27,7 @@ describe('SqlitePayoutRepository', () => {
   const draft = (overrides: Record<string, unknown> = {}) => ({
     code: 'TradeifyPayout001',
     companyId: 1,
+    traderId: 1,
     payoutDate: '2025-03-10',
     reference: 'FTDFYSLX50676373980',
     gross: Money.fromDecimalString('1008.01', USD),
@@ -218,6 +219,7 @@ describe('SqlitePayoutRepository.delete', () => {
     const other = await repository.insert({
       code: 'TradeifyPayout002',
       companyId: reference.TRADEIFY.id,
+      traderId: reference.DEFAULT_TRADER.id,
       payoutDate: '2025-05-01',
       reference: null,
       gross: Money.fromDecimalString('500.00', USD),

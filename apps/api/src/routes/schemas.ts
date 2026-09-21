@@ -174,6 +174,8 @@ export const createPayoutBody = z
   .object({
     code: z.string().trim().min(1).max(64),
     companyId: z.number().int().positive(),
+    /** Whose award it is (F24). Required: every payout belongs to somebody. */
+    traderId: z.number().int().positive(),
     payoutDate: isoDate.optional(),
     grossAmount: positiveDecimalString,
     currencyCode,
@@ -183,14 +185,33 @@ export const createPayoutBody = z
   })
   .strict();
 
+/**
+ * The selection every screen shares (F24): whose money, and when.
+ *
+ * Spelled out here once and spread into the four queries that honour it, so
+ * a screen cannot accidentally support `traderId` and not `from`/`to` — the
+ * two halves are one choice, and honouring half of it is how a balances
+ * screen ends up disagreeing with the list beside it.
+ */
+const scopeFields = {
+  traderId: z.coerce.number().int().positive().optional(),
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+} as const;
+
+/** `from` and `to` are one field in two halves: neither alone means anything. */
+const bothOrNeither = (query: {
+  from?: string | undefined;
+  to?: string | undefined;
+}): boolean => (query.from === undefined) === (query.to === undefined);
+
 export const listPayoutsQuery = z
   .object({
     companyId: z.coerce.number().int().positive().optional(),
-    from: isoDate.optional(),
-    to: isoDate.optional(),
+    ...scopeFields,
   })
   .strict()
-  .refine((query) => (query.from === undefined) === (query.to === undefined), {
+  .refine(bothOrNeither, {
     message: 'from and to must be given together',
     path: ['from'],
   });
@@ -323,14 +344,20 @@ export const dataQualityQuery = z
   .object({
     payoutId: z.coerce.number().int().positive().optional(),
     tolerancePct: z.coerce.number().min(0).max(100).optional(),
+    ...scopeFields,
   })
-  .strict();
+  .strict()
+  .refine(bothOrNeither, {
+    message: 'from and to must be given together',
+    path: ['from'],
+  });
 
 export const financialYearQuery = z
   .object({
     from: isoDate,
     to: isoDate,
     currencyCode: currencyCode.optional(),
+    traderId: scopeFields.traderId,
   })
   .strict()
   .refine((query) => query.from <= query.to, {
@@ -343,5 +370,20 @@ export const settlementQuery = z
   .strict();
 
 export const balancesQuery = z
-  .object({ payoutId: z.coerce.number().int().positive().optional() })
+  .object({
+    payoutId: z.coerce.number().int().positive().optional(),
+    ...scopeFields,
+  })
+  .strict()
+  .refine(bothOrNeither, {
+    message: 'from and to must be given together',
+    path: ['from'],
+  });
+
+export const createTraderBody = z
+  .object({
+    code: z.string().trim().min(1).max(64),
+    name: z.string().trim().min(1).max(256),
+    notes: z.string().max(4096).nullish(),
+  })
   .strict();

@@ -84,6 +84,7 @@ describe('row mappers', () => {
       id: 1n,
       code: 'TradeifyPayout001',
       company_id: 1n,
+      trader_id: 1n,
       payout_date: '2025-03-10',
       reference: 'FTDFYSLX50676373980',
       gross_amount: 100801n,

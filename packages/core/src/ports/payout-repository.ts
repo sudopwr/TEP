@@ -1,4 +1,9 @@
-import type { CompanyId, IsoDate, PayoutId } from '../domain/ids';
+import type {
+  CompanyId,
+  IsoDate,
+  PayoutId,
+  TraderId,
+} from '../domain/ids';
 import type { Payout, PayoutProps } from '../domain/payout';
 
 export type PayoutDraft = Omit<PayoutProps, 'id'>;
@@ -17,6 +22,9 @@ export interface PayoutRepository {
   list(): Promise<readonly Payout[]>;
 
   listByCompany(companyId: CompanyId): Promise<readonly Payout[]>;
+
+  /** Every payout belonging to one person (F24). */
+  listByTrader(traderId: TraderId): Promise<readonly Payout[]>;
 
   /** Drives the financial-year report (UC10). */
   listByDateRange(range: DateRange): Promise<readonly Payout[]>;

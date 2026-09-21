@@ -9,6 +9,7 @@ import {
   attachDocument,
   createAccount,
   createCompany,
+  createTrader,
   createPayout,
   createTransaction,
   deleteAccount,
@@ -26,6 +27,7 @@ import type {
   CompanyJson,
   CreateAccountCommand,
   CreateCompanyCommand,
+  CreateTraderCommand,
   CreatePayoutCommand,
   CreateSaleCommand,
   CreateTransactionCommand,
@@ -42,6 +44,7 @@ import type {
   TransactionDeletedJson,
   TransactionJson,
   UpdateAccountCommand,
+  TraderJson,
   UpdateTransactionCommand,
 } from '../types';
 
@@ -77,6 +80,26 @@ export function useRecordCompany(): UseMutationResult<
   return useMutation({
     mutationFn: createCompany,
     onSuccess: () => invalidateAll(client, [queryKeys.companies.all()]),
+  });
+}
+
+/**
+ * F24 — a new trader touches the trader list, and nothing else.
+ *
+ * Not the payouts, the balances or the checks: a person who has just been
+ * added owns nothing yet, so every scoped figure on screen is still right.
+ * The dropdown they appear in is the one thing that has changed.
+ */
+export function useRecordTrader(): UseMutationResult<
+  { trader: TraderJson },
+  Error,
+  CreateTraderCommand
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: createTrader,
+    onSuccess: () => invalidateAll(client, [queryKeys.traders.all()]),
   });
 }
 

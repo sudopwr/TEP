@@ -12,6 +12,7 @@ import { FakeIdGenerator } from './fake-id-generator';
 import { FakePasswordHasher } from './fake-password-hasher';
 import { FakePayoutRepository } from './fake-payout-repository';
 import { FakeSessionRepository } from './fake-session-repository';
+import { FakeTraderRepository } from './fake-trader-repository';
 import { FakeTransactionRepository } from './fake-transaction-repository';
 import { FakeUserRepository } from './fake-user-repository';
 
@@ -23,6 +24,7 @@ import { FakeUserRepository } from './fake-user-repository';
  * there is no recording of calls and no stubbed return value, just a Map.
  */
 export class TestWorld {
+  readonly traders = new FakeTraderRepository();
   readonly companies = new FakeCompanyRepository();
   readonly accounts = new FakeAccountRepository();
   readonly payouts = new FakePayoutRepository();
@@ -66,6 +68,9 @@ export class TestWorld {
   static withCounterparties(): TestWorld {
     const world = new TestWorld();
 
+    // The trader `004_traders.sql` creates, so a fake world and a migrated
+    // database agree about whose payouts §10's are.
+    world.traders.seed(reference.DEFAULT_TRADER);
     world.companies.seed(reference.TRADEIFY, reference.RISE_CO);
     world.accounts.seed(
       reference.TRADEIFY_ACCOUNT,

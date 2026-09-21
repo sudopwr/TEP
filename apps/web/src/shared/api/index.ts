@@ -20,6 +20,14 @@ export { QueryProvider } from './QueryProvider';
 export { AuthProvider, useAuth } from './AuthProvider';
 export type { AuthState } from './AuthProvider';
 
+export {
+  MONTH_NAMES,
+  ScopeProvider,
+  periodRange,
+  useScope,
+} from './ScopeProvider';
+export type { ScopeSelection, ScopeState } from './ScopeProvider';
+
 export { documentUrl } from './endpoints';
 
 export * from './hooks/index';

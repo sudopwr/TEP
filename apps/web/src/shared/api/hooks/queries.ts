@@ -10,10 +10,12 @@ import {
   fetchPayoutTrail,
   fetchPayouts,
   fetchSettlement,
+  fetchTraders,
   fetchTransactions,
   searchDocuments,
 } from '../endpoints';
 import { queryKeys } from '../keys';
+import { useScope } from '../ScopeProvider';
 import type {
   AccountBalanceJson,
   AccountJson,
@@ -26,6 +28,7 @@ import type {
   PayoutJson,
   PayoutTrailJson,
   SettlementJson,
+  TraderJson,
   TransactionJson,
 } from '../types';
 
@@ -39,6 +42,13 @@ import type {
  * shape the server would have sent.
  *
  * Every key comes from `queryKeys`. None is written inline.
+ *
+ * The four scoped reads (F24) take the selection from `useScope` rather than
+ * from an argument, and fold it into both the key and the request. A screen
+ * cannot forget it, and two screens showing the same selection share one
+ * cache entry. `useTraders`, `useCompanies` and `useAccounts` are deliberately
+ * *not* scoped: a company is a company whoever traded with it, and a scoped
+ * account list would empty the destination dropdown of a form.
  */
 
 export function useCompanies(): UseQueryResult<readonly CompanyJson[]> {
@@ -46,6 +56,15 @@ export function useCompanies(): UseQueryResult<readonly CompanyJson[]> {
     queryKey: queryKeys.companies.list(),
     queryFn: ({ signal }) => fetchCompanies(signal),
     select: (data) => data.companies,
+  });
+}
+
+/** F24 — who the ledger keeps payouts for. Never scoped: it *is* the scope. */
+export function useTraders(): UseQueryResult<readonly TraderJson[]> {
+  return useQuery({
+    queryKey: queryKeys.traders.list(),
+    queryFn: ({ signal }) => fetchTraders(signal),
+    select: (data) => data.traders,
   });
 }
 
@@ -66,13 +85,44 @@ export function useAccounts(
   });
 }
 
+/**
+ * F2's list, narrowed by the shared selection (F24).
+ *
+ * The caller's filter is this screen's own — the company — and the scope is
+ * everybody's. The two are merged here, with the scope last: a screen cannot
+ * hand-wave past the selection by passing a `traderId` of its own.
+ */
 export function usePayouts(
   filter: PayoutFilter = {},
 ): UseQueryResult<readonly PayoutJson[]> {
+  const { filter: scope } = useScope();
+  const scoped: PayoutFilter = { ...filter, ...scope };
+
   return useQuery({
-    queryKey: queryKeys.payouts.list(filter),
-    queryFn: ({ signal }) => fetchPayouts(filter, signal),
+    queryKey: queryKeys.payouts.list(scoped),
+    queryFn: ({ signal }) => fetchPayouts(scoped, signal),
     select: (data) => data.payouts,
+  });
+}
+
+/**
+ * The years there is anything to show, newest first (F24).
+ *
+ * Deliberately reads the *unscoped* list: the year dropdown must offer 2024
+ * while 2025 is selected, and a list narrowed to 2025 could only ever offer
+ * 2025. When nothing is narrowed this is the very entry `usePayouts` already
+ * holds, so the common case costs no second request.
+ */
+export function usePayoutYears(): UseQueryResult<readonly number[]> {
+  return useQuery({
+    queryKey: queryKeys.payouts.list({}),
+    queryFn: ({ signal }) => fetchPayouts({}, signal),
+    select: (data) =>
+      [
+        ...new Set(data.payouts.map((payout) => payout.payoutDate.slice(0, 4))),
+      ]
+        .map(Number)
+        .sort((first, second) => second - first),
   });
 }
 
@@ -134,9 +184,11 @@ export function useTransactions(
 export function useAccountBalances(
   payoutId?: number,
 ): UseQueryResult<readonly AccountBalanceJson[]> {
+  const { filter: scope } = useScope();
+
   return useQuery({
-    queryKey: queryKeys.balances.list(payoutId),
-    queryFn: ({ signal }) => fetchBalances(payoutId, signal),
+    queryKey: queryKeys.balances.list(payoutId, scope),
+    queryFn: ({ signal }) => fetchBalances(payoutId, scope, signal),
     select: (data) => data.balances,
   });
 }
@@ -146,9 +198,12 @@ export function useDataQuality(
   payoutId?: number,
   tolerancePct?: number,
 ): UseQueryResult<readonly DataQualityIssueJson[]> {
+  const { filter: scope } = useScope();
+
   return useQuery({
-    queryKey: queryKeys.dataQuality.list(payoutId, tolerancePct),
-    queryFn: ({ signal }) => fetchDataQuality(payoutId, tolerancePct, signal),
+    queryKey: queryKeys.dataQuality.list(payoutId, tolerancePct, scope),
+    queryFn: ({ signal }) =>
+      fetchDataQuality(payoutId, tolerancePct, scope, signal),
     select: (data) => data.issues,
   });
 }
@@ -169,14 +224,26 @@ export function useDocumentSearch(
   });
 }
 
-/** F13 — the financial-year report. */
+/**
+ * F13 — the financial-year report.
+ *
+ * Only the trader half of the scope applies: the range is this report's own
+ * required argument, and a year chosen in the bar at the top must not
+ * silently re-cut a report the reader asked for a financial year of.
+ */
 export function useFinancialYearReport(
   filter: FinancialYearFilter | null,
 ): UseQueryResult<FinancialYearReportJson> {
+  const { traderId } = useScope();
+  const scoped =
+    filter === null
+      ? null
+      : { ...filter, ...(traderId === null ? {} : { traderId }) };
+
   return useQuery({
-    queryKey: queryKeys.reports.financialYear(filter ?? { from: '', to: '' }),
+    queryKey: queryKeys.reports.financialYear(scoped ?? { from: '', to: '' }),
     queryFn: ({ signal }) =>
-      fetchFinancialYear(filter as FinancialYearFilter, signal),
-    enabled: filter !== null,
+      fetchFinancialYear(scoped as FinancialYearFilter, signal),
+    enabled: scoped !== null,
   });
 }

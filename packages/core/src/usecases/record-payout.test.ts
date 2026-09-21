@@ -11,6 +11,7 @@ const setup = () => {
   const useCase = new RecordPayout({
     payouts: world.payouts,
     companies: world.companies,
+    traders: world.traders,
     currencies: world.currencies,
     clock: world.clock,
   });
@@ -22,6 +23,7 @@ const command = (
 ): RecordPayoutCommand => ({
   code: 'TradeifyPayout002',
   companyId: 1,
+  traderId: 1,
   payoutDate: '2025-04-02',
   grossAmount: '1008.01',
   currencyCode: 'USD',

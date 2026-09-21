@@ -36,6 +36,7 @@ import {
   FinancialYearReport,
   SettlementPanel,
 } from './features/reports';
+import { ScopeBar } from './features/traders';
 import {
   RecordTransactionForm,
   TransactionTree,
@@ -92,6 +93,12 @@ function ProtectedLayout() {
         onAccountSettings={() => {
           void navigate('/account');
         }}
+        /*
+          Above every screen, not on the payout list alone. The selection is
+          shared (F24), and a bar that appeared on one screen and not the next
+          would leave a reader guessing which figures it still applied to.
+        */
+        toolbar={<ScopeBar />}
       >
         {/*
           One boundary around the page, not around the shell: a screen that

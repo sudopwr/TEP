@@ -122,6 +122,7 @@ describe('GetPayoutTrail (UC5)', () => {
     const other = await world.payouts.insert({
       code: 'TradeifyPayout008',
       companyId: 1,
+      traderId: 1,
       payoutDate: '2025-03-21',
       reference: null,
       gross: reference.PAYOUT.gross,
@@ -170,6 +171,7 @@ describe('GetPayoutTrail (UC5)', () => {
     const empty = await world.payouts.insert({
       code: 'TradeifyPayout009',
       companyId: 1,
+      traderId: 1,
       payoutDate: '2025-05-01',
       reference: null,
       gross: reference.PAYOUT.gross,

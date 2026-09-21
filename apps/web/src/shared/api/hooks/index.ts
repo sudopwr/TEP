@@ -7,8 +7,10 @@ export {
   useFinancialYearReport,
   usePayoutDocuments,
   usePayoutTrail,
+  usePayoutYears,
   usePayouts,
   useSettlement,
+  useTraders,
   useTransactions,
 } from './queries';
 
@@ -25,6 +27,7 @@ export {
   useRecordAccount,
   useRecordCompany,
   useRecordPayout,
+  useRecordTrader,
   useRecordTransaction,
   useSettlePayout,
 } from './mutations';

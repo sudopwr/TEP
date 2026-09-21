@@ -159,6 +159,8 @@ describe('createPayoutBody', () => {
   const valid = {
     code: 'TradeifyPayout001',
     companyId: 1,
+    // F24: a payout belongs to somebody, so the minimum body says who.
+    traderId: 1,
     grossAmount: '1008.01',
     currencyCode: 'USD',
   };

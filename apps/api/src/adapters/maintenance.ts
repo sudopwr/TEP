@@ -5,6 +5,7 @@ import type {
   Document,
   FeeSchedule,
   Payout,
+  Trader,
   Transaction,
   TransactionFee,
 } from '@payout/core';
@@ -45,10 +46,12 @@ const SQL = {
     'INSERT INTO accounts (id, code, name, type, company_id) VALUES (@id, @code, @name, @type, @companyId)',
   insertAccountCurrency:
     'INSERT OR IGNORE INTO account_currencies (account_id, currency_code) VALUES (?, ?)',
+  insertTrader:
+    'INSERT OR IGNORE INTO traders (id, code, name, notes) VALUES (@id, @code, @name, @notes)',
   insertPayout: `INSERT INTO payouts
-      (id, code, company_id, payout_date, reference, gross_amount, charges, currency_code, notes)
+      (id, code, company_id, trader_id, payout_date, reference, gross_amount, charges, currency_code, notes)
     VALUES
-      (@id, @code, @companyId, @payoutDate, @reference, @gross, @charges, @currencyCode, @notes)`,
+      (@id, @code, @companyId, @traderId, @payoutDate, @reference, @gross, @charges, @currencyCode, @notes)`,
   insertTransaction: `INSERT INTO transactions
       (id, code, payout_id, parent_id, txn_date, kind, from_account_id, to_account_id,
        from_amount, from_currency, to_amount, to_currency, rate_applied,
@@ -70,6 +73,14 @@ const SQL = {
 } as const;
 
 export interface BulkLoad {
+  /**
+   * The people the payouts belong to (F24).
+   *
+   * `INSERT OR IGNORE`, because `004_traders.sql` already created trader 1
+   * and a fixture that names the same person is agreeing with the migration
+   * rather than fighting it.
+   */
+  readonly traders?: readonly Trader[];
   readonly companies?: readonly Company[];
   readonly accounts?: readonly Account[];
   readonly payouts?: readonly Payout[];
@@ -92,6 +103,7 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
   const insertCompany = database.prepare(SQL.insertCompany);
   const insertAccount = database.prepare(SQL.insertAccount);
   const insertAccountCurrency = database.prepare(SQL.insertAccountCurrency);
+  const insertTrader = database.prepare(SQL.insertTrader);
   const insertPayout = database.prepare(SQL.insertPayout);
   const insertTransaction = database.prepare(SQL.insertTransaction);
   const insertFee = database.prepare(SQL.insertFee);
@@ -100,6 +112,15 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
 
   const load = database.transaction(() => {
     database.pragma('defer_foreign_keys = ON');
+
+    for (const trader of data.traders ?? []) {
+      insertTrader.run({
+        id: trader.id,
+        code: trader.code,
+        name: trader.name,
+        notes: trader.notes,
+      });
+    }
 
     for (const company of data.companies ?? []) {
       insertCompany.run({
@@ -128,6 +149,7 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
         id: payout.id,
         code: payout.code,
         companyId: payout.companyId,
+        traderId: payout.traderId,
         payoutDate: payout.payoutDate,
         reference: payout.reference,
         gross: payout.gross.minor,
@@ -202,6 +224,7 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
 
 /** The tables a row count is meaningful for. Not a free-text table name. */
 export type CountableTable =
+  | 'traders'
   | 'companies'
   | 'accounts'
   | 'payouts'
@@ -274,8 +297,9 @@ export function snapshot(
       ),
     ),
     payouts: rows<PayoutRow>(
-      `SELECT id, code, company_id, payout_date, reference, gross_amount,
-              charges, currency_code, notes FROM payouts ORDER BY id`,
+      `SELECT id, code, company_id, trader_id, payout_date, reference,
+              gross_amount, charges, currency_code, notes
+         FROM payouts ORDER BY id`,
     ).map((row) => toPayout(row, currencies)),
     transactions: rows<TransactionRow>(
       `SELECT id, code, payout_id, parent_id, txn_date, kind, from_account_id,

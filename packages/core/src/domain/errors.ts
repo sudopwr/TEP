@@ -351,6 +351,23 @@ export class CompanyCodeTakenError extends DomainError {
   }
 }
 
+/** A trader nobody has recorded. */
+export class TraderNotFoundError extends DomainError {
+  constructor(readonly traderId: number) {
+    super('TraderNotFoundError', `No trader with id ${traderId}.`);
+  }
+}
+
+/** A trader code that already belongs to another trader. */
+export class TraderCodeTakenError extends DomainError {
+  constructor(readonly code: string) {
+    super(
+      'TraderCodeTakenError',
+      `A trader with code '${code}' already exists.`,
+    );
+  }
+}
+
 /** An account code that already belongs to another account. */
 export class AccountCodeTakenError extends DomainError {
   constructor(readonly code: string) {

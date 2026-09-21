@@ -8,6 +8,10 @@ import type { ReactNode } from 'react';
 
 import { AuthProvider } from '../src/shared/api/AuthProvider';
 import { createQueryClient } from '../src/shared/api/queryClient';
+import {
+  ScopeProvider,
+  type ScopeSelection,
+} from '../src/shared/api/ScopeProvider';
 import { AppTheme } from '../src/shared/theme/AppTheme';
 
 /**
@@ -41,9 +45,11 @@ export function renderHookWithClient<Result>(
   options: {
     readonly client?: QueryClient;
     readonly onUnauthenticated?: () => void;
+    /** The selection the hook opens on (F24). Omitted means everything. */
+    readonly scope?: ScopeSelection;
   } & Omit<RenderHookOptions<unknown>, 'wrapper'> = {},
 ): HookHarness<Result> {
-  const { client: supplied, onUnauthenticated, ...rest } = options;
+  const { client: supplied, onUnauthenticated, scope, ...rest } = options;
   const client =
     supplied ??
     createTestQueryClient(
@@ -54,7 +60,11 @@ export function renderHookWithClient<Result>(
     wrapper: ({ children }: { children: ReactNode }) => (
       <AppTheme>
         <QueryClientProvider client={client}>
-          <AuthProvider>{children}</AuthProvider>
+          <AuthProvider>
+            <ScopeProvider {...(scope === undefined ? {} : { initial: scope })}>
+              {children}
+            </ScopeProvider>
+          </AuthProvider>
         </QueryClientProvider>
       </AppTheme>
     ),

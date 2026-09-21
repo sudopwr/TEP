@@ -1,12 +1,14 @@
 import type { Company } from '../domain/company';
 import type { Currency, CurrencyRegistry } from '../domain/currency';
 import { CompanyNotFoundError } from '../domain/errors';
-import type { CompanyId, IsoDate } from '../domain/ids';
+import type { CompanyId, IsoDate, TraderId } from '../domain/ids';
 import { Money } from '../domain/money';
 import type { Clock } from '../ports/clock';
 import type { CompanyRepository } from '../ports/company-repository';
 import type { DateRange, PayoutRepository } from '../ports/payout-repository';
 import type { TransactionRepository } from '../ports/transaction-repository';
+
+import { payoutsInScope } from './payout-scope';
 
 export interface GenerateFinancialYearReportDependencies {
   readonly payouts: PayoutRepository;
@@ -20,6 +22,8 @@ export interface GenerateFinancialYearReportCommand {
   /** Defaults to the Indian financial year containing today. */
   readonly range?: DateRange;
   readonly settlementCurrencyCode?: string;
+  /** Whose year it is (F24). Omit to report on everybody's. */
+  readonly traderId?: TraderId;
 }
 
 export interface CompanyTotals {
@@ -72,7 +76,12 @@ export class GenerateFinancialYearReport {
       { payoutCount: number; credited: Money; tds: Money; fees: Money }
     >();
 
-    for (const payout of await payouts.listByDateRange(range)) {
+    const inScope = await payoutsInScope(payouts, {
+      range,
+      ...(command.traderId === undefined ? {} : { traderId: command.traderId }),
+    });
+
+    for (const payout of inScope) {
       const legs = await transactions.listByPayout(payout.id);
       const fees = await transactions.listFeesByPayout(payout.id);
 

@@ -7,6 +7,14 @@
  * entities rather than being passed around loose.
  */
 export type CompanyId = number;
+/**
+ * A person a payout belongs to — never `UserId`.
+ *
+ * §5a's `users` table is the one sign-in account: a credential, a session,
+ * an admin. A trader is who the *money* is for, has no password and never
+ * signs in, and one admin manages several of them.
+ */
+export type TraderId = number;
 export type AccountId = number;
 export type PayoutId = number;
 export type TransactionId = number;

@@ -1,17 +1,20 @@
 import { HttpResponse, http } from 'msw';
 
-import type { CompanyJson } from '../../src/shared/api/types';
+import type { CompanyJson, TraderJson } from '../../src/shared/api/types';
 
 import {
   ACCOUNTS,
   BALANCES,
   DOCUMENTS,
   ISSUES,
+  OTHER_PAYOUT,
+  OTHER_TRADER,
   PAYOUT,
   REPORT,
   RISE_CO,
   SETTLEMENT,
   TRADEIFY,
+  TRADERS,
   TRAIL,
   TRANSACTIONS,
 } from './fixtures';
@@ -54,6 +57,12 @@ export const handlers = [
     HttpResponse.json({ company: TRADEIFY }, { status: 201 }),
   ),
 
+  // ---------- Traders and the shared scope (F24) ----------
+  http.get('/api/traders', () => HttpResponse.json({ traders: TRADERS })),
+  http.post('/api/traders', () =>
+    HttpResponse.json({ trader: OTHER_TRADER }, { status: 201 }),
+  ),
+
   http.get('/api/accounts', () => HttpResponse.json({ accounts: ACCOUNTS })),
   http.post('/api/accounts', () =>
     HttpResponse.json({ account: ACCOUNTS[0] }, { status: 201 }),
@@ -80,7 +89,29 @@ export const handlers = [
     }),
   ),
 
-  http.get('/api/payouts', () => HttpResponse.json({ payouts: [PAYOUT] })),
+  /*
+    The payout list, actually filtered.
+
+    A handler that ignored `traderId`, `from` and `to` would let a hook that
+    never sent them pass — and "the scope reaches the server" is the whole of
+    F24. So this one answers the question it was asked, from two payouts
+    belonging to two people in two months.
+  */
+  http.get('/api/payouts', ({ request }) => {
+    const query = new URL(request.url).searchParams;
+    const traderId = query.get('traderId');
+    const from = query.get('from');
+    const to = query.get('to');
+
+    const payouts = [PAYOUT, OTHER_PAYOUT].filter(
+      (payout) =>
+        (traderId === null || payout.traderId === Number(traderId)) &&
+        (from === null || payout.payoutDate >= from) &&
+        (to === null || payout.payoutDate <= to),
+    );
+
+    return HttpResponse.json({ payouts });
+  }),
   http.post('/api/payouts', () =>
     HttpResponse.json({ payout: PAYOUT }, { status: 201 }),
   ),
@@ -221,13 +252,33 @@ export const handlers = [
     });
   }),
 
-  http.get('/api/accounts/balances', () =>
-    HttpResponse.json(REFERENCE_BALANCES),
+  /*
+    Balances and checks, scoped like the server scopes them.
+
+    §10's figures belong to the default trader, so asking as somebody else
+    answers empty. That is what makes a test able to tell "the hook sent the
+    scope" from "the hook rendered whatever it was given".
+  */
+  http.get('/api/accounts/balances', ({ request }) =>
+    HttpResponse.json(
+      isSomebodyElse(request)
+        ? { balances: [] }
+        : REFERENCE_BALANCES,
+    ),
   ),
-  http.get('/api/data-quality', () => HttpResponse.json({ issues: ISSUES })),
+  http.get('/api/data-quality', ({ request }) =>
+    HttpResponse.json({ issues: isSomebodyElse(request) ? [] : ISSUES }),
+  ),
 
   http.get('/api/reports/financial-year', () => HttpResponse.json(REPORT)),
 ];
+
+/** True when the request asks for a trader other than §10's. */
+function isSomebodyElse(request: Request): boolean {
+  const traderId = new URL(request.url).searchParams.get('traderId');
+
+  return traderId !== null && Number(traderId) !== PAYOUT.traderId;
+}
 
 /** Answer one path with a body of your own, for an empty or odd state. */
 export const answering = (path: string, body: Record<string, unknown>) =>
@@ -313,6 +364,43 @@ export const companyCanBeAdded = (company: CompanyJson) => {
     }),
   ];
 };
+
+/**
+ * A trader who is not on file until they are added (F24).
+ *
+ * The same shape as `companyCanBeAdded`, and for the same reason: the dialog
+ * only works if the list it came from holds the new row by the time it is
+ * selected, and a handler that always answered with them would prove nothing.
+ */
+export const traderCanBeAdded = (trader: TraderJson) => {
+  let created = false;
+
+  return [
+    http.get('/api/traders', () =>
+      HttpResponse.json({
+        traders: created ? [...TRADERS, trader] : TRADERS,
+      }),
+    ),
+    http.post('/api/traders', () => {
+      created = true;
+
+      return HttpResponse.json({ trader }, { status: 201 });
+    }),
+  ];
+};
+
+/** 409 — somebody already has that code. */
+export const traderCodeTaken = (code: string) =>
+  http.post('/api/traders', () =>
+    HttpResponse.json(
+      {
+        code: 'trader_code_taken',
+        message: `A trader with the code '${code}' already exists.`,
+        details: { code },
+      },
+      { status: 409 },
+    ),
+  );
 
 /**
  * 409 — the account is a party to legs that still exist.

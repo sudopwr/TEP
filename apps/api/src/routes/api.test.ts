@@ -193,6 +193,173 @@ describe('/api routes', () => {
     });
   });
 
+  describe('traders (F24)', () => {
+    beforeEach(async () => {
+      await withSeed(seedCounterparties);
+    });
+
+    it('lists the trader the migration created', async () => {
+      const response = await get('/api/traders');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().traders).toMatchObject([
+        { id: 1, code: 'default', name: 'Me' },
+      ]);
+    });
+
+    it('records a second person and lists them both', async () => {
+      const created = await post('/api/traders', {
+        code: 'priya',
+        name: 'Priya',
+      });
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json().trader).toMatchObject({ code: 'priya' });
+
+      const response = await get('/api/traders');
+      expect(response.json().traders.map((one: { code: string }) => one.code))
+        .toEqual(['default', 'priya']);
+    });
+
+    it('409s a code somebody already has', async () => {
+      const response = await post('/api/traders', {
+        code: 'default',
+        name: 'Somebody Else',
+      });
+
+      expect(response.statusCode).toBe(409);
+      expect(response.json().code).toBe('trader_code_taken');
+    });
+
+    it('404s a payout for a trader who does not exist', async () => {
+      const response = await post('/api/payouts', {
+        code: 'Orphan',
+        traderId: 999,
+        companyId: 1,
+        grossAmount: '10.00',
+        currencyCode: 'USD',
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('trader_not_found');
+    });
+
+    it('rejects a payout with no trader at all', async () => {
+      // There is no "whoever" column: the schema makes trader_id NOT NULL,
+      // and the edge refuses before the adapter has to.
+      const response = await post('/api/payouts', {
+        code: 'Nobody',
+        companyId: 1,
+        grossAmount: '10.00',
+        currencyCode: 'USD',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().details.issues[0].path).toBe('traderId');
+    });
+  });
+
+  describe('the shared scope on every read that honours it (F24)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+
+      await post('/api/traders', { code: 'priya', name: 'Priya' });
+      await post('/api/payouts', {
+        code: 'TradeifyPayout900',
+        traderId: 2,
+        companyId: 1,
+        payoutDate: '2025-06-04',
+        grossAmount: '500.00',
+        currencyCode: 'USD',
+      });
+    });
+
+    it('filters the payout list by trader', async () => {
+      const hers = await get('/api/payouts?traderId=2');
+      const theirs = await get('/api/payouts?traderId=1');
+
+      expect(hers.json().payouts.map((one: { code: string }) => one.code))
+        .toEqual(['TradeifyPayout900']);
+      expect(theirs.json().payouts.map((one: { code: string }) => one.code))
+        .toEqual(['TradeifyPayout001']);
+    });
+
+    it('filters the payout list by month, and by both at once', async () => {
+      const june = 'from=2025-06-01&to=2025-06-30';
+
+      expect((await get(`/api/payouts?${june}`)).json().payouts).toHaveLength(1);
+      expect(
+        (await get(`/api/payouts?traderId=2&${june}`)).json().payouts,
+      ).toHaveLength(1);
+      expect(
+        (await get(`/api/payouts?traderId=1&${june}`)).json().payouts,
+      ).toEqual([]);
+    });
+
+    it('scopes the balances, so §10 belongs to whoever earned it', async () => {
+      const everybody = await get('/api/accounts/balances');
+      const theirs = await get('/api/accounts/balances?traderId=1');
+      const hers = await get('/api/accounts/balances?traderId=2');
+
+      expect(theirs.json().balances).toEqual(everybody.json().balances);
+      expect(hers.json().balances).toEqual([]);
+    });
+
+    it('scopes the checks', async () => {
+      const everybody = await get('/api/data-quality');
+      const hers = await get('/api/data-quality?traderId=2');
+
+      expect(everybody.json().issues.length).toBeGreaterThan(
+        hers.json().issues.length,
+      );
+    });
+
+    it('scopes the financial-year report', async () => {
+      // §10's tree is dated 2025-03-10, so the year that ends it is
+      // 2024-25. Priya gets an award inside the same year, which makes the
+      // difference below the trader and nothing else.
+      await post('/api/payouts', {
+        code: 'TradeifyPayout901',
+        traderId: 2,
+        companyId: 1,
+        payoutDate: '2025-03-20',
+        grossAmount: '500.00',
+        currencyCode: 'USD',
+      });
+
+      const range = 'from=2024-04-01&to=2025-03-31';
+      const everybody = await get(`/api/reports/financial-year?${range}`);
+      const hers = await get(`/api/reports/financial-year?${range}&traderId=2`);
+
+      // ₹84,642.93 is the default trader's; Priya's award has not reached a
+      // bank, so nothing is credited to her yet.
+      expect(everybody.json().totalCredited.amount).toBe('84642.93');
+      expect(hers.json().totalCredited.amount).toBe('0.00');
+      // Her award is in the year and counted, with nothing credited against
+      // it — the row a reader needs in order to chase it up.
+      expect(hers.json().byCompany).toMatchObject([{ payoutCount: 1 }]);
+    });
+
+    it('400s a half-given range on each of them', async () => {
+      const halves = [
+        '/api/payouts?from=2025-06-01',
+        '/api/accounts/balances?to=2025-06-30',
+        '/api/data-quality?from=2025-06-01',
+      ];
+
+      for (const url of halves) {
+        expect((await get(url)).statusCode).toBe(400);
+      }
+    });
+
+    it('400s a trader id that is not a positive integer', async () => {
+      expect((await get('/api/payouts?traderId=nobody')).statusCode).toBe(400);
+      expect((await get('/api/accounts/balances?traderId=0')).statusCode).toBe(
+        400,
+      );
+    });
+  });
+
   describe('accounts (F1)', () => {
     beforeEach(async () => {
       await withSeed();
@@ -370,6 +537,7 @@ describe('/api routes', () => {
       });
       await post('/api/payouts', {
         code: 'P1',
+        traderId: 1,
         companyId: 1,
         grossAmount: '1008.01',
         currencyCode: 'USD',
@@ -555,6 +723,7 @@ describe('/api routes', () => {
     it('records a payout, keeping the amount exact', async () => {
       const response = await post('/api/payouts', {
         code: 'TradeifyPayout002',
+        traderId: 1,
         companyId: 1,
         payoutDate: '2025-04-02',
         grossAmount: '1008.01',
@@ -573,6 +742,7 @@ describe('/api routes', () => {
     it('rejects a gross amount of zero', async () => {
       const response = await post('/api/payouts', {
         code: 'Zero',
+        traderId: 1,
         companyId: 1,
         grossAmount: '0.00',
         currencyCode: 'USD',
@@ -585,6 +755,7 @@ describe('/api routes', () => {
       // N1. A float64 would already have rounded before Money saw it.
       const response = await post('/api/payouts', {
         code: 'Float',
+        traderId: 1,
         companyId: 1,
         grossAmount: 1008.01,
         currencyCode: 'USD',
@@ -598,6 +769,7 @@ describe('/api routes', () => {
       // §9 defect 3 is what Excel did with `1.43908E+19`.
       const response = await post('/api/payouts', {
         code: 'Exp',
+        traderId: 1,
         companyId: 1,
         grossAmount: '1.43908E+19',
         currencyCode: 'USD',
@@ -609,6 +781,7 @@ describe('/api routes', () => {
     it('404s an unknown company', async () => {
       const response = await post('/api/payouts', {
         code: 'Orphan',
+        traderId: 1,
         companyId: 999,
         grossAmount: '10.00',
         currencyCode: 'USD',
@@ -621,6 +794,7 @@ describe('/api routes', () => {
     it('400s an unknown currency', async () => {
       const response = await post('/api/payouts', {
         code: 'Weird',
+        traderId: 1,
         companyId: 1,
         grossAmount: '10.00',
         currencyCode: 'XYZ',
@@ -633,6 +807,7 @@ describe('/api routes', () => {
     it('400s a malformed date', async () => {
       const response = await post('/api/payouts', {
         code: 'BadDate',
+        traderId: 1,
         companyId: 1,
         payoutDate: '02-04-2025',
         grossAmount: '10.00',
@@ -646,6 +821,7 @@ describe('/api routes', () => {
     it('filters the list by company', async () => {
       await post('/api/payouts', {
         code: 'P1',
+        traderId: 1,
         companyId: 1,
         payoutDate: '2025-04-02',
         grossAmount: '10.00',
@@ -1208,6 +1384,7 @@ describe('/api routes', () => {
       await withSeed(seedCounterparties);
       await post('/api/payouts', {
         code: 'P1',
+        traderId: 1,
         companyId: 1,
         payoutDate: '2025-03-16',
         grossAmount: '1008.01',
@@ -1278,6 +1455,7 @@ describe('/api routes', () => {
       await post('/api/transactions', transfer());
       await post('/api/payouts', {
         code: 'P2',
+        traderId: 1,
         companyId: 1,
         payoutDate: '2025-03-16',
         grossAmount: '500.00',
@@ -1869,6 +2047,7 @@ describe('/api routes', () => {
     it('never leaks a stack trace', async () => {
       const response = await post('/api/payouts', {
         code: 'X',
+        traderId: 1,
         companyId: 999,
         grossAmount: '1.00',
         currencyCode: 'USD',
@@ -1882,6 +2061,7 @@ describe('/api routes', () => {
     it('carries a domain error structured fields, not just prose', async () => {
       const response = await post('/api/payouts', {
         code: 'X',
+        traderId: 1,
         companyId: 999,
         grossAmount: '1.00',
         currencyCode: 'USD',

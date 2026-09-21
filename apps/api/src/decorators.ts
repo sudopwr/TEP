@@ -21,11 +21,13 @@ import type {
   ListAccounts,
   ListCompanies,
   ListPayouts,
+  ListTraders,
   ListTransactions,
   RecordAccount,
   RecordCompany,
   RecordPayout,
   RecordSale,
+  RecordTrader,
   RecordTransaction,
   RunDataQualityChecks,
   SearchDocuments,
@@ -67,6 +69,9 @@ export interface DocumentFileSource {
 export interface UseCases {
   readonly recordCompany: RecordCompany;
   readonly listCompanies: ListCompanies;
+
+  readonly recordTrader: RecordTrader;
+  readonly listTraders: ListTraders;
 
   readonly recordAccount: RecordAccount;
   readonly editAccount: EditAccount;

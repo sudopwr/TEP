@@ -1,7 +1,13 @@
 import type { Account } from './account';
 import type { Currency } from './currency';
 import { PayoutNotFoundError } from './errors';
-import type { AccountId, CompanyId, IsoDate, PayoutId } from './ids';
+import type {
+  AccountId,
+  CompanyId,
+  IsoDate,
+  PayoutId,
+  TraderId,
+} from './ids';
 import { Money, type RoundingMode } from './money';
 import type { Transaction } from './transaction';
 import type { FeeType, TransactionFee } from './transaction-fee';
@@ -19,6 +25,8 @@ export interface PayoutProps {
   readonly id: PayoutId;
   readonly code: string;
   readonly companyId: CompanyId;
+  /** Whose award this is (F24). Never null: every payout is somebody's. */
+  readonly traderId: TraderId;
   readonly payoutDate: IsoDate;
   readonly reference: string | null;
   readonly gross: Money;
@@ -61,6 +69,10 @@ export class Payout {
 
   get code(): string {
     return this.#props.code;
+  }
+
+  get traderId(): TraderId {
+    return this.#props.traderId;
   }
 
   get companyId(): CompanyId {

@@ -44,6 +44,7 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
 
   // 404 — you named something that is not there.
   ['PayoutNotFoundError', 404],
+  ['TraderNotFoundError', 404],
   ['CompanyNotFoundError', 404],
   ['AccountNotFoundError', 404],
   ['TransactionNotFoundError', 404],
@@ -54,6 +55,7 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   ['UsernameTakenError', 409],
   ['CompanyCodeTakenError', 409],
   ['AccountCodeTakenError', 409],
+  ['TraderCodeTakenError', 409],
   ['AccountInUseError', 409],
 
   // 422 — the data on file cannot answer this, and no request can fix it.

@@ -11,6 +11,7 @@ const setup = () => {
   const useCase = new GetAccountBalances({
     accounts: world.accounts,
     transactions: world.transactions,
+    payouts: world.payouts,
   });
   return { world, useCase };
 };

@@ -173,6 +173,7 @@ describe('RunDataQualityChecks (UC8)', () => {
     await world.payouts.insert({
       code: 'TradeifyPayout099',
       companyId: 1,
+      traderId: 1,
       payoutDate: '2025-05-01',
       reference: null,
       gross: Money.fromDecimalString('100.00', INR),
@@ -196,6 +197,7 @@ describe('RunDataQualityChecks (UC8)', () => {
     await world.payouts.insert({
       code: 'TradeifyPayout099',
       companyId: 1,
+      traderId: 1,
       payoutDate: '2025-05-01',
       reference: null,
       gross: Money.fromDecimalString('100.00', INR),

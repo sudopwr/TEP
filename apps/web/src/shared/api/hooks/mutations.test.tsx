@@ -159,6 +159,7 @@ describe('useRecordPayout', () => {
     result.current.mutate({
       code: 'P2',
       companyId: 1,
+      traderId: 1,
       grossAmount: '10.00',
       currencyCode: 'USD',
     });

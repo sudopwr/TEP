@@ -6,7 +6,12 @@ import Typography from '@mui/material/Typography';
 import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { useCompanies, useRecordPayout } from '../../shared/api';
+import {
+  useCompanies,
+  useRecordPayout,
+  useScope,
+  useTraders,
+} from '../../shared/api';
 import { describeError, fieldErrors } from '../../shared/api/errors';
 import {
   AmountField,
@@ -30,15 +35,24 @@ import { NewCompanyDialog } from './NewCompanyDialog';
  * `apps/api/src/routes/validate.ts` sends as `{ path, message }` pairs for
  * precisely this. "Invalid request body" under a form of eight fields would
  * make the reader guess which one.
+ *
+ * The trader (F24) is required and defaults to whoever is selected in the bar
+ * at the top — recording a payout is almost always the next thing done after
+ * switching to somebody, and re-picking them here would be asking the same
+ * question twice. It is still a field rather than a silent assumption: a
+ * payout filed against the wrong person is invisible afterwards.
  */
 export function RecordPayoutForm() {
   const companies = useCompanies();
+  const traders = useTraders();
+  const scope = useScope();
   const record = useRecordPayout();
   const navigate = useNavigate();
   const { notify } = useToast();
 
   const [code, setCode] = useState('');
   const [companyId, setCompanyId] = useState('');
+  const [chosenTrader, setChosenTrader] = useState('');
   const [addingCompany, setAddingCompany] = useState(false);
   const [payoutDate, setPayoutDate] = useState('');
   const [grossAmount, setGrossAmount] = useState('');
@@ -49,6 +63,24 @@ export function RecordPayoutForm() {
 
   const errors = fieldErrors(record.error);
 
+  /*
+    The default, derived rather than stored.
+
+    An effect copying the scope into state once the trader list arrives would
+    also have to decide what to do when the person changes the selection
+    behind the form — and every answer to that is surprising. Derived, the
+    field follows the bar until somebody picks somebody else here, and then
+    keeps their choice.
+  */
+  const offered = traders.data ?? [];
+  const suggestedTrader =
+    scope.traderId !== null
+      ? String(scope.traderId)
+      : offered.length === 1
+        ? String(offered[0]?.id)
+        : '';
+  const traderId = chosenTrader === '' ? suggestedTrader : chosenTrader;
+
   const submit = (event: FormEvent): void => {
     event.preventDefault();
     if (record.isPending) return;
@@ -57,6 +89,7 @@ export function RecordPayoutForm() {
       {
         code: code.trim(),
         companyId: Number(companyId),
+        traderId: Number(traderId),
         grossAmount,
         currencyCode: currencyCode.trim().toUpperCase(),
         ...(payoutDate === '' ? {} : { payoutDate }),
@@ -127,6 +160,23 @@ export function RecordPayoutForm() {
               {...(errors['companyId'] === undefined
                 ? {}
                 : { error: errors['companyId'] })}
+            />
+          </Box>
+
+          <Box sx={{ mt: 2 }}>
+            <SelectWithCreate
+              label="Trader"
+              value={traderId}
+              onChange={setChosenTrader}
+              options={offered.map((trader) => ({
+                value: String(trader.id),
+                label: trader.name,
+              }))}
+              required
+              helperText="Whose award this is. Add someone from the bar at the top."
+              {...(errors['traderId'] === undefined
+                ? {}
+                : { error: errors['traderId'] })}
             />
           </Box>
 

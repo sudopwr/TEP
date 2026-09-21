@@ -29,6 +29,20 @@ export interface CompanyJson {
   readonly notes: string | null;
 }
 
+/**
+ * A person the ledger keeps payouts for (F24).
+ *
+ * Not a `SessionUserJson`. That one is the single account that signs in
+ * (§5a); this is somebody the money belongs to, and there is no password
+ * anywhere in this shape because a trader never signs in.
+ */
+export interface TraderJson {
+  readonly id: number;
+  readonly code: string;
+  readonly name: string;
+  readonly notes: string | null;
+}
+
 export type AccountType =
   'prop_firm' | 'processor' | 'exchange' | 'wallet' | 'bank';
 
@@ -45,6 +59,8 @@ export interface PayoutJson {
   readonly id: number;
   readonly code: string;
   readonly companyId: number;
+  /** Whose award it is (F24). Every payout belongs to somebody. */
+  readonly traderId: number;
   readonly payoutDate: string;
   readonly reference: string | null;
   readonly gross: MoneyJson;
@@ -203,6 +219,9 @@ export interface DocumentAttachedJson {
 export interface CompaniesResponse {
   readonly companies: readonly CompanyJson[];
 }
+export interface TradersResponse {
+  readonly traders: readonly TraderJson[];
+}
 export interface PayoutsResponse {
   readonly payouts: readonly PayoutJson[];
 }
@@ -285,6 +304,7 @@ export interface CreateAccountCommand {
 export interface CreatePayoutCommand {
   readonly code: string;
   readonly companyId: number;
+  readonly traderId: number;
   readonly payoutDate?: string;
   readonly grossAmount: string;
   readonly currencyCode: string;
@@ -363,14 +383,35 @@ export interface ChangeCredentialsCommand {
   readonly newPassword?: string;
 }
 
-export interface PayoutFilter {
-  readonly companyId?: number;
+export interface CreateTraderCommand {
+  readonly code: string;
+  readonly name: string;
+  readonly notes?: string | null;
+}
+
+/**
+ * The selection every scoped screen shares (F24): whose money, and when.
+ *
+ * One shape rather than three loose arguments, because the four screens that
+ * honour it — the payout list, the balances, the checks and the report — must
+ * honour it identically. It is also a cache key, so it is a plain object of
+ * primitives: TanStack hashes it structurally, and two screens that built the
+ * same selection read the same entry.
+ */
+export interface ScopeFilter {
+  readonly traderId?: number;
   readonly from?: string;
   readonly to?: string;
+}
+
+export interface PayoutFilter extends ScopeFilter {
+  readonly companyId?: number;
 }
 
 export interface FinancialYearFilter {
   readonly from: string;
   readonly to: string;
   readonly currencyCode?: string;
+  /** The trader half of the scope; the range is this report's own (F24). */
+  readonly traderId?: number;
 }

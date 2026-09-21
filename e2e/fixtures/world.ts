@@ -82,8 +82,22 @@ async function startWorld(): Promise<Running> {
   const seeding = openDatabase(databasePath);
   try {
     migrate(seeding);
-    await buildContainer(seeding, { filesRoot }).importLegacyCsv.execute({
+    const container = buildContainer(seeding, { filesRoot });
+
+    /*
+      Whose sheet this is (F24), resolved the way `npm run import` resolves
+      it: the trader `004_traders.sql` created, who every payout already
+      belonged to when payouts gained an owner.
+    */
+    const [trader] = await container.useCases.listTraders.execute();
+
+    if (trader === undefined) {
+      throw new Error('the migrations left no trader to import the sheet for');
+    }
+
+    await container.importLegacyCsv.execute({
       location: LEGACY_CSV,
+      traderId: trader.id,
     });
   } finally {
     seeding.close();

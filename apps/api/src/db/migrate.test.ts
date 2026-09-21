@@ -51,8 +51,10 @@ describe('migrate', () => {
       const result = migrate(database);
 
       expect(result.skipped).toBe(0);
-      expect(result.applied.map((one) => one.version)).toEqual([1, 2, 3]);
-      expect(applied().map((row) => Number(row.version))).toEqual([1, 2, 3]);
+      expect(result.applied.map((one) => one.version)).toEqual([1, 2, 3, 4]);
+      expect(applied().map((row) => Number(row.version))).toEqual([
+        1, 2, 3, 4,
+      ]);
     });
 
     it('creates the schema, views and full-text index', () => {
@@ -93,8 +95,8 @@ describe('migrate', () => {
       const second = migrate(database);
 
       expect(second.applied).toEqual([]);
-      expect(second.skipped).toBe(3);
-      expect(applied()).toHaveLength(3);
+      expect(second.skipped).toBe(4);
+      expect(applied()).toHaveLength(4);
     });
 
     it('is idempotent across a reconnect to the same file', () => {
@@ -103,12 +105,12 @@ describe('migrate', () => {
       const file = path.join(directory, 'app.db');
 
       const first = openDatabase(file);
-      expect(migrate(first).applied).toHaveLength(3);
+      expect(migrate(first).applied).toHaveLength(4);
       first.close();
 
       const second = openDatabase(file);
       expect(migrate(second).applied).toEqual([]);
-      expect(migrate(second).skipped).toBe(3);
+      expect(migrate(second).skipped).toBe(4);
       second.close();
     });
 

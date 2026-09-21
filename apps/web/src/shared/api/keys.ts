@@ -1,4 +1,8 @@
-import type { FinancialYearFilter, PayoutFilter } from './types';
+import type {
+  FinancialYearFilter,
+  PayoutFilter,
+  ScopeFilter,
+} from './types';
 
 /**
  * Every cache key in the application, in one place.
@@ -24,8 +28,9 @@ import type { FinancialYearFilter, PayoutFilter } from './types';
  * ['payouts', 7, 'trail']
  * ['payouts', 7, 'settlement', currency]
  * ['transactions', 'list', filter]
- * ['balances', filter]
- * ['dataQuality', filter]
+ * ['traders', 'list']
+ * ['balances', payoutId, scope]
+ * ['dataQuality', payoutId, tolerance, scope]
  * ['documents', 'search', query]
  * ['reports', 'financialYear', range]
  * ```
@@ -40,6 +45,12 @@ export const queryKeys = {
   companies: {
     all: () => ['companies'] as const,
     list: () => ['companies', 'list'] as const,
+  },
+
+  /** Who the ledger keeps payouts for (F24). One list, never scoped. */
+  traders: {
+    all: () => ['traders'] as const,
+    list: () => ['traders', 'list'] as const,
   },
 
   /**
@@ -87,15 +98,24 @@ export const queryKeys = {
       ['transactions', 'list', payoutId ?? null] as const,
   },
 
+  /**
+   * Balances, and the scope they were asked in (F24).
+   *
+   * The scope goes *after* `payoutId`, so `balances.all()` still reaches
+   * every scoped spelling: a mutation that moves money must invalidate one
+   * person's balances and everybody's, and it has no way to know which of
+   * them a screen happens to be showing.
+   */
   balances: {
     all: () => ['balances'] as const,
-    list: (payoutId?: number) => ['balances', payoutId ?? null] as const,
+    list: (payoutId?: number, scope: ScopeFilter = {}) =>
+      ['balances', payoutId ?? null, scope] as const,
   },
 
   dataQuality: {
     all: () => ['dataQuality'] as const,
-    list: (payoutId?: number, tolerancePct?: number) =>
-      ['dataQuality', payoutId ?? null, tolerancePct ?? null] as const,
+    list: (payoutId?: number, tolerancePct?: number, scope: ScopeFilter = {}) =>
+      ['dataQuality', payoutId ?? null, tolerancePct ?? null, scope] as const,
   },
 
   documents: {

@@ -193,6 +193,18 @@ export type { ListCompaniesDependencies } from './list-companies';
 export { ListCompanies } from './list-companies';
 
 export type {
+  RecordTraderCommand,
+  RecordTraderDependencies,
+} from './record-trader';
+export { RecordTrader } from './record-trader';
+
+export type { ListTradersDependencies } from './list-traders';
+export { ListTraders } from './list-traders';
+
+export type { PayoutScope } from './payout-scope';
+export { isNarrowed, payoutsInScope } from './payout-scope';
+
+export type {
   ListPayoutsCommand,
   ListPayoutsDependencies,
 } from './list-payouts';

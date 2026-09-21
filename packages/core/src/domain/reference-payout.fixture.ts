@@ -34,6 +34,7 @@ import { INR, USD, USDT } from './currency';
 import type { AccountId } from './ids';
 import { Money } from './money';
 import { Payout } from './payout';
+import { Trader } from './trader';
 import { Transaction } from './transaction';
 import { TransactionFee } from './transaction-fee';
 
@@ -86,6 +87,19 @@ export const FEE_SCHEDULES: readonly FeeSchedule[] = [
 ];
 
 // ---------- Counterparties ----------
+
+/**
+ * The trader every payout in this fixture belongs to (F24).
+ *
+ * Id 1 and code `default`, matching what `004_traders.sql` creates, so the
+ * fake world and a migrated database agree about whose money §10 is.
+ */
+export const DEFAULT_TRADER = Trader.create({
+  id: 1,
+  code: 'default',
+  name: 'Me',
+  notes: null,
+});
 
 export const TRADEIFY = Company.create({
   id: 1,
@@ -160,6 +174,7 @@ export const PAYOUT = Payout.create({
   id: 1,
   code: 'TradeifyPayout001',
   companyId: 1,
+  traderId: 1,
   payoutDate: '2025-03-10',
   reference: 'FTDFYSLX50676373980',
   gross: usd('1008.01'),

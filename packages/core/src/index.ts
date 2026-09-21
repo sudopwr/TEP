@@ -15,6 +15,7 @@ export type {
   IsoInstant,
   PayoutId,
   SessionId,
+  TraderId,
   TransactionFeeId,
   TransactionId,
   UserId,
@@ -34,6 +35,9 @@ export { Money, RATE_SCALE } from './domain/money';
 
 export type { CompanyProps } from './domain/company';
 export { Company } from './domain/company';
+
+export type { TraderProps } from './domain/trader';
+export { Trader } from './domain/trader';
 
 export type { AccountProps, AccountType } from './domain/account';
 export { ACCOUNT_TYPES, Account } from './domain/account';
@@ -84,6 +88,8 @@ export * from './usecases/index';
 export {
   AccountCodeTakenError,
   AccountInUseError,
+  TraderCodeTakenError,
+  TraderNotFoundError,
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
   AuthenticationFailedError,

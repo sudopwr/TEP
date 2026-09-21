@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   BALANCES,
   ISSUES,
+  OTHER_PAYOUT,
   PAYOUT,
   SETTLEMENT,
   TRADEIFY,
@@ -55,7 +56,7 @@ describe('query hooks', () => {
     const { result } = renderHookWithClient(() => usePayouts());
 
     await waitFor(() => {
-      expect(result.current.data).toEqual([PAYOUT]);
+      expect(result.current.data).toEqual([PAYOUT, OTHER_PAYOUT]);
     });
   });
 

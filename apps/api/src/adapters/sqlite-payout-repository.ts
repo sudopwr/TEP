@@ -6,6 +6,7 @@ import type {
   PayoutDraft,
   PayoutId,
   PayoutRepository,
+  TraderId,
 } from '@payout/core';
 
 import type { SqliteDatabase } from '../db/connection';
@@ -13,7 +14,7 @@ import type { SqliteDatabase } from '../db/connection';
 import { toPayout, type PayoutRow } from './mappers';
 
 const PAYOUT_COLUMNS =
-  'id, code, company_id, payout_date, reference, gross_amount, charges, currency_code, notes';
+  'id, code, company_id, trader_id, payout_date, reference, gross_amount, charges, currency_code, notes';
 
 /**
  * `status` is deliberately absent from every statement here.
@@ -29,13 +30,16 @@ const SQL = {
   selectByCode: `SELECT ${PAYOUT_COLUMNS} FROM payouts WHERE code = ?`,
   selectAll: `SELECT ${PAYOUT_COLUMNS} FROM payouts ORDER BY id`,
   selectByCompany: `SELECT ${PAYOUT_COLUMNS} FROM payouts WHERE company_id = ? ORDER BY id`,
+  /** `ix_payout_trader` covers this and the range query that follows it. */
+  selectByTrader: `SELECT ${PAYOUT_COLUMNS} FROM payouts WHERE trader_id = ? ORDER BY id`,
   selectByDateRange: `SELECT ${PAYOUT_COLUMNS} FROM payouts WHERE payout_date >= ? AND payout_date <= ? ORDER BY payout_date, id`,
   insert: `INSERT INTO payouts
-             (code, company_id, payout_date, reference, gross_amount, charges, currency_code, notes)
+             (code, company_id, trader_id, payout_date, reference, gross_amount, charges, currency_code, notes)
            VALUES
-             (@code, @companyId, @payoutDate, @reference, @gross, @charges, @currencyCode, @notes)`,
+             (@code, @companyId, @traderId, @payoutDate, @reference, @gross, @charges, @currencyCode, @notes)`,
   update: `UPDATE payouts SET
-             code = @code, company_id = @companyId, payout_date = @payoutDate,
+             code = @code, company_id = @companyId, trader_id = @traderId,
+             payout_date = @payoutDate,
              reference = @reference, gross_amount = @gross, charges = @charges,
              currency_code = @currencyCode, notes = @notes
            WHERE id = @id`,
@@ -64,6 +68,7 @@ const SQL = {
 interface PayoutWrite {
   readonly code: string;
   readonly companyId: number;
+  readonly traderId: number;
   readonly payoutDate: string;
   readonly reference: string | null;
   readonly gross: bigint;
@@ -79,6 +84,7 @@ export class SqlitePayoutRepository implements PayoutRepository {
   readonly #selectByCode;
   readonly #selectAll;
   readonly #selectByCompany;
+  readonly #selectByTrader;
   readonly #selectByDateRange;
   readonly #insert;
   readonly #update;
@@ -95,6 +101,9 @@ export class SqlitePayoutRepository implements PayoutRepository {
     this.#selectAll = database.prepare<[], PayoutRow>(SQL.selectAll);
     this.#selectByCompany = database.prepare<[number], PayoutRow>(
       SQL.selectByCompany,
+    );
+    this.#selectByTrader = database.prepare<[number], PayoutRow>(
+      SQL.selectByTrader,
     );
     this.#selectByDateRange = database.prepare<[string, string], PayoutRow>(
       SQL.selectByDateRange,
@@ -124,6 +133,12 @@ export class SqlitePayoutRepository implements PayoutRepository {
   async listByCompany(companyId: CompanyId): Promise<readonly Payout[]> {
     return Promise.resolve(
       this.#selectByCompany.all(companyId).map((row) => this.#map(row)),
+    );
+  }
+
+  async listByTrader(traderId: TraderId): Promise<readonly Payout[]> {
+    return Promise.resolve(
+      this.#selectByTrader.all(traderId).map((row) => this.#map(row)),
     );
   }
 
@@ -188,6 +203,7 @@ export class SqlitePayoutRepository implements PayoutRepository {
     return {
       code: payout.code,
       companyId: payout.companyId,
+      traderId: payout.traderId,
       payoutDate: payout.payoutDate,
       reference: payout.reference,
       gross: payout.gross.minor,

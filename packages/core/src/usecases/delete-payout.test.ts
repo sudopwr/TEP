@@ -77,6 +77,7 @@ describe('DeletePayout', () => {
     const second = await world.payouts.insert({
       code: 'TradeifyPayout002',
       companyId: reference.PAYOUT.companyId,
+      traderId: reference.PAYOUT.traderId,
       payoutDate: '2025-05-01',
       reference: null,
       gross: reference.PAYOUT.gross,
@@ -97,6 +98,7 @@ describe('DeletePayout', () => {
     const empty = await world.payouts.insert({
       code: 'TradeifyPayout003',
       companyId: reference.PAYOUT.companyId,
+      traderId: reference.PAYOUT.traderId,
       payoutDate: '2025-05-02',
       reference: null,
       gross: reference.PAYOUT.gross,

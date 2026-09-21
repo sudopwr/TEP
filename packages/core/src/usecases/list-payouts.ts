@@ -1,6 +1,8 @@
-import type { CompanyId } from '../domain/ids';
+import type { CompanyId, TraderId } from '../domain/ids';
 import type { Payout } from '../domain/payout';
 import type { DateRange, PayoutRepository } from '../ports/payout-repository';
+
+import { payoutsInScope } from './payout-scope';
 
 export interface ListPayoutsDependencies {
   readonly payouts: PayoutRepository;
@@ -8,6 +10,8 @@ export interface ListPayoutsDependencies {
 
 export interface ListPayoutsCommand {
   readonly companyId?: CompanyId;
+  /** Whose payouts (F24). Omit for everybody's. */
+  readonly traderId?: TraderId;
   readonly range?: DateRange;
 }
 
@@ -29,19 +33,24 @@ export class ListPayouts {
   async execute(command: ListPayoutsCommand = {}): Promise<readonly Payout[]> {
     const { payouts } = this.#deps;
 
-    if (command.companyId !== undefined && command.range !== undefined) {
-      const inRange = await payouts.listByDateRange(command.range);
-      return inRange.filter((one) => one.companyId === command.companyId);
-    }
-
-    if (command.companyId !== undefined) {
+    // The trader and the range are the shared scope, narrowed by the
+    // repository wherever an index can do it; the company is this screen's
+    // own filter and rides on top.
+    if (
+      command.companyId !== undefined &&
+      command.traderId === undefined &&
+      command.range === undefined
+    ) {
       return payouts.listByCompany(command.companyId);
     }
 
-    if (command.range !== undefined) {
-      return payouts.listByDateRange(command.range);
-    }
+    const inScope = await payoutsInScope(payouts, {
+      ...(command.traderId === undefined ? {} : { traderId: command.traderId }),
+      ...(command.range === undefined ? {} : { range: command.range }),
+    });
 
-    return payouts.list();
+    return command.companyId === undefined
+      ? inScope
+      : inScope.filter((one) => one.companyId === command.companyId);
   }
 }

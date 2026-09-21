@@ -17,6 +17,9 @@ export function arrangeCounterparties(): Arranged {
   const database = openTestDatabase();
 
   bulkLoad(database, {
+    // `004_traders.sql` already created this row; naming it here keeps the
+    // fixture and the migration saying the same thing (F24).
+    traders: [reference.DEFAULT_TRADER],
     companies: [reference.TRADEIFY, reference.RISE_CO],
     accounts: [
       reference.TRADEIFY_ACCOUNT,

@@ -179,6 +179,9 @@ export function asUser(
  */
 export const seedCounterparties = (database: SqliteDatabase): void => {
   bulkLoad(database, {
+    // The trader `004_traders.sql` creates (F24), named so the fixture and
+    // the migration agree about whose payouts these are.
+    traders: [reference.DEFAULT_TRADER],
     companies: [reference.TRADEIFY, reference.RISE_CO],
     accounts: [
       reference.TRADEIFY_ACCOUNT,

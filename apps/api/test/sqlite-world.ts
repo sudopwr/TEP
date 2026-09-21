@@ -10,6 +10,7 @@ import type {
   IsoDate,
   PasswordHasher,
   Payout,
+  Trader,
   Transaction,
   TransactionFee,
 } from '@payout/core';
@@ -24,6 +25,7 @@ import { SqliteDocumentRepository } from '../src/adapters/sqlite-document-reposi
 import { SqliteFeeScheduleRepository } from '../src/adapters/sqlite-fee-schedule-repository';
 import { SqlitePayoutRepository } from '../src/adapters/sqlite-payout-repository';
 import { SqliteSessionRepository } from '../src/adapters/sqlite-session-repository';
+import { SqliteTraderRepository } from '../src/adapters/sqlite-trader-repository';
 import { SqliteTransactionRepository } from '../src/adapters/sqlite-transaction-repository';
 import { SqliteUserRepository } from '../src/adapters/sqlite-user-repository';
 import { ARGON2_PARAMETERS } from '../src/auth/argon2-password-hasher';
@@ -69,6 +71,30 @@ export class ControllableClock {
 
   advanceSeconds(seconds: number): void {
     this.#instant = new Date(this.#instant.getTime() + seconds * 1000);
+  }
+}
+
+/**
+ * The traders `004_traders.sql` already created, plus any a test names.
+ *
+ * `seed` is `INSERT OR IGNORE` underneath, so seeding the default trader is
+ * agreeing with the migration rather than colliding with it (F24).
+ */
+class SeededTraderRepository extends SqliteTraderRepository {
+  readonly #database: SqliteDatabase;
+
+  constructor(database: SqliteDatabase) {
+    super(database);
+    this.#database = database;
+  }
+
+  seed(...traders: readonly Trader[]): this {
+    bulkLoad(this.#database, { traders });
+    return this;
+  }
+
+  size(): number {
+    return countRows(this.#database, 'traders');
   }
 }
 
@@ -298,6 +324,7 @@ let worldCounter = 0;
 export class TestWorld {
   readonly database: SqliteDatabase;
   readonly currencies: CurrencyRegistry;
+  readonly traders: SeededTraderRepository;
   readonly companies: SeededCompanyRepository;
   readonly accounts: SeededAccountRepository;
   readonly payouts: SeededPayoutRepository;
@@ -316,6 +343,7 @@ export class TestWorld {
     // Scales come from the currencies table, not from a hard-coded registry.
     this.currencies = loadCurrencyRegistry(this.database);
 
+    this.traders = new SeededTraderRepository(this.database);
     this.companies = new SeededCompanyRepository(this.database);
     this.accounts = new SeededAccountRepository(this.database);
     this.payouts = new SeededPayoutRepository(this.database, this.currencies);
@@ -342,6 +370,7 @@ export class TestWorld {
   static withCounterparties(): TestWorld {
     const world = new TestWorld();
 
+    world.traders.seed(reference.DEFAULT_TRADER);
     world.companies.seed(reference.TRADEIFY, reference.RISE_CO);
     world.accounts.seed(
       reference.TRADEIFY_ACCOUNT,

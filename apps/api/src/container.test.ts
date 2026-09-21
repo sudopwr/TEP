@@ -100,9 +100,14 @@ describe('buildContainer', () => {
       code: 'C',
       name: 'Company',
     });
+    const trader = await container.useCases.recordTrader.execute({
+      code: 'T',
+      name: 'Trader',
+    });
     const payout = await container.useCases.recordPayout.execute({
       code: 'P',
       companyId: company.id,
+      traderId: trader.id,
       payoutDate: '2025-03-10',
       grossAmount: '1.000',
       currencyCode: 'INR',

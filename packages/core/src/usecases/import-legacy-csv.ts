@@ -1,7 +1,7 @@
 import type { Account, AccountType } from '../domain/account';
 import type { Company } from '../domain/company';
 import type { Currency, CurrencyRegistry } from '../domain/currency';
-import type { IsoDate, TransactionId } from '../domain/ids';
+import type { IsoDate, TraderId, TransactionId } from '../domain/ids';
 import { Money, type RoundingMode } from '../domain/money';
 import type { Payout } from '../domain/payout';
 import type { Transaction, TransactionKind } from '../domain/transaction';
@@ -27,6 +27,14 @@ export interface ImportLegacyCsvCommand {
   readonly location: string;
   /** How a recomputed from-amount resolves. Defaults to half-up. */
   readonly rounding?: RoundingMode;
+  /**
+   * Whose sheet this is (F24).
+   *
+   * The legacy CSV is one person's history and carries no column saying
+   * whose, so the caller says. `cli/import.ts` passes the trader `004`
+   * created, which is the one every payout already belonged to.
+   */
+  readonly traderId: TraderId;
 }
 
 /** One defect from CLAUDE.md §9, and what was done about it. */
@@ -249,6 +257,7 @@ export class ImportLegacyCsv {
       const payout = await this.#payout(
         row,
         company,
+        command.traderId,
         tally.payouts,
         corrections,
       );
@@ -409,6 +418,7 @@ export class ImportLegacyCsv {
   async #payout(
     row: HeaderedRow,
     company: Company,
+    traderId: TraderId,
     tally: MutableTally,
     corrections: AppliedCorrection[],
   ): Promise<Payout> {
@@ -436,6 +446,7 @@ export class ImportLegacyCsv {
     return this.#deps.payouts.insert({
       code,
       companyId: company.id,
+      traderId,
       payoutDate: this.#date(row, 'PayoutDate'),
       // §9 defect 3: whatever Excel left of the reference is kept verbatim.
       reference: reference,

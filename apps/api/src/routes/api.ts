@@ -1,6 +1,11 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 
-import type { DocumentTarget, DocumentType, RoundingMode } from '@payout/core';
+import type {
+  DocumentTarget,
+  DocumentType,
+  PayoutScope,
+  RoundingMode,
+} from '@payout/core';
 
 import * as out from './serialize';
 import {
@@ -10,6 +15,7 @@ import {
   createAccountBody,
   createCompanyBody,
   createPayoutBody,
+  createTraderBody,
   createTransactionBody,
   dataQualityQuery,
   financialYearQuery,
@@ -38,6 +44,20 @@ import { parseOrThrow } from './validate';
  * `container.ts`), so this file imports no adapter and no container — which
  * is also what lets a test swap in a fake by decorating the same name.
  */
+/** The shared selection (F24), as the four read routes receive it. */
+function scopeOf(query: {
+  traderId?: number | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+}): PayoutScope {
+  return {
+    ...(query.traderId === undefined ? {} : { traderId: query.traderId }),
+    ...(query.from === undefined || query.to === undefined
+      ? {}
+      : { range: { from: query.from, to: query.to } }),
+  };
+}
+
 export function registerApiRoutes(app: FastifyInstance): void {
   // ---------- Companies (F1) ----------
 
@@ -56,6 +76,33 @@ export function registerApiRoutes(app: FastifyInstance): void {
     });
 
     return reply.status(201).send({ company: out.company(company) });
+  });
+
+  // ---------- Traders (F24) ----------
+
+  /*
+    Who the ledger keeps payouts for.
+
+    Not `/api/users`, and the distinction is the feature: §5a's user is the
+    one sign-in account, and a trader is a person the money belongs to. One
+    admin manages several, none of them can sign in, and a name typed into a
+    dropdown never becomes a credential.
+  */
+  app.get('/api/traders', async () => {
+    const traders = await app.useCases.listTraders.execute();
+    return { traders: traders.map(out.trader) };
+  });
+
+  app.post('/api/traders', async (request, reply) => {
+    const body = parseOrThrow(createTraderBody, request.body, 'body');
+
+    const trader = await app.useCases.recordTrader.execute({
+      code: body.code,
+      name: body.name,
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return reply.status(201).send({ trader: out.trader(trader) });
   });
 
   // ---------- Accounts (F1) ----------
@@ -143,6 +190,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
     const payouts = await app.useCases.listPayouts.execute({
       ...(query.companyId === undefined ? {} : { companyId: query.companyId }),
+      ...(query.traderId === undefined ? {} : { traderId: query.traderId }),
       ...(query.from === undefined || query.to === undefined
         ? {}
         : { range: { from: query.from, to: query.to } }),
@@ -157,6 +205,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
     const payout = await app.useCases.recordPayout.execute({
       code: body.code,
       companyId: body.companyId,
+      traderId: body.traderId,
       grossAmount: body.grossAmount,
       currencyCode: body.currencyCode,
       ...(body.payoutDate === undefined ? {} : { payoutDate: body.payoutDate }),
@@ -558,6 +607,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
     const balances = await app.useCases.getAccountBalances.execute({
       ...(query.payoutId === undefined ? {} : { payoutId: query.payoutId }),
+      scope: scopeOf(query),
     });
 
     return { balances: balances.map(out.accountBalance) };
@@ -568,6 +618,7 @@ export function registerApiRoutes(app: FastifyInstance): void {
 
     const issues = await app.useCases.runDataQualityChecks.execute({
       ...(query.payoutId === undefined ? {} : { payoutId: query.payoutId }),
+      scope: scopeOf(query),
       ...(query.tolerancePct === undefined
         ? {}
         : { feeTolerancePct: query.tolerancePct }),
@@ -584,6 +635,9 @@ export function registerApiRoutes(app: FastifyInstance): void {
       ...(query.currencyCode === undefined
         ? {}
         : { settlementCurrencyCode: query.currencyCode }),
+      // The range is this route's own required argument, so only the trader
+      // half of the shared selection (F24) applies here.
+      ...(query.traderId === undefined ? {} : { traderId: query.traderId }),
     });
 
     return out.financialYearReport(report);

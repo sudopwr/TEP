@@ -3,22 +3,50 @@ import type { Currency } from '../domain/currency';
 import type { AccountId, PayoutId } from '../domain/ids';
 import { Money } from '../domain/money';
 import type { AccountRepository } from '../ports/account-repository';
+import type { PayoutRepository } from '../ports/payout-repository';
 import type { TransactionRepository } from '../ports/transaction-repository';
+
+import { isNarrowed, payoutsInScope, type PayoutScope } from './payout-scope';
 
 export interface GetAccountBalancesDependencies {
   readonly accounts: AccountRepository;
   readonly transactions: TransactionRepository;
+  /** Only to resolve a scope: whose payouts, and in what period (F24). */
+  readonly payouts: PayoutRepository;
 }
 
 export interface GetAccountBalancesCommand {
   /** Omit for the whole ledger; supply to scope to one payout. */
   readonly payoutId?: PayoutId;
+  /**
+   * Whose money and when (F24) — the selection every screen shares.
+   *
+   * A balance is derived from movements, so scoping it means counting only
+   * the legs of the payouts in scope. Two traders' money passes through the
+   * same exchange account, and a balance that added both up while the list
+   * beside it showed one trader's payouts would be answering a question
+   * nobody asked.
+   */
+  readonly scope?: PayoutScope;
 }
 
 export interface AccountBalance {
   readonly account: Account;
   readonly currency: Currency;
   readonly balance: Money;
+}
+
+/** The payout ids a scope selects, or null when it selects everything. */
+async function payoutIdsInScope(
+  payouts: PayoutRepository,
+  scope: PayoutScope | undefined,
+): Promise<ReadonlySet<PayoutId> | null> {
+  if (scope === undefined || !isNarrowed(scope)) {
+    return null;
+  }
+
+  const selected = await payoutsInScope(payouts, scope);
+  return new Set(selected.map((payout) => payout.id));
 }
 
 /**
@@ -41,16 +69,27 @@ export class GetAccountBalances {
   async execute(
     command: GetAccountBalancesCommand = {},
   ): Promise<readonly AccountBalance[]> {
-    const { accounts, transactions } = this.#deps;
+    const { accounts, transactions, payouts } = this.#deps;
 
-    const legs =
+    const everyLeg =
       command.payoutId === undefined
         ? await transactions.list()
         : await transactions.listByPayout(command.payoutId);
-    const fees =
+    const everyFee =
       command.payoutId === undefined
         ? await transactions.listFees()
         : await transactions.listFeesByPayout(command.payoutId);
+
+    const inScope = await payoutIdsInScope(payouts, command.scope);
+    const legs =
+      inScope === null
+        ? everyLeg
+        : everyLeg.filter((leg) => inScope.has(leg.payoutId));
+    const keptLegs = new Set(legs.map((leg) => leg.id));
+    const fees =
+      inScope === null
+        ? everyFee
+        : everyFee.filter((fee) => keptLegs.has(fee.transactionId));
 
     const legById = new Map(legs.map((leg) => [leg.id, leg]));
     const totals = new Map<string, { balance: Money; accountId: AccountId }>();

@@ -49,6 +49,7 @@ export const REFERENCE_PAYOUT: PayoutJson = {
   id: 1,
   code: 'TradeifyPayout001',
   companyId: 1,
+  traderId: 1,
   payoutDate: '2025-03-10',
   reference: 'FTDFYSLX50676373980',
   gross: {
@@ -69,6 +70,7 @@ export const REFERENCE_TRAIL: PayoutTrailJson = {
     id: 1,
     code: 'TradeifyPayout001',
     companyId: 1,
+    traderId: 1,
     payoutDate: '2025-03-10',
     reference: 'FTDFYSLX50676373980',
     gross: {
@@ -961,6 +963,7 @@ export const REFERENCE_SETTLEMENT: SettlementJson = {
     id: 1,
     code: 'TradeifyPayout001',
     companyId: 1,
+    traderId: 1,
     payoutDate: '2025-03-10',
     reference: 'FTDFYSLX50676373980',
     gross: {

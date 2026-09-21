@@ -74,9 +74,30 @@ export async function main(argv: readonly string[]): Promise<number> {
 
     // The same wiring the server uses. §5 keeps adapter assembly in one file,
     // and a CLI that built its own would be a second copy to keep in step.
-    const { importLegacyCsv } = buildContainer(database);
+    const { importLegacyCsv, useCases } = buildContainer(database);
 
-    const result = await importLegacyCsv.execute({ location });
+    /*
+      Whose sheet this is (F24).
+
+      The CSV has no column for it, and the first trader is the one
+      `004_traders.sql` created for exactly this: the person every payout
+      already belonged to when payouts gained an owner. Renaming them later
+      is §13's "a rename is not a change".
+    */
+    const [trader] = await useCases.listTraders.execute();
+
+    if (trader === undefined) {
+      process.stderr.write(
+        'Import failed: there are no traders, so there is nobody to import ' +
+          'this sheet for.\n',
+      );
+      return 1;
+    }
+
+    const result = await importLegacyCsv.execute({
+      location,
+      traderId: trader.id,
+    });
 
     process.stdout.write(`${describe(result)}\n`);
     return 0;

@@ -24,8 +24,8 @@ describe('schema constraints (CLAUDE.md §7)', () => {
       INSERT INTO accounts (id, code, name, type) VALUES
         (1, 'coindcx', 'CoinDCX', 'exchange'),
         (2, 'bank-hdfc', 'HDFC', 'bank');
-      INSERT INTO payouts (id, code, company_id, payout_date, gross_amount, currency_code)
-        VALUES (1, 'TradeifyPayout001', 1, '2025-03-10', 100801, 'USD');
+      INSERT INTO payouts (id, code, company_id, trader_id, payout_date, gross_amount, currency_code)
+        VALUES (1, 'TradeifyPayout001', 1, 1, '2025-03-10', 100801, 'USD');
       INSERT INTO transactions
         (id, code, payout_id, txn_date, kind, from_account_id, to_account_id,
          from_amount, from_currency, to_amount, to_currency, rate_applied)

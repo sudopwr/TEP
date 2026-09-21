@@ -22,11 +22,13 @@ import {
   ListAccounts,
   ListCompanies,
   ListPayouts,
+  ListTraders,
   ListTransactions,
   RecordAccount,
   RecordCompany,
   RecordPayout,
   RecordSale,
+  RecordTrader,
   RecordTransaction,
   RunDataQualityChecks,
   SearchDocuments,
@@ -46,6 +48,7 @@ import { SqliteDocumentRepository } from './adapters/sqlite-document-repository'
 import { SqliteFeeScheduleRepository } from './adapters/sqlite-fee-schedule-repository';
 import { SqlitePayoutRepository } from './adapters/sqlite-payout-repository';
 import { SqliteSessionRepository } from './adapters/sqlite-session-repository';
+import { SqliteTraderRepository } from './adapters/sqlite-trader-repository';
 import { SqliteTransactionRepository } from './adapters/sqlite-transaction-repository';
 import { SqliteUserRepository } from './adapters/sqlite-user-repository';
 import { SystemClock } from './adapters/system-clock';
@@ -101,6 +104,7 @@ export function buildContainer(
   // §6 says the scale lives in the database, and the domain reads it.
   const currencies = loadCurrencyRegistry(database);
 
+  const traders = new SqliteTraderRepository(database);
   const companies = new SqliteCompanyRepository(database);
   const accounts = new SqliteAccountRepository(database);
   const payouts = new SqlitePayoutRepository(database, currencies);
@@ -132,12 +136,21 @@ export function buildContainer(
     recordCompany: new RecordCompany({ companies }),
     listCompanies: new ListCompanies({ companies }),
 
+    recordTrader: new RecordTrader({ traders }),
+    listTraders: new ListTraders({ traders }),
+
     recordAccount: new RecordAccount({ accounts, companies, currencies }),
     editAccount: new EditAccount({ accounts, companies, currencies }),
     deleteAccount: new DeleteAccount({ accounts, transactions }),
     listAccounts: new ListAccounts({ accounts }),
 
-    recordPayout: new RecordPayout({ payouts, companies, currencies, clock }),
+    recordPayout: new RecordPayout({
+      payouts,
+      companies,
+      traders,
+      currencies,
+      clock,
+    }),
     deletePayout: new DeletePayout({ payouts, transactions }),
     listPayouts: new ListPayouts({ payouts }),
     getPayoutTrail: new GetPayoutTrail({ payouts, transactions, documents }),
@@ -171,7 +184,11 @@ export function buildContainer(
     listDocumentsFor: new ListDocumentsFor({ documents }),
     searchDocuments: new SearchDocuments({ documents }),
 
-    getAccountBalances: new GetAccountBalances({ accounts, transactions }),
+    getAccountBalances: new GetAccountBalances({
+      accounts,
+      transactions,
+      payouts,
+    }),
     runDataQualityChecks: new RunDataQualityChecks({
       payouts,
       transactions,

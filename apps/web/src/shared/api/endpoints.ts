@@ -10,6 +10,7 @@ import type {
   CreateCompanyCommand,
   CreatePayoutCommand,
   CreateSaleCommand,
+  CreateTraderCommand,
   CreateTransactionCommand,
   CredentialsChangedJson,
   DataQualityResponse,
@@ -30,7 +31,10 @@ import type {
   SaleRecordedJson,
   SessionUserJson,
   SettlementJson,
+  ScopeFilter,
   SignInCommand,
+  TraderJson,
+  TradersResponse,
   TransactionDeletedJson,
   TransactionJson,
   TransactionsResponse,
@@ -124,6 +128,27 @@ export function createCompany(
   });
 }
 
+// ---------- Traders (F24) ----------
+
+/**
+ * Who the ledger keeps payouts for.
+ *
+ * `/api/traders`, never `/auth`: §5a's one account is the person using the
+ * application, and these are the people whose money it tracks.
+ */
+export function fetchTraders(signal?: AbortSignal): Promise<TradersResponse> {
+  return request<TradersResponse>('/api/traders', wrapSignal(signal));
+}
+
+export function createTrader(
+  command: CreateTraderCommand,
+): Promise<{ trader: TraderJson }> {
+  return request<{ trader: TraderJson }>('/api/traders', {
+    method: 'POST',
+    body: command,
+  });
+}
+
 // ---------- Accounts ----------
 
 export function fetchAccounts(
@@ -173,6 +198,7 @@ export function fetchPayouts(
   return request<PayoutsResponse>(
     `/api/payouts${queryString({
       companyId: filter.companyId,
+      traderId: filter.traderId,
       from: filter.from,
       to: filter.to,
     })}`,
@@ -365,12 +391,20 @@ export function documentUrl(documentId: number): string {
 
 // ---------- Balances, checks, reports ----------
 
+/**
+ * F10, narrowed by the shared selection (F24).
+ *
+ * `payoutId` and the scope are different questions and both reach the server:
+ * one balance sheet is "this payout's movements", the other is "this person's,
+ * this month". The server intersects them.
+ */
 export function fetchBalances(
   payoutId?: number,
+  scope: ScopeFilter = {},
   signal?: AbortSignal,
 ): Promise<BalancesResponse> {
   return request<BalancesResponse>(
-    `/api/accounts/balances${queryString({ payoutId })}`,
+    `/api/accounts/balances${queryString({ payoutId, ...scope })}`,
     wrapSignal(signal),
   );
 }
@@ -378,10 +412,11 @@ export function fetchBalances(
 export function fetchDataQuality(
   payoutId?: number,
   tolerancePct?: number,
+  scope: ScopeFilter = {},
   signal?: AbortSignal,
 ): Promise<DataQualityResponse> {
   return request<DataQualityResponse>(
-    `/api/data-quality${queryString({ payoutId, tolerancePct })}`,
+    `/api/data-quality${queryString({ payoutId, tolerancePct, ...scope })}`,
     wrapSignal(signal),
   );
 }
@@ -395,6 +430,7 @@ export function fetchFinancialYear(
       from: filter.from,
       to: filter.to,
       currencyCode: filter.currencyCode,
+      traderId: filter.traderId,
     })}`,
     wrapSignal(signal),
   );

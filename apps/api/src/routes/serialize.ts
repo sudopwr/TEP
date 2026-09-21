@@ -7,6 +7,7 @@ import type {
   FinancialYearReport,
   Money,
   Payout,
+  Trader,
   PayoutTrail,
   Settlement,
   Transaction,
@@ -67,11 +68,21 @@ export function account(value: Account): Record<string, unknown> {
   };
 }
 
+export function trader(value: Trader): Record<string, unknown> {
+  return {
+    id: value.id,
+    code: value.code,
+    name: value.name,
+    notes: value.notes,
+  };
+}
+
 export function payout(value: Payout): Record<string, unknown> {
   return {
     id: value.id,
     code: value.code,
     companyId: value.companyId,
+    traderId: value.traderId,
     payoutDate: value.payoutDate,
     reference: value.reference,
     gross: money(value.gross),

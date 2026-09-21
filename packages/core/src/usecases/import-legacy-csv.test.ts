@@ -133,7 +133,7 @@ const setup = (rows: readonly (readonly string[])[]) => {
 
 const run = async (rows: readonly (readonly string[])[]) => {
   const { world, useCase } = setup(rows);
-  const result = await useCase.execute({ location: 'legacy.csv' });
+  const result = await useCase.execute({ traderId: 1, location: 'legacy.csv' });
   return { world, useCase, result };
 };
 
@@ -512,7 +512,7 @@ describe('ImportLegacyCsv (F12)', () => {
       const { useCase, result } = await run([
         row({ ...SALE, tds: '44.68', documents: 'a.pdf' }),
       ]);
-      const second = await useCase.execute({ location: 'legacy.csv' });
+      const second = await useCase.execute({ traderId: 1, location: 'legacy.csv' });
 
       expect(result.transactions.created).toBe(1);
       expect(second.transactions).toEqual({ created: 0, reused: 1 });
@@ -524,7 +524,7 @@ describe('ImportLegacyCsv (F12)', () => {
       const { world, useCase } = await run([
         row({ ...SALE, tds: '44.68', documents: 'a.pdf' }),
       ]);
-      await useCase.execute({ location: 'legacy.csv' });
+      await useCase.execute({ traderId: 1, location: 'legacy.csv' });
 
       const sale = await world.transactions.findByCode('Transaction003');
       if (sale === null) throw new Error('missing');
@@ -561,7 +561,7 @@ describe('ImportLegacyCsv (F12)', () => {
         currencies: world.currencies,
       });
 
-      await expect(useCase.execute({ location: 'legacy.csv' })).rejects.toThrow(
+      await expect(useCase.execute({ traderId: 1, location: 'legacy.csv' })).rejects.toThrow(
         LegacyCsvError,
       );
     });

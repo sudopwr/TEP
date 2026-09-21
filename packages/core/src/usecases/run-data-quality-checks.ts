@@ -9,6 +9,8 @@ import type { FeeScheduleRepository } from '../ports/fee-schedule-repository';
 import type { PayoutRepository } from '../ports/payout-repository';
 import type { TransactionRepository } from '../ports/transaction-repository';
 
+import { isNarrowed, payoutsInScope, type PayoutScope } from './payout-scope';
+
 export interface RunDataQualityChecksDependencies {
   readonly payouts: PayoutRepository;
   readonly transactions: TransactionRepository;
@@ -19,6 +21,14 @@ export interface RunDataQualityChecksDependencies {
 export interface RunDataQualityChecksCommand {
   /** Omit to sweep everything. */
   readonly payoutId?: PayoutId;
+  /**
+   * Whose money and when (F24).
+   *
+   * A flag is about a row, and the rows belong to payouts: sweeping the whole
+   * ledger while the screen beside it shows one trader's March would report
+   * problems in somebody else's year.
+   */
+  readonly scope?: PayoutScope;
   /** How far a fee may sit from its schedule. §7 says 2%. */
   readonly feeTolerancePct?: number;
 }
@@ -68,14 +78,35 @@ export class RunDataQualityChecks {
     const { payouts, transactions, accounts } = this.#deps;
     const tolerancePct = command.feeTolerancePct ?? 2;
 
-    const legs =
+    // The payouts this sweep covers, and the legs that hang off them.
+    const candidates =
+      command.payoutId === undefined
+        ? await payoutsInScope(payouts, command.scope ?? {})
+        : await payouts
+            .findById(command.payoutId)
+            .then((one) => (one === null ? [] : [one]));
+
+    const narrowed =
+      command.payoutId !== undefined ||
+      (command.scope !== undefined && isNarrowed(command.scope));
+    const covered = new Set(candidates.map((payout) => payout.id));
+
+    const everyLeg =
       command.payoutId === undefined
         ? await transactions.list()
         : await transactions.listByPayout(command.payoutId);
-    const fees =
+    const everyFee =
       command.payoutId === undefined
         ? await transactions.listFees()
         : await transactions.listFeesByPayout(command.payoutId);
+
+    const legs = narrowed
+      ? everyLeg.filter((leg) => covered.has(leg.payoutId))
+      : everyLeg;
+    const keptLegs = new Set(legs.map((leg) => leg.id));
+    const fees = narrowed
+      ? everyFee.filter((fee) => keptLegs.has(fee.transactionId))
+      : everyFee;
 
     const legById = new Map(legs.map((leg) => [leg.id, leg]));
     const feesByLeg = new Map<TransactionId, TransactionFee[]>();
@@ -100,13 +131,6 @@ export class RunDataQualityChecks {
       this.#checkCurrencies(leg, directory, issues);
       await this.#checkFees(leg, legFees, tolerancePct, issues);
     }
-
-    const candidates =
-      command.payoutId === undefined
-        ? await payouts.list()
-        : await payouts
-            .findById(command.payoutId)
-            .then((one) => (one === null ? [] : [one]));
 
     for (const payout of candidates) {
       const ownLegs = legs.filter((leg) => leg.payoutId === payout.id);

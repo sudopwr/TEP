@@ -26,3 +26,5 @@ export type {
   TransactionFeeDraft,
   TransactionRepository,
 } from './transaction-repository';
+
+export type { TraderDraft, TraderRepository } from './trader-repository';

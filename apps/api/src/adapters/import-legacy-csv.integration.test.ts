@@ -64,7 +64,7 @@ describe('ImportLegacyCsv against a real database', () => {
   };
 
   const runImport = async (): Promise<ImportLegacyCsvResult> =>
-    build().importer.execute({ location: CSV });
+    build().importer.execute({ location: CSV, traderId: 1 });
 
   beforeEach(() => {
     database = openTestDatabase();
@@ -136,10 +136,11 @@ describe('ImportLegacyCsv against a real database', () => {
     });
 
     it('produces all three balances exactly, dust included', async () => {
-      const { accounts, transactions } = build();
+      const { accounts, transactions, payouts } = build();
       const balances = await new GetAccountBalances({
         accounts,
         transactions,
+        payouts,
       }).execute({});
 
       const find = (code: string, currency: string) =>
@@ -153,10 +154,11 @@ describe('ImportLegacyCsv against a real database', () => {
     });
 
     it('leaves the dust as exact minor units, not a rounded display', async () => {
-      const { accounts, transactions } = build();
+      const { accounts, transactions, payouts } = build();
       const balances = await new GetAccountBalances({
         accounts,
         transactions,
+        payouts,
       }).execute({});
 
       const dust = (code: string) =>
@@ -341,7 +343,7 @@ describe('ImportLegacyCsv against a real database', () => {
     });
 
     it('splits the comma-separated lists and dedupes by filename', async () => {
-      const result = await build().importer.execute({ location: CSV });
+      const result = await build().importer.execute({ location: CSV, traderId: 1 });
 
       // coindcx-march.pdf is named by four rows, tradeify-payout-001.pdf by
       // two. Eleven distinct files, sixteen links.
@@ -449,6 +451,7 @@ describe('ImportLegacyCsv against a real database', () => {
       await payouts.insert({
         code: 'TradeifyPayout001',
         companyId: company.id,
+        traderId: 1,
         payoutDate: '2025-03-10',
         reference: '1.43908E+19',
         gross: (await import('@payout/core')).Money.fromDecimalString(

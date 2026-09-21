@@ -6,6 +6,7 @@ import {
   Money,
   Payout,
   Session,
+  Trader,
   Transaction,
   TransactionFee,
   User,
@@ -63,6 +64,7 @@ export interface PayoutRow {
   readonly id: bigint;
   readonly code: string;
   readonly company_id: bigint;
+  readonly trader_id: bigint;
   readonly payout_date: string;
   readonly reference: string | null;
   readonly gross_amount: bigint;
@@ -179,11 +181,28 @@ export function toAccount(
   });
 }
 
+export interface TraderRow {
+  readonly id: bigint;
+  readonly code: string;
+  readonly name: string;
+  readonly notes: string | null;
+}
+
+export function toTrader(row: TraderRow): Trader {
+  return Trader.create({
+    id: toId(row.id, 'traders', 'id'),
+    code: row.code,
+    name: row.name,
+    notes: row.notes,
+  });
+}
+
 export function toPayout(row: PayoutRow, currencies: CurrencyRegistry): Payout {
   return Payout.create({
     id: toId(row.id, 'payouts', 'id'),
     code: row.code,
     companyId: toId(row.company_id, 'payouts', 'company_id'),
+    traderId: toId(row.trader_id, 'payouts', 'trader_id'),
     payoutDate: row.payout_date,
     reference: row.reference,
     gross: money(row.gross_amount, row.currency_code, currencies),

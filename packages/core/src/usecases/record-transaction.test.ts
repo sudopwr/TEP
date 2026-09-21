@@ -24,6 +24,7 @@ const OTHER_PAYOUT = Payout.create({
   id: 2,
   code: 'TradeifyPayout002',
   companyId: 1,
+  traderId: 1,
   payoutDate: '2025-04-02',
   reference: null,
   gross: Money.fromDecimalString('500.00', USD),

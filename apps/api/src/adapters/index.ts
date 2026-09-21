@@ -12,6 +12,7 @@ export {
 export { SqliteFeeScheduleRepository } from './sqlite-fee-schedule-repository';
 export { SqlitePayoutRepository } from './sqlite-payout-repository';
 export { SqliteSessionRepository } from './sqlite-session-repository';
+export { SqliteTraderRepository } from './sqlite-trader-repository';
 export { SqliteTransactionRepository } from './sqlite-transaction-repository';
 export { SqliteUserRepository } from './sqlite-user-repository';
 export { SystemClock } from './system-clock';

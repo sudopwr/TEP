@@ -193,8 +193,8 @@ describe('SqliteAccountRepository.delete', () => {
       .run('Tradeify001', 'Tradeify');
     database
       .prepare(
-        `INSERT INTO payouts (code, company_id, payout_date, gross_amount, currency_code)
-         VALUES ('P1', 1, '2025-03-10', 100801, 'USD')`,
+        `INSERT INTO payouts (code, company_id, trader_id, payout_date, gross_amount, currency_code)
+         VALUES ('P1', 1, 1, '2025-03-10', 100801, 'USD')`,
       )
       .run();
     database

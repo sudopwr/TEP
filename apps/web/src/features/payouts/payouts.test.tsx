@@ -1,6 +1,8 @@
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
+import { PAYOUT } from '../../../test/msw/fixtures';
 import {
   answering,
   companyCanBeAdded,
@@ -9,7 +11,7 @@ import {
   unreachable,
 } from '../../../test/msw/handlers';
 import { server } from '../../../test/msw/server';
-import { renderApp, screen, within } from '../../../test/renderApp';
+import { renderApp, screen, waitFor, within } from '../../../test/renderApp';
 
 /**
  * The list, the detail and the form — driven by URL through the real router.
@@ -23,11 +25,16 @@ describe('the payout list', () => {
 
     // `find`, not `get`: the table renders first as skeleton rows, which is
     // the point of keeping loading and empty apart.
-    expect(
-      await within(table).findByText('TradeifyPayout001'),
-    ).toBeInTheDocument();
-    expect(within(table).getByText('Tradeify')).toBeInTheDocument();
-    expect(within(table).getByText('1,008.01')).toBeInTheDocument();
+    const cell = await within(table).findByText('TradeifyPayout001');
+
+    // Within the row, not within the table: the list holds more than one
+    // payout (there is more than one trader), and a company found anywhere
+    // in the table would pass even if it were on somebody else's line.
+    const row = cell.closest('tr');
+    if (row === null) throw new Error('the payout code is not in a row');
+
+    expect(within(row).getByText('Tradeify')).toBeInTheDocument();
+    expect(within(row).getByText('1,008.01')).toBeInTheDocument();
   });
 
   it('shows the reference as text, digit for digit', async () => {
@@ -89,6 +96,81 @@ describe('recording a payout', () => {
     );
     await userEvent.type(screen.getByLabelText(/^Gross awarded/), '1008.01');
   };
+
+  /*
+    Two "Trader" selects are on screen at once: the bar's, which narrows what
+    is shown, and the form's, which says whose award this is. They are the
+    same question asked for different reasons, so the tests below name which
+    one they mean rather than relying on there being only one.
+  */
+  const traderSelects = () => screen.getAllByRole('combobox', { name: /Trader/ });
+
+  const recording = (): Promise<Record<string, unknown>> => {
+    let resolve: (body: Record<string, unknown>) => void;
+    const sent = new Promise<Record<string, unknown>>((done) => {
+      resolve = done;
+    });
+
+    server.use(
+      http.post('/api/payouts', async ({ request }) => {
+        resolve((await request.json()) as Record<string, unknown>);
+
+        return HttpResponse.json({ payout: PAYOUT }, { status: 201 });
+      }),
+    );
+
+    return sent;
+  };
+
+  it('sends the trader, because every payout belongs to somebody (F24)', async () => {
+    const sent = recording();
+    renderApp({ route: '/payouts/new' });
+    await screen.findByRole('heading', { name: 'Record payout' });
+
+    await waitFor(() => {
+      expect(traderSelects()).toHaveLength(2);
+    });
+    const field = traderSelects()[1];
+    if (field === undefined) throw new Error('the form has no trader field');
+
+    await userEvent.click(field);
+    await userEvent.click(await screen.findByRole('option', { name: 'Priya' }));
+    await fill();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record payout' }),
+    );
+
+    expect(await sent).toMatchObject({ traderId: 2 });
+  });
+
+  it('files it against whoever the bar is showing, without asking twice', async () => {
+    const sent = recording();
+    renderApp({ route: '/payouts/new' });
+    await screen.findByRole('heading', { name: 'Record payout' });
+
+    await waitFor(() => {
+      expect(traderSelects()).toHaveLength(2);
+    });
+    const bar = traderSelects()[0];
+    if (bar === undefined) throw new Error('the scope bar is missing');
+
+    await userEvent.click(bar);
+    await userEvent.click(await screen.findByRole('option', { name: 'Priya' }));
+
+    // The form's field follows the bar — derived, not copied into state once,
+    // so switching behind a half-filled form does not leave it on the wrong
+    // person.
+    await waitFor(() => {
+      expect(traderSelects()[1]).toHaveTextContent('Priya');
+    });
+
+    await fill();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record payout' }),
+    );
+
+    expect(await sent).toMatchObject({ traderId: 2 });
+  });
 
   it('confirms in the words the button used', async () => {
     // The button says "Record payout"; the confirmation says "Payout

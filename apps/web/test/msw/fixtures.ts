@@ -2,6 +2,7 @@ import type {
   AccountBalanceJson,
   AccountJson,
   CompanyJson,
+  TraderJson,
   DataQualityIssueJson,
   DocumentJson,
   FinancialYearReportJson,
@@ -34,6 +35,43 @@ import {
 
 export const TRADEIFY: CompanyJson = REFERENCE_COMPANIES[0] as CompanyJson;
 export const RISE_CO: CompanyJson = REFERENCE_COMPANIES[1] as CompanyJson;
+
+/**
+ * The two people the ledger keeps payouts for (F24).
+ *
+ * `DEFAULT_TRADER` is the one `004_traders.sql` creates and §10's tree
+ * belongs to; `OTHER_TRADER` exists so a test can switch to somebody and see
+ * the figures change rather than merely see a dropdown move.
+ */
+export const DEFAULT_TRADER: TraderJson = {
+  id: 1,
+  code: 'default',
+  name: 'Me',
+  notes: null,
+};
+
+export const OTHER_TRADER: TraderJson = {
+  id: 2,
+  code: 'priya',
+  name: 'Priya',
+  notes: null,
+};
+
+export const TRADERS: readonly TraderJson[] = [DEFAULT_TRADER, OTHER_TRADER];
+
+/** Priya's own award, in a month of its own so a period filter can find it. */
+export const OTHER_PAYOUT: PayoutJson = {
+  ...REFERENCE_PAYOUT,
+  id: 900,
+  code: 'TradeifyPayout900',
+  traderId: OTHER_TRADER.id,
+  payoutDate: '2025-06-04',
+  reference: null,
+  // A gross of its own, so a test asserting on §10's $1,008.01 is asserting
+  // on §10's payout and not on whichever row happened to render first.
+  gross: { currency: 'USD', minor: '50000', amount: '500.00' },
+  charges: { currency: 'USD', minor: '0', amount: '0.00' },
+};
 
 export const PAYOUT: PayoutJson = REFERENCE_PAYOUT;
 export const TRANSACTIONS: readonly TransactionJson[] = REFERENCE_TRANSACTIONS;

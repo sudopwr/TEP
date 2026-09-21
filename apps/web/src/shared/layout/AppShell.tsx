@@ -32,6 +32,14 @@ export interface AppShellProps {
   readonly mustChangePassword?: boolean;
   readonly onSignOut?: () => void;
   readonly onAccountSettings?: () => void;
+  /**
+   * A strip above the page, on every screen (F24's scope bar).
+   *
+   * A slot rather than the bar itself: `shared/` may not reach into a
+   * feature, and the selection is a feature's business. `routes.tsx` puts one
+   * in, the same way it hands over the destinations.
+   */
+  readonly toolbar?: ReactNode;
 }
 
 /** 27 spacing units — wide enough for "Data quality" without wrapping. */
@@ -56,6 +64,7 @@ export function AppShell({
   mustChangePassword = false,
   onSignOut,
   onAccountSettings,
+  toolbar,
 }: AppShellProps) {
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
@@ -124,6 +133,7 @@ export function AppShell({
         connect by eye, which is the one thing this screen exists for.
       */}
       <Box component="main" sx={{ flex: 1, px: 4, py: 3, maxWidth: 1100 }}>
+        {toolbar}
         {children}
       </Box>
     </Box>
