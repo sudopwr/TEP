@@ -23,10 +23,16 @@ export type { AuthState } from './AuthProvider';
 export {
   MONTH_NAMES,
   ScopeProvider,
+  describePeriod,
+  isBefore,
   periodRange,
   useScope,
 } from './ScopeProvider';
-export type { ScopeSelection, ScopeState } from './ScopeProvider';
+export type {
+  PeriodPoint,
+  ScopeSelection,
+  ScopeState,
+} from './ScopeProvider';
 
 export { documentUrl } from './endpoints';
 

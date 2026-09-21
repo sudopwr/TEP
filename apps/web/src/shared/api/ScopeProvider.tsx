@@ -23,17 +23,30 @@ import type { ScopeFilter } from './types';
  * is not auth: signing in says who is *using* the application, and this says
  * whose money is on screen.
  *
- * Both halves default to "everything". The application opens showing every
- * trader and every year, so nothing is hidden until somebody hides it.
+ * **The period is two endpoints, not one year.** A tax year does not start in
+ * January: India's runs 1 April to 31 March, so the period a reader actually
+ * wants — the one §13's financial-year report already uses — spans two
+ * calendar years. A single year-and-month selection cannot say that at all,
+ * which is why this holds a first month and a last month instead.
+ *
+ * Everything defaults to "everything": no trader, no period, so the
+ * application opens showing all of it and nothing is hidden until somebody
+ * hides it.
  */
+
+/** A month of a year — one end of the period. `month` is 1–12. */
+export interface PeriodPoint {
+  readonly year: number;
+  readonly month: number;
+}
 
 export interface ScopeSelection {
   /** The chosen trader, or null for everybody's. */
   readonly traderId: number | null;
-  /** A calendar year, or null for all time. */
-  readonly year: number | null;
-  /** 1–12, or null for the whole year. Meaningless without a year. */
-  readonly month: number | null;
+  /** The first month shown, or null for all time. */
+  readonly from: PeriodPoint | null;
+  /** The last month shown, inclusive. Null whenever `from` is. */
+  readonly to: PeriodPoint | null;
 }
 
 export interface ScopeState extends ScopeSelection {
@@ -48,17 +61,26 @@ export interface ScopeState extends ScopeSelection {
   /** True when anything at all is narrowed — what the "Clear" control needs. */
   readonly isNarrowed: boolean;
   readonly setTraderId: (traderId: number | null) => void;
-  readonly setYear: (year: number | null) => void;
-  readonly setMonth: (month: number | null) => void;
+  /**
+   * Move an end of the period. Passing null to either clears both, because
+   * half a range is not a period the server can be asked for.
+   *
+   * Each also carries the other end when it has to: an end before its start
+   * is not a period either, and the two are corrected here rather than
+   * refused, so a reader who picks March and then reaches for the year does
+   * not have to undo anything.
+   */
+  readonly setFrom: (point: PeriodPoint | null) => void;
+  readonly setTo: (point: PeriodPoint | null) => void;
 }
 
 const ScopeContext = createContext<ScopeState | null>(null);
 
-const ALL_TIME: ScopeSelection = { traderId: null, year: null, month: null };
+const EVERYTHING: ScopeSelection = { traderId: null, from: null, to: null };
 
 export function ScopeProvider({
   children,
-  initial = ALL_TIME,
+  initial = EVERYTHING,
 }: {
   readonly children: ReactNode;
   /** For tests and for a screen that opens already narrowed. */
@@ -67,7 +89,7 @@ export function ScopeProvider({
   const [selection, setSelection] = useState<ScopeSelection>(initial);
 
   const value = useMemo<ScopeState>(() => {
-    const range = periodRange(selection.year, selection.month);
+    const range = periodRange(selection.from, selection.to);
     const filter: ScopeFilter = {
       ...(selection.traderId === null ? {} : { traderId: selection.traderId }),
       ...(range === null ? {} : range),
@@ -80,18 +102,36 @@ export function ScopeProvider({
       setTraderId: (traderId) => {
         setSelection((current) => ({ ...current, traderId }));
       },
-      // Clearing the year clears the month with it: "March of no year" is not
-      // a period, and leaving it set would put a month in a dropdown that
-      // describes nothing.
-      setYear: (year) => {
-        setSelection((current) => ({
-          ...current,
-          year,
-          month: year === null ? null : current.month,
-        }));
+      setFrom: (from) => {
+        setSelection((current) =>
+          from === null
+            ? { ...current, from: null, to: null }
+            : {
+                ...current,
+                from,
+                // A single month until the other end is moved, and visibly
+                // so: both selects show it, rather than one sitting empty
+                // while the screen quietly shows everything.
+                to:
+                  current.to === null || isBefore(current.to, from)
+                    ? from
+                    : current.to,
+              },
+        );
       },
-      setMonth: (month) => {
-        setSelection((current) => ({ ...current, month }));
+      setTo: (to) => {
+        setSelection((current) =>
+          to === null
+            ? { ...current, from: null, to: null }
+            : {
+                ...current,
+                to,
+                from:
+                  current.from === null || isBefore(to, current.from)
+                    ? to
+                    : current.from,
+              },
+        );
       },
     };
   }, [selection]);
@@ -117,29 +157,45 @@ export function useScope(): ScopeState {
 }
 
 /**
- * A year, or a month of one, as the inclusive `from`/`to` the API takes.
+ * Two months, as the inclusive `from`/`to` the API takes: the first day of
+ * the one and the last day of the other.
  *
- * `Date.UTC(year, month, 0)` is the last day of `month` counting from 1, which
- * is how the leap day is got right without a table. UTC throughout: a local
- * `new Date(2025, 2, 31)` in a behind-UTC zone is the 30th once it reaches the
- * server, and a payout would drop out of the month it belongs to.
+ * `Date.UTC(year, month, 0)` is the last day of `month` counting from 1,
+ * which is how the leap day is got right without a table. UTC throughout: a
+ * local `new Date(2025, 2, 31)` in a behind-UTC zone is the 30th once it
+ * reaches the server, and a payout would drop out of the month it belongs to.
  */
 export function periodRange(
-  year: number | null,
-  month: number | null,
+  from: PeriodPoint | null,
+  to: PeriodPoint | null,
 ): { readonly from: string; readonly to: string } | null {
-  if (year === null) return null;
+  if (from === null || to === null) return null;
 
-  if (month === null) {
-    return { from: `${isoYear(year)}-01-01`, to: `${isoYear(year)}-12-31` };
-  }
-
-  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const [first, last] = isBefore(to, from) ? [to, from] : [from, to];
+  const lastDay = new Date(Date.UTC(last.year, last.month, 0)).getUTCDate();
 
   return {
-    from: `${isoYear(year)}-${pad(month)}-01`,
-    to: `${isoYear(year)}-${pad(month)}-${pad(lastDay)}`,
+    from: `${isoYear(first.year)}-${pad(first.month)}-01`,
+    to: `${isoYear(last.year)}-${pad(last.month)}-${pad(lastDay)}`,
   };
+}
+
+/** Earlier in the calendar, months counted from the year so April 2024 < March 2025. */
+export function isBefore(one: PeriodPoint, other: PeriodPoint): boolean {
+  return one.year * 12 + one.month < other.year * 12 + other.month;
+}
+
+/** How a period reads in a sentence: "April 2024 – March 2025". */
+export function describePeriod(
+  from: PeriodPoint | null,
+  to: PeriodPoint | null,
+): string {
+  if (from === null || to === null) return 'All time';
+
+  const first = `${MONTH_NAMES[from.month - 1] ?? ''} ${String(from.year)}`;
+  const last = `${MONTH_NAMES[to.month - 1] ?? ''} ${String(to.year)}`;
+
+  return first === last ? first : `${first} – ${last}`;
 }
 
 function isoYear(year: number): string {

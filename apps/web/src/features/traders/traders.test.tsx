@@ -18,6 +18,15 @@ import { renderApp, screen, waitFor, within } from '../../../test/renderApp';
  * below it changes with it.
  */
 
+/**
+ * Long enough for a period to be assembled a select at a time.
+ *
+ * Each choice is its own cache key and its own request, so a four-select
+ * financial year is four round trips through MSW; the library's one-second
+ * default is for a single one.
+ */
+const SETTLE_MS = 5_000;
+
 /** Open a select by its label and pick an item by name. */
 const choose = async (
   user: ReturnType<typeof userEvent.setup>,
@@ -32,11 +41,14 @@ describe('the scope bar', () => {
   it('opens on everything, so nothing is hidden until somebody hides it', async () => {
     renderApp({ route: '/payouts' });
 
-    const trader = await screen.findByRole('combobox', { name: /Trader/ });
+    const trader = await screen.findByRole('combobox', { name: /^Trader/ });
 
     expect(trader).toHaveTextContent('All traders');
     expect(
-      await screen.findByRole('combobox', { name: /Year/ }),
+      await screen.findByRole('combobox', { name: /From month/ }),
+    ).toHaveTextContent('All time');
+    expect(
+      await screen.findByRole('combobox', { name: /To year/ }),
     ).toHaveTextContent('All time');
   });
 
@@ -58,38 +70,87 @@ describe('the scope bar', () => {
     const table = await screen.findByRole('table', { name: 'Payouts' });
     await within(table).findByText('TradeifyPayout001');
 
-    await choose(user, /Trader/, 'Priya');
+    await choose(user, /^Trader/, 'Priya');
 
     await waitFor(() => {
+      expect(within(table).getByText('TradeifyPayout900')).toBeInTheDocument();
       expect(
         within(table).queryByText('TradeifyPayout001'),
       ).not.toBeInTheDocument();
     });
-    expect(within(table).getByText('TradeifyPayout900')).toBeInTheDocument();
   });
 
-  it('narrows to a period, and needs a year before a month', async () => {
+  it('narrows to a single month, filling the other end in as it goes', async () => {
     const user = userEvent.setup();
     renderApp({ route: '/payouts' });
 
     const table = await screen.findByRole('table', { name: 'Payouts' });
     await within(table).findByText('TradeifyPayout001');
 
-    // The month select does nothing until a year is chosen — "March" of no
-    // year is not a period this application can ask the server for.
-    expect(
-      await screen.findByRole('combobox', { name: /Month/ }),
-    ).toHaveAttribute('aria-disabled', 'true');
+    await choose(user, /From year/, '2025');
+    await choose(user, /From month/, 'June');
 
-    await choose(user, /Year/, '2025');
-    await choose(user, /Month/, 'June');
-
+    // The second end followed the first, rather than sitting empty beside it
+    // while the screen quietly showed everything.
     await waitFor(() => {
-      expect(
-        within(table).queryByText('TradeifyPayout001'),
-      ).not.toBeInTheDocument();
+      expect(screen.getByRole('combobox', { name: /To month/ })).toHaveTextContent(
+        'June',
+      );
     });
-    expect(within(table).getByText('TradeifyPayout900')).toBeInTheDocument();
+
+    /*
+      Presence first, and with room to arrive.
+
+      The list passes through an empty state on the way — January 2025 held
+      nothing — so asserting the absence first would pass against a table
+      that is merely still loading. `find` waits for the row that proves the
+      period took effect; two selections mean two round trips, which is
+      more than the one-second default allows for on a loaded machine.
+    */
+    expect(
+      await screen.findByText('TradeifyPayout900', undefined, {
+        timeout: SETTLE_MS,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('TradeifyPayout001')).not.toBeInTheDocument();
+  });
+
+  it('narrows to a financial year, April to the March after it', async () => {
+    // The reason the period has two ends. §10's tree is dated March 2025, so
+    // it falls in the year that began in April 2024 — and Priya's June 2025
+    // award falls in the one after.
+    const user = userEvent.setup();
+    renderApp({ route: '/payouts' });
+
+    const table = await screen.findByRole('table', { name: 'Payouts' });
+    await within(table).findByText('TradeifyPayout001');
+
+    await choose(user, /From year/, '2024');
+    await choose(user, /From month/, 'April');
+    await choose(user, /To year/, '2025');
+    await choose(user, /To month/, 'March');
+
+    expect(
+      await screen.findByText('TradeifyPayout001', undefined, {
+        timeout: SETTLE_MS,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('TradeifyPayout900')).not.toBeInTheDocument();
+  });
+
+  it('offers the year before the data, since a tax year starts there', async () => {
+    // Every payout on file is in 2025. Without 2024 in the list, "from April
+    // 2024" — the start of the year March 2025 belongs to — is unsayable.
+    const user = userEvent.setup();
+    renderApp({ route: '/payouts' });
+
+    await user.click(
+      await screen.findByRole('combobox', { name: /From year/ }),
+    );
+
+    expect(
+      await screen.findByRole('option', { name: '2024' }),
+    ).toBeInTheDocument();
   });
 
   it('gives back everything when the selection is cleared', async () => {
@@ -99,7 +160,7 @@ describe('the scope bar', () => {
     const table = await screen.findByRole('table', { name: 'Payouts' });
     await within(table).findByText('TradeifyPayout001');
 
-    await choose(user, /Trader/, 'Priya');
+    await choose(user, /^Trader/, 'Priya');
     await waitFor(() => {
       expect(
         within(table).queryByText('TradeifyPayout001'),
@@ -120,7 +181,7 @@ describe('the scope bar', () => {
     renderApp({ route: '/balances' });
 
     expect(
-      await screen.findByRole('combobox', { name: /Trader/ }),
+      await screen.findByRole('combobox', { name: /^Trader/ }),
     ).toBeInTheDocument();
   });
 
@@ -130,7 +191,7 @@ describe('the scope bar', () => {
 
     await screen.findByText('84,642.93');
 
-    await choose(user, /Trader/, 'Priya');
+    await choose(user, /^Trader/, 'Priya');
 
     // Priya has an award and no movements, so there is nothing of hers in an
     // account yet — and §10's rupees are emphatically not hers.
@@ -148,7 +209,7 @@ describe('adding a trader', () => {
     const user = userEvent.setup();
     renderApp({ route: '/payouts' });
 
-    await choose(user, /Trader/, 'Add a trader…');
+    await choose(user, /^Trader/, 'Add a trader…');
 
     await user.type(
       await screen.findByRole('textbox', { name: /Trader name/ }),
@@ -163,9 +224,9 @@ describe('adding a trader', () => {
     // Selected straight away: the next thing anybody does after adding
     // somebody is look at that person.
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: /Trader/ })).toHaveTextContent(
-        SAM.name,
-      );
+      expect(
+        screen.getByRole('combobox', { name: /^Trader/ }),
+      ).toHaveTextContent(SAM.name);
     });
   });
 
@@ -174,7 +235,7 @@ describe('adding a trader', () => {
     const user = userEvent.setup();
     renderApp({ route: '/payouts' });
 
-    await choose(user, /Trader/, 'Add a trader…');
+    await choose(user, /^Trader/, 'Add a trader…');
     await user.type(
       await screen.findByRole('textbox', { name: /Trader name/ }),
       'Priya Again',
@@ -195,7 +256,7 @@ describe('adding a trader', () => {
     const user = userEvent.setup();
     renderApp({ route: '/payouts' });
 
-    await choose(user, /Trader/, 'Add a trader…');
+    await choose(user, /^Trader/, 'Add a trader…');
     await screen.findByRole('textbox', { name: /Trader name/ });
 
     // §5a: one account signs in. Adding a name to a dropdown must not be a

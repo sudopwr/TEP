@@ -41,7 +41,7 @@ lived in a spreadsheet, where copy-paste destroyed four amounts and two fees.
 | F21 | Edit a transaction: the row itself, never its kind, parent, payout or fees |
 | F22 | Delete a document: the file, its row, and every attachment to it |
 | F23 | Attach a document to a payout or a leg, one already on file included; remove one |
-| F24 | Several traders in one ledger: add one, switch, and scope every payout-derived screen to a trader and a period |
+| F24 | Several traders in one ledger: add one, switch, and scope every payout-derived screen to a trader and a period: a first and last month, so a tax year is expressible |
 
 ### Non-functional
 | # | Requirement |
@@ -121,7 +121,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  ten spec files, 24 journeys, each against a world of its own
+e2e/                  ten spec files, 25 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,
@@ -239,20 +239,20 @@ balances:  Bank ₹84,642.93   CoinDCX 14.0908 USDT   TrustWallet 1.3323 USDT
   Transaction005 computes to 0.4866% and Transaction008 to 0.5308%; on order value,
   partial fills explain it and `fee_schedules.basis` becomes `from_amount`. Check one.
 - Warn before a withdrawal below a threshold, given the flat $4 fee? Open.
-- Reached from outside this machine? Then Tailscale in front rather than an exposed
-  port, and revisit §5a: one password over a LAN deserves a second factor, and
-  `secure=false` must become `true` behind TLS.
+- Reached from outside this machine? Then Tailscale in front rather than an exposed port,
+  and revisit §5a: one password over a LAN deserves a second factor, and `secure=false`
+  must become `true` behind TLS.
 
 ## 12. Conventions
-- TypeScript everywhere, `strict: true`. Vitest for unit and integration, Playwright
-  in `e2e/`. Test file next to source: `money.test.ts`.
+- TypeScript everywhere, `strict: true`. Vitest for unit and integration, Playwright in
+  `e2e/`; test file next to source, `money.test.ts`.
 - No default exports except React components. Errors are typed classes in
   `core/domain/errors.ts`, never bare strings, each written for the reader — the browser
   passes it through. SQL lives in adapters, never routes or use cases, prepared once.
 - Commit message: `feat(core): ...`, `fix(api): ...`, `test(web): ...`.
-- Copy: sentence case, active voice, the user's words — the button says "Record
-  payout" and the toast "Payout recorded"; an error says what happened and what to
-  do, never "Something went wrong".
+- Copy: sentence case, active voice, the user's words — the button says "Record payout"
+  and the toast "Payout recorded"; an error says what happened and what to do, never
+  "Something went wrong".
 
 ## 13. Decision log
 
@@ -272,13 +272,13 @@ Newest last. Never delete an entry — supersede it.
   redirect. §5a is the bill. **Auth, in one place.** **Sessions are rows, not JWTs**:
   sign-out must actually revoke, which a token cannot without this table. **Auth lives
   in `apps/api/auth/`, not `core`**, which sees a `PasswordHasher` port. **Migrations
-  carry seeds**; §5a's three constraints are what make `admin` defensible. **Guards are
-  global with an exemption list, never opt-in**, so a forgotten route fails closed:
+  carry seeds**; §5a's three constraints make `admin` defensible. **Guards are global
+  with an exemption list, never opt-in**, so a forgotten route fails closed:
   `PUBLIC_ROUTES` + `MUST_CHANGE_EXEMPT` = §5a's five, the last two in the second only
   since both must know who is asking; `RequireAuth`/`RequireSession` mirror them in the
   browser, for the right screen not safety. **Session-id compare is constant-time; the
   index probe isn't** — kept honest so nobody swaps in a 6-digit code and keeps `===`.
-- **Traps**, each covered by a test. `Error` owns `cause` and `name` (hence `.failure`,
+- **Traps**, each covered by a test. `Error` owns `cause` and `name` (`.failure`,
   `.migrationName`). `Algorithm.Argon2id` is an ambient `const enum`
   `verbatimModuleSyntax` will not inline. `.catch(e => e as E)` widens the type *and*
   passes when the call resolves, and after `.then` swallows what the success path
@@ -290,43 +290,40 @@ Newest last. Never delete an entry — supersede it.
   is the only net. **Test timeouts move, the cost does not** (`vitest.config.ts` says
   why). **happy-dom, not jsdom**: jsdom installs its own `AbortController` while `fetch`
   is undici's, `instanceof`-checking Node's — two realms, one check, every request
-  failing.
-- **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal *string*
-  and a rate transformed to a 1e8 bigint are a refinement and a transform, which JSON
-  Schema has neither of. **Money leaves as two strings**, and N1 reaches the keyboard:
-  `AmountField` filters keystrokes. **Unions derive from a runtime array**, so the API
-  cannot drift; `from`/`to` are one field in two halves, refused apart. **The error map
-  is keyed by `error.name`**, since a constructor breaks when two copies of core load.
-  **Constraint violations are translated in the adapter** (§7's "friendlier message"):
-  `document_links` has two FKs, so it checks which side. **Documents are served by a
-  handler, never a static mount**, which would publish every file to anyone guessing a
-  hash. **A 400 carries `details.issues`**, so a form puts each message under its field.
+  failing. **zod at the edge, not Fastify's JSON Schema**: money as a validated decimal
+  *string* and a rate transformed to a 1e8 bigint are a refinement and a transform,
+  which JSON Schema has neither of. **Money leaves as two strings**, and N1 reaches the
+  keyboard: `AmountField` filters keystrokes. **Unions derive from a runtime array**, so
+  the API cannot drift; `from`/`to` are one field in two halves, refused apart. **The
+  error map is keyed by `error.name`**, since a constructor breaks when two copies of
+  core load. **Constraint violations are translated in the adapter** (§7's "friendlier
+  message"): `document_links` has two FKs, so it checks which side. **Documents are
+  served by a handler, never a static mount**, which would publish every file to anyone
+  guessing a hash. **A 400 carries `details.issues`**: each message under its own field.
 - **One composition root per process**: `container.ts` on the server (the F12 CLI wired
   its own adapters until `container.test.ts` caught it) and `routes.tsx` in the browser,
   where the payout screen wants parts from four features and `payouts/` importing
   `transactions/` would leave neither readable — hence the shell's `toolbar` slot for
-  the scope bar. **The palette is a lint rule**: `no-raw-hex` fails the build for a hex
-  under apps/web bar `shared/theme/palette.ts`. **N8 is three more**:
-  `no-feature-imports`, `no-fetch-in-shared` (hence `ScopeProvider` beside
-  `AuthProvider` in `shared/api/`) and `no-cross-feature-imports`, which resolves paths.
-  **`sortBy` is separate from `cell` in `DataTable`**, so a money column sorts on its
-  integer (as text, `9.00` sorts after `84,642.93`), absent values pinning to the bottom
-  in *both* directions. **`TreeView` splits each row** into an indented label and an
-  un-indented aside, nesting otherwise turning §10's trail into a staircase. **Cache
-  keys come from `queryKeys`, never inline**: two call sites spell one key two ways, and
-  the screen reads the one the mutation did not invalidate. The hierarchy makes precise
-  invalidation expressible — a leg reaches that payout's trail, settlement, balances and
-  checks — with a test on what stays untouched. **A 401 is handled in the query and
-  mutation caches, never at a call site**: it clears everything (a signed-out session
-  must not leave balances in memory) and seeds `auth.me` null, bar `/auth/me`,
+  the bar. **The palette is a lint rule**: `no-raw-hex` fails the build for a hex under
+  apps/web bar `shared/theme/palette.ts`. **N8 is three more**: `no-feature-imports`,
+  `no-fetch-in-shared` (hence `ScopeProvider` beside `AuthProvider` in `shared/api/`)
+  and `no-cross-feature-imports`, path-resolving. **`sortBy` is separate from `cell` in
+  `DataTable`**, so a money column sorts on its int (as text, `9.00` sorts after
+  `84,642.93`), absent values pinning to the bottom in *both* directions. **`TreeView`
+  splits each row** into an indented label and an un-indented aside, or nesting turns
+  §10's trail into a staircase. **Cache keys come from `queryKeys`, never inline**: two
+  call sites spell one key two ways, and the screen reads the one no mutation
+  invalidated. The hierarchy makes invalidation precise — a leg reaches that payout's
+  trail, settlement, balances and checks — with a test on what stays put. **A 401 is
+  handled in the caches, never at a call site**: it clears everything (a signed-out
+  session must not leave balances in memory), seeds `auth.me` null, bar `/auth/me`,
   `/auth/login` and `/auth/change-credentials` — answers rather than expiries, told
-  apart by a `mutationKey`, since clearing on a wrong password destroys the mutation
-  holding the error. **Signed-in state is that one `useQuery`**: a second `user` in
-  React state disagrees the moment a session is revoked. **F15's 403 routes by writing
-  the auth cache, not `navigate`** — `RequireAuth` reads `mustChangePassword` off
-  `auth.me`, so a stale tab cannot sit on a data screen. **No "mark settled" endpoint**:
-  settling *is* recording the sale that reaches a bank (`useSettlePayout`), figures left
-  to the server.
+  apart by a `mutationKey`: clearing on a wrong password destroys the mutation holding
+  the error. **Signed-in state is that one `useQuery`**: a second `user` in React state
+  disagrees the moment a session is revoked. **F15's 403 routes by writing the auth
+  cache, not `navigate`** — `RequireAuth` reads `mustChangePassword` off `auth.me`, so
+  no stale tab sits on a data screen. **No "mark settled" endpoint**: settling *is* the
+  sale that reaches a bank (`useSettlePayout`), figures left to the server.
 - **`/api/accounts` and `/api/accounts/balances` answer two questions**: a balance is
   derived from movements (UC7), so an account recorded a minute ago is absent — right
   for a balance sheet, useless for a form asking where money went. An allow-list is a
@@ -341,53 +338,56 @@ Newest last. Never delete an entry — supersede it.
   server does, or a hook that never sent the scope would pass. **One e2e world per
   journey** (temp database, legacy import, an OS-picked port), or the suite turns
   order-dependent — and the first test that *clicked* found two bugs every DOM assertion
-  had passed.
-- **`npm run backup` uses SQLite's backup API, never a file copy**: in WAL mode the
-  newest pages are in `app.db-wal`, so `cp` gives three snapshots of three instants and,
-  unless something checkpointed, no schema at all (a test shows it). Files are copied.
-  **The bundle's size warning is raised, not obeyed**: 500kB is download advice, this is
-  local disk, and splitting would make §11 worse. **`npm run dev` watches with `node
-  --watch`, not `tsx watch`**: under concurrently's prefixed output the supervisor's
-  child never ran the module — no error, no listen — so Vite's proxy answered
-  ECONNREFUSED and the bug read as the app's (`--raw` cures it, losing the prefixes).
-- **A missing choice is added from inside the dropdown** (`SelectWithCreate`), whose
-  create item is an action, not a value. Its dialog renders **outside** the form: a
-  portal is elsewhere in the DOM but not in the React tree, and its submit ran the
-  payout's `onSubmit`. Select only once the invalidation resolves or MUI draws an empty
-  box; assert with `find`, a closing modal still holding `aria-hidden`. An empty select
-  *value* reads as "nothing chosen", so each "All" entry carries a word. **What deletes,
-  and what refuses.** A **payout** deletes for real (F18), not into a "cancelled" status
-  — the fourth state §13 refused: legs, fees and links go, **documents stay** (F6), one
+  had passed. **`npm run backup` uses SQLite's backup API, never a file copy**: in WAL
+  mode the newest pages are in `app.db-wal`, so `cp` gives three snapshots of three
+  instants and, unless something checkpointed, no schema at all (a test shows it). Files
+  are copied. **The bundle's size warning is raised, not obeyed**: 500kB is download
+  advice, this is local disk, and splitting would worsen §11. **`npm run dev` watches
+  with `node --watch`, not `tsx watch`**: under concurrently's prefixed output the
+  supervisor's child never ran the module — no error, no listen — so Vite's proxy
+  answered ECONNREFUSED and the bug read as the app's (`--raw` cures it, losing the
+  prefixes).
+- **A missing choice is added from inside the dropdown** (`SelectWithCreate`), its
+  create item an action, not a value. Its dialog renders **outside** the form: a portal
+  is elsewhere in the DOM but not in the React tree, and its submit ran the payout's
+  `onSubmit`. Select only once the invalidation resolves or MUI draws an empty box;
+  assert with `find`, a closing modal still holding `aria-hidden` and a list that
+  reloaded having replaced the element a test was holding. An empty select *value* reads
+  as "nothing chosen", so each "All" entry carries a word. **What deletes, and what
+  refuses.** A **payout** deletes for real (F18), not into a "cancelled" status — the
+  fourth state §13 refused: legs, fees and links go, **documents stay** (F6), one
   transaction, the tree peeled **leaf-first** since `parent_id` is RESTRICT, checked per
-  row — a cascade fails below depth one, and a test asserts it. An **account** is a
-  party to events, not an event: deleting one with any leg is a 409 **counting** them,
-  only its own configuration cascades, and an edit is a **replacement** (F19), an empty
+  row: a cascade fails below depth one, and a test asserts it. An **account** is a party
+  to events, not an event: deleting one with any leg is a 409 **counting** them, only
+  its configuration cascades, and an edit is a **replacement** (F19), an empty
   allow-list meaning "holds anything". A **leg** takes the legs below it (F20), a child
   being money that arrived from it. **Editing a leg** (F21) replaces the row and nothing
   around it — not the kind (§8's fee engine), not the parent, not the **fees**: TDS came
-  off a statement, so §7 reports a mismatch rather than an edit overwriting evidence
-  with arithmetic. **Removing a document is not deleting it** (F23): a link is a
-  relationship, so breaking one leaves the file to be attached again. A **document** is
-  a thing (F6): deleting one takes every attachment, file *after* row, since a row
-  without bytes answers 422 while bytes without a row are litter. The payout delete
-  alone **removes** cache entries rather than invalidating them — a deleted trail 404s.
+  off a statement, so §7 reports a mismatch rather than arithmetic overwriting evidence.
+  **Removing a document is not deleting it** (F23): breaking a relationship leaves the
+  file to be attached again. A **document** is a thing (F6): deleting one takes every
+  attachment, file *after* row — a row without bytes answers 422, bytes without a row
+  are litter. The payout delete alone **removes** cache entries rather than invalidating
+  them — a deleted trail 404s.
 - **AGPL-3.0-only**, verbatim in `LICENSE`, `license` in all four manifests, no per-file
   headers. Its §13 is the point — a copy reached over a network owes its users the
   source — so §11's "reached from outside?" is a licence question too. **A trader is not
-  a user** (F24). §5a's account is who is *using* this; a trader is who the money
-  belongs to — no password, no row in `users`, and adding one from a dropdown is never a
+  a user** (F24): §5a's account is who is *using* this, a trader is who the money
+  belongs to — no password, no `users` row, and a name added from a dropdown is never a
   way to sign in (a test checks the dialog for a password field). **Whose money and when
   are one selection**, `PayoutScope`, honoured identically by the list, the balances,
   the checks and the report; half-honouring it is how one screen disagrees with the one
-  beside it. The browser folds it in inside the hooks, never at a call site, so no
-  screen can forget; in the key it sits *after* the caller's own filter, leaving
-  `balances.all()` matching every scoped spelling. The report keeps its own range, a
-  month in the bar not re-cutting a financial year somebody asked for. **A period is a
-  range, in UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th.
-  `004_traders.sql` adds `trader_id` by **rebuilding the table**: with foreign keys on,
-  `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it is SQLite's
-  12-step dance under `defer_foreign_keys` and `legacy_alter_table`, the views and §10's
-  figures proven after.
+  beside it. The hooks fold it in, never a call site, so no screen can forget; in the
+  key it sits *after* the caller's own filter, leaving `balances.all()` matching every
+  scoped spelling. The report keeps its own range, the bar not re-cutting a year
+  somebody asked for. **A period is two months, not a year**: a tax year starts in
+  April, so April 2024 to March 2025 must be sayable, the year list reaches back a year
+  further than the data, and clearing either end clears both. **In UTC**: local, `new
+  Date(2025, 2, 31)` reaches the server as the 30th. `004_traders.sql` adds `trader_id`
+  by **rebuilding the table**: with foreign keys on, `ALTER TABLE ADD COLUMN ... NOT
+  NULL REFERENCES` is impossible, so it is SQLite's 12-step dance under
+  `defer_foreign_keys` and `legacy_alter_table`, §10's figures and the views proven
+  after.
 
 ## 14. Task protocol
 

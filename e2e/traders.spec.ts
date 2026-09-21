@@ -27,7 +27,7 @@ test.beforeEach(async ({ page, world }) => {
 test('adds a trader, records their payout, and keeps the two apart', async ({
   page,
 }) => {
-  const bar = page.getByRole('combobox', { name: /Trader/ }).first();
+  const bar = page.getByRole('combobox', { name: 'Trader' });
 
   // Everything, to begin with: the imported payout is on screen and nothing
   // is hidden until somebody hides it.
@@ -89,29 +89,58 @@ test('adds a trader, records their payout, and keeps the two apart', async ({
   await expect(page.getByText('TradeifyPayout900')).toBeVisible();
 });
 
-test('narrows to a month, and back out again', async ({ page }) => {
-  const year = page.getByRole('combobox', { name: /Year/ });
-  const month = page.getByRole('combobox', { name: /Month/ });
+test('cuts the ledger to a financial year, April to March', async ({ page }) => {
+  // The reason the period has two ends: a tax year does not start in
+  // January. The imported sheet is dated 10 March 2025, so it belongs to the
+  // year that began in April 2024 — and to the one that began in April 2025
+  // it does not.
+  const fromMonth = page.getByRole('combobox', { name: 'From month' });
+  const fromYear = page.getByRole('combobox', { name: 'From year' });
+  const toMonth = page.getByRole('combobox', { name: 'To month' });
+  const toYear = page.getByRole('combobox', { name: 'To year' });
 
-  // The month is inert until a year gives it a meaning.
-  await expect(month).toHaveAttribute('aria-disabled', 'true');
+  const pick = async (
+    field: ReturnType<typeof page.getByRole>,
+    option: string,
+  ): Promise<void> => {
+    await field.click();
+    await page.getByRole('option', { name: option, exact: true }).click();
+  };
 
-  await year.click();
-  await page.getByRole('option', { name: '2025' }).click();
+  await pick(fromYear, '2024');
+  await pick(fromMonth, 'April');
+  await pick(toYear, '2025');
+  await pick(toMonth, 'March');
 
-  // The sheet is dated March 2025, so March holds it and June does not.
-  await month.click();
-  await page.getByRole('option', { name: 'June' }).click();
+  await expect(page.getByText('TradeifyPayout001')).toBeVisible();
+
+  // The year after it: same months, one year on, and the sheet drops out.
+  await pick(fromYear, '2025');
+  await pick(toYear, '2026');
+
   await expect(page.getByText('TradeifyPayout001')).toBeHidden();
 
-  await month.click();
-  await page.getByRole('option', { name: 'March' }).click();
+  // Clearing one end clears the period, because half a range is not one.
+  await pick(fromMonth, 'All time');
+  await expect(toYear).toContainText('All time');
+  await expect(page.getByText('TradeifyPayout001')).toBeVisible();
+});
+
+test('a single month is both ends at once', async ({ page }) => {
+  const fromMonth = page.getByRole('combobox', { name: 'From month' });
+  const toMonth = page.getByRole('combobox', { name: 'To month' });
+
+  await page.getByRole('combobox', { name: 'From year' }).click();
+  await page.getByRole('option', { name: '2025', exact: true }).click();
+  await fromMonth.click();
+  await page.getByRole('option', { name: 'March', exact: true }).click();
+
+  // The far end followed, visibly, rather than sitting empty while the
+  // screen quietly showed everything.
+  await expect(toMonth).toContainText('March');
   await expect(page.getByText('TradeifyPayout001')).toBeVisible();
 
-  // Clearing the year clears the month with it: "March of no year" is not a
-  // period, and the list goes back to everything.
-  await year.click();
-  await page.getByRole('option', { name: 'All time' }).click();
-  await expect(month).toHaveAttribute('aria-disabled', 'true');
-  await expect(page.getByText('TradeifyPayout001')).toBeVisible();
+  await fromMonth.click();
+  await page.getByRole('option', { name: 'June', exact: true }).click();
+  await expect(page.getByText('TradeifyPayout001')).toBeHidden();
 });

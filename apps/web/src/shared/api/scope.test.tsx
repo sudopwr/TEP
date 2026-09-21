@@ -12,7 +12,7 @@ import {
   useTraders,
 } from './hooks/queries';
 import { queryKeys } from './keys';
-import { periodRange, useScope } from './ScopeProvider';
+import { describePeriod, periodRange, useScope } from './ScopeProvider';
 
 /**
  * F24 — whose money, and when, honoured by every screen that shows money.
@@ -23,62 +23,136 @@ import { periodRange, useScope } from './ScopeProvider';
  * its cache key but forgot to send it fails here rather than looking right.
  */
 
-const JUNE = { traderId: null, year: 2025, month: 6 };
+const JUNE = {
+  traderId: null,
+  from: { year: 2025, month: 6 },
+  to: { year: 2025, month: 6 },
+};
+
+/** The Indian financial year §13's report is cut by: 1 April to 31 March. */
+const FINANCIAL_YEAR = {
+  traderId: null,
+  from: { year: 2024, month: 4 },
+  to: { year: 2025, month: 3 },
+};
 
 describe('the scope', () => {
   it('opens on everything', () => {
     const { result } = renderHookWithClient(() => useScope());
 
     expect(result.current.traderId).toBeNull();
-    expect(result.current.year).toBeNull();
-    expect(result.current.month).toBeNull();
+    expect(result.current.from).toBeNull();
+    expect(result.current.to).toBeNull();
     expect(result.current.filter).toEqual({});
     expect(result.current.isNarrowed).toBe(false);
   });
 
-  it('turns a year and a month into an inclusive range', () => {
-    expect(periodRange(2025, null)).toEqual({
-      from: '2025-01-01',
-      to: '2025-12-31',
-    });
-    expect(periodRange(2025, 6)).toEqual({
-      from: '2025-06-01',
-      to: '2025-06-30',
-    });
-    expect(periodRange(null, 6)).toBeNull();
+  it('turns two months into one inclusive range', () => {
+    expect(
+      periodRange({ year: 2025, month: 6 }, { year: 2025, month: 6 }),
+    ).toEqual({ from: '2025-06-01', to: '2025-06-30' });
+
+    expect(periodRange({ year: 2025, month: 1 }, null)).toBeNull();
+    expect(periodRange(null, { year: 2025, month: 1 })).toBeNull();
+  });
+
+  it('spans the tax year, which does not start in January', () => {
+    // The whole reason the period is two ends: 1 April 2024 to 31 March 2025
+    // is one financial year and two calendar ones.
+    expect(
+      periodRange({ year: 2024, month: 4 }, { year: 2025, month: 3 }),
+    ).toEqual({ from: '2024-04-01', to: '2025-03-31' });
   });
 
   it('gets February right, leap year included', () => {
     // The month lengths are not a table here; they come from the calendar.
-    expect(periodRange(2025, 2)?.to).toBe('2025-02-28');
-    expect(periodRange(2024, 2)?.to).toBe('2024-02-29');
+    expect(
+      periodRange({ year: 2025, month: 2 }, { year: 2025, month: 2 })?.to,
+    ).toBe('2025-02-28');
+    expect(
+      periodRange({ year: 2024, month: 2 }, { year: 2024, month: 2 })?.to,
+    ).toBe('2024-02-29');
   });
 
-  it('drops the month when the year is cleared', () => {
-    // "March of no year" is not a period, and leaving it set would put a
-    // month in the dropdown that describes nothing.
+  it('reads a period back as a sentence', () => {
+    expect(describePeriod(null, null)).toBe('All time');
+    expect(
+      describePeriod({ year: 2025, month: 6 }, { year: 2025, month: 6 }),
+    ).toBe('June 2025');
+    expect(
+      describePeriod({ year: 2024, month: 4 }, { year: 2025, month: 3 }),
+    ).toBe('April 2024 – March 2025');
+  });
+
+  it('carries the other end along when one is set for the first time', () => {
+    // A start with no end is not a period the server can be asked for, and
+    // an empty second select beside a filled first one reads as broken.
+    const { result } = renderHookWithClient(() => useScope());
+
+    act(() => {
+      result.current.setFrom({ year: 2024, month: 4 });
+    });
+
+    expect(result.current.to).toEqual({ year: 2024, month: 4 });
+    expect(result.current.filter).toEqual({
+      from: '2024-04-01',
+      to: '2024-04-30',
+    });
+  });
+
+  it('opens the range out when the second end is moved', () => {
+    const { result } = renderHookWithClient(() => useScope());
+
+    act(() => {
+      result.current.setFrom({ year: 2024, month: 4 });
+    });
+    act(() => {
+      result.current.setTo({ year: 2025, month: 3 });
+    });
+
+    expect(result.current.filter).toEqual({
+      from: '2024-04-01',
+      to: '2025-03-31',
+    });
+  });
+
+  it('corrects an end that falls before its start, rather than refusing it', () => {
+    const { result } = renderHookWithClient(() => useScope(), {
+      scope: FINANCIAL_YEAR,
+    });
+
+    act(() => {
+      result.current.setTo({ year: 2023, month: 5 });
+    });
+
+    expect(result.current.from).toEqual({ year: 2023, month: 5 });
+    expect(result.current.to).toEqual({ year: 2023, month: 5 });
+  });
+
+  it('clears both ends together, since half a range is not a period', () => {
     const { result } = renderHookWithClient(() => useScope(), { scope: JUNE });
 
     act(() => {
-      result.current.setYear(null);
+      result.current.setFrom(null);
     });
 
-    expect(result.current.month).toBeNull();
+    expect(result.current.from).toBeNull();
+    expect(result.current.to).toBeNull();
     expect(result.current.filter).toEqual({});
   });
 
   it('keeps the trader when the period changes, and the other way round', () => {
     const { result } = renderHookWithClient(() => useScope(), {
-      scope: { traderId: 2, year: 2025, month: null },
+      scope: { ...FINANCIAL_YEAR, traderId: 2 },
     });
 
     act(() => {
-      result.current.setMonth(6);
+      result.current.setTo({ year: 2025, month: 6 });
     });
 
     expect(result.current.filter).toEqual({
       traderId: 2,
-      from: '2025-06-01',
+      from: '2024-04-01',
       to: '2025-06-30',
     });
   });
@@ -87,7 +161,7 @@ describe('the scope', () => {
 describe('the scoped reads', () => {
   it('lists one trader’s payouts, not everybody’s', async () => {
     const { result } = renderHookWithClient(() => usePayouts(), {
-      scope: { traderId: OTHER_PAYOUT.traderId, year: null, month: null },
+      scope: { traderId: OTHER_PAYOUT.traderId, from: null, to: null },
     });
 
     await waitFor(() => {
@@ -105,10 +179,22 @@ describe('the scoped reads', () => {
     });
   });
 
+  it('narrows to a financial year, taking in both calendar years', async () => {
+    // §10's tree is dated March 2025 — inside FY 2024-25 — while Priya's
+    // June 2025 award is in the year after it.
+    const { result } = renderHookWithClient(() => usePayouts(), {
+      scope: FINANCIAL_YEAR,
+    });
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual([PAYOUT]);
+    });
+  });
+
   it('caches each selection separately', async () => {
     const scope = { traderId: 2, from: '2025-06-01', to: '2025-06-30' };
     const { result, client } = renderHookWithClient(() => usePayouts(), {
-      scope: { traderId: 2, year: 2025, month: 6 },
+      scope: { ...JUNE, traderId: 2 },
     });
 
     await waitFor(() => {
@@ -122,7 +208,7 @@ describe('the scoped reads', () => {
 
   it('scopes the balances, so one person’s money is not shown under another', async () => {
     const { result } = renderHookWithClient(() => useAccountBalances(), {
-      scope: { traderId: OTHER_PAYOUT.traderId, year: null, month: null },
+      scope: { traderId: OTHER_PAYOUT.traderId, from: null, to: null },
     });
 
     await waitFor(() => {
@@ -135,7 +221,7 @@ describe('the scoped reads', () => {
 
   it('shows the balances again for the trader they belong to', async () => {
     const { result } = renderHookWithClient(() => useAccountBalances(), {
-      scope: { traderId: PAYOUT.traderId, year: null, month: null },
+      scope: { traderId: PAYOUT.traderId, from: null, to: null },
     });
 
     await waitFor(() => {
@@ -147,7 +233,7 @@ describe('the scoped reads', () => {
 
   it('scopes the checks', async () => {
     const { result } = renderHookWithClient(() => useDataQuality(), {
-      scope: { traderId: OTHER_PAYOUT.traderId, year: null, month: null },
+      scope: { traderId: OTHER_PAYOUT.traderId, from: null, to: null },
     });
 
     await waitFor(() => {
@@ -158,11 +244,11 @@ describe('the scoped reads', () => {
   });
 
   it('carries the trader into the financial-year report, but not the period', async () => {
-    // The report's range is its own required argument: a month chosen in the
-    // bar must not silently re-cut a year somebody asked for.
+    // The report's range is its own required argument: a period chosen in
+    // the bar must not silently re-cut a year somebody asked for.
     const { result, client } = renderHookWithClient(
       () => useFinancialYearReport({ from: '2024-04-01', to: '2025-03-31' }),
-      { scope: { traderId: 2, year: 2025, month: 6 } },
+      { scope: { ...JUNE, traderId: 2 } },
     );
 
     await waitFor(() => {
@@ -182,7 +268,7 @@ describe('the scoped reads', () => {
 
   it('offers the years there is something to show, newest first', async () => {
     const { result } = renderHookWithClient(() => usePayoutYears(), {
-      // Narrowed to a month, and still offering both years: a year list built
+      // Narrowed to a month, and still offering every year: a year list built
       // from the scoped list could only ever offer the year already chosen.
       scope: JUNE,
     });
@@ -196,7 +282,7 @@ describe('the scoped reads', () => {
 
   it('leaves the trader list unscoped — it is the scope', async () => {
     const { result } = renderHookWithClient(() => useTraders(), {
-      scope: { traderId: 2, year: 2025, month: 6 },
+      scope: { ...JUNE, traderId: 2 },
     });
 
     await waitFor(() => {
