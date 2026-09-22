@@ -254,9 +254,9 @@ function PayoutDetailPage() {
         />
       </Box>
 
-      <Box sx={{ mt: 5 }}>
+      {/* <Box sx={{ mt: 5 }}>
         <DocumentUpload payoutId={payoutId} />
-      </Box>
+      </Box> */}
 
       {documents.dialogs}
     </Box>
