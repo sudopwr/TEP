@@ -1,10 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
 import { TestWorld, reference } from '../../test/fakes/world';
-import { TraderCodeTakenError } from '../domain/errors';
+import {
+  TraderCodeTakenError,
+  TraderNotFoundError,
+} from '../domain/errors';
 import { Money } from '../domain/money';
 import { USD } from '../domain/currency';
 
+import { EditTrader } from './edit-trader';
 import { GetAccountBalances } from './get-account-balances';
 import { ListPayouts } from './list-payouts';
 import { ListTraders } from './list-traders';
@@ -74,6 +78,104 @@ describe('RecordTrader', () => {
 
     await expect(world.users.count()).resolves.toBe(1);
     await expect(world.users.findByUsername('priya')).resolves.toBeNull();
+  });
+});
+
+describe('EditTrader', () => {
+  const editing = (world: TestWorld) => new EditTrader({ traders: world.traders });
+
+  it('renames one, which is the first thing anybody does', async () => {
+    // `004_traders.sql` says so in the row itself: "Created when traders were
+    // introduced; rename it."
+    const { world } = await setup();
+
+    const edited = await editing(world).execute({
+      traderId: reference.DEFAULT_TRADER.id,
+      code: 'kalpesh',
+      name: 'Kalpesh',
+      notes: null,
+    });
+
+    expect(edited.name).toBe('Kalpesh');
+    expect(edited.code).toBe('kalpesh');
+    await expect(
+      world.traders.findById(reference.DEFAULT_TRADER.id),
+    ).resolves.toEqual(edited);
+  });
+
+  it('keeps their payouts, since the id is not editable', async () => {
+    const { world, priya, hers } = await setup();
+
+    await editing(world).execute({
+      traderId: priya.id,
+      code: 'priya-s',
+      name: 'Priya S',
+    });
+
+    const still = await world.payouts.listByTrader(priya.id);
+    expect(still.map((payout) => payout.code)).toEqual([hers.code]);
+  });
+
+  it('lets a trader keep their own code while the name changes', async () => {
+    // The check `RecordTrader` cannot make: the code is taken, by this very
+    // trader, and that must not stop a rename.
+    const { world, priya } = await setup();
+
+    const edited = await editing(world).execute({
+      traderId: priya.id,
+      code: priya.code,
+      name: 'Priya Sharma',
+    });
+
+    expect(edited.code).toBe(priya.code);
+    expect(edited.name).toBe('Priya Sharma');
+  });
+
+  it('refuses a code somebody else already has', async () => {
+    const { world, priya } = await setup();
+
+    await expect(
+      editing(world).execute({
+        traderId: priya.id,
+        code: reference.DEFAULT_TRADER.code,
+        name: 'Priya',
+      }),
+    ).rejects.toBeInstanceOf(TraderCodeTakenError);
+  });
+
+  it('refuses a trader who is not there', async () => {
+    const { world } = await setup();
+
+    await expect(
+      editing(world).execute({ traderId: 4242, code: 'ghost', name: 'Ghost' }),
+    ).rejects.toBeInstanceOf(TraderNotFoundError);
+  });
+
+  it('clears the notes when they are left out', async () => {
+    // A replacement, like every other edit here: what the caller does not
+    // send, the trader does not have.
+    const { world } = await setup();
+
+    const edited = await editing(world).execute({
+      traderId: reference.DEFAULT_TRADER.id,
+      code: reference.DEFAULT_TRADER.code,
+      name: reference.DEFAULT_TRADER.name,
+    });
+
+    expect(edited.notes).toBeNull();
+  });
+
+  it('gives them no credential either', async () => {
+    const { world } = await setup();
+
+    await editing(world).execute({
+      traderId: reference.DEFAULT_TRADER.id,
+      code: 'kalpesh',
+      name: 'Kalpesh',
+    });
+
+    await expect(world.users.count()).resolves.toBe(1);
+    await expect(world.users.findByUsername('kalpesh')).resolves.toBeNull();
   });
 });
 

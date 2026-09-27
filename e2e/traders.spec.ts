@@ -144,3 +144,79 @@ test('a single month is both ends at once', async ({ page }) => {
   await page.getByRole('option', { name: 'June', exact: true }).click();
   await expect(page.getByText('TradeifyPayout001')).toBeHidden();
 });
+
+test('renames the default trader from the Traders screen (F27)', async ({
+  page,
+}) => {
+  /*
+    The first edit anybody makes.
+
+    `004_traders.sql` creates one trader for every payout that already
+    existed and says so in the row: "Created when traders were introduced;
+    rename it." This is where that is done — and the imported sheet has to
+    still be theirs afterwards, since payouts hang off the id and an edit
+    never touches it.
+  */
+  await page.getByRole('link', { name: 'Traders' }).click();
+
+  const table = page.getByRole('table', { name: 'Traders' });
+  const row = table.getByRole('row').filter({ hasText: 'default' });
+  await expect(row).toContainText('Me');
+  // One payout on file, and it is theirs.
+  await expect(row).toContainText('1');
+
+  await row.getByRole('button', { name: 'Edit' }).click();
+
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Trader name').fill('Kalpesh');
+  await dialog.getByLabel('Trader code').fill('kalpesh');
+  await dialog.getByLabel('Notes').fill('');
+  await dialog.getByRole('button', { name: 'Save trader' }).click();
+
+  await expect(page.getByText('Kalpesh saved')).toBeVisible();
+  // `exact`, or the name and the code match each other: Playwright's text
+  // matcher is a case-insensitive substring by default.
+  await expect(table.getByText('Kalpesh', { exact: true })).toBeVisible();
+  await expect(table.getByText('kalpesh', { exact: true })).toBeVisible();
+  // The notes were left blank, and an edit is a replacement.
+  await expect(
+    table.getByRole('row').filter({ hasText: 'kalpesh' }),
+  ).toContainText('—');
+
+  // The name follows into the bar at the top, which reads the same list.
+  await expect(page.getByRole('combobox', { name: 'Trader' })).toBeVisible();
+  await page.getByRole('combobox', { name: 'Trader' }).click();
+  await expect(page.getByRole('option', { name: 'Kalpesh' })).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // And the sheet is still theirs: the id never moved.
+  await page.getByRole('link', { name: 'Payouts' }).click();
+  await expect(page.getByText('TradeifyPayout001')).toBeVisible();
+});
+
+test('refuses a code another trader already has', async ({ page }) => {
+  await page.getByRole('combobox', { name: 'Trader' }).click();
+  await page.getByRole('option', { name: 'Add a trader…' }).click();
+
+  const adding = page.getByRole('dialog');
+  await adding.getByLabel(/Trader name/).fill('Priya');
+  await adding.getByLabel(/Trader code/).fill('priya');
+  await adding.getByRole('button', { name: 'Add trader' }).click();
+  await expect(adding).toBeHidden();
+
+  await page.getByRole('link', { name: 'Traders' }).click();
+  await page
+    .getByRole('table', { name: 'Traders' })
+    .getByRole('row')
+    .filter({ hasText: 'default' })
+    .getByRole('button', { name: 'Edit' })
+    .click();
+
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Trader code').fill('priya');
+  await dialog.getByRole('button', { name: 'Save trader' }).click();
+
+  // A sentence, not a constraint name, and the dialog stays open on it.
+  await expect(dialog).toContainText('already exists');
+  await expect(dialog.getByLabel('Trader code')).toHaveValue('priya');
+});

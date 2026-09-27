@@ -51,20 +51,18 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
     .getByText('TradeifyPayout001')
     .click();
 
-  await expect(
-    page.getByRole('heading', { name: 'Attach a document' }),
-  ).toBeVisible();
-
   /*
     A file usually belongs to a leg rather than to the payout — the exchange
-    statement belongs to the sale it settles — so the form offers both and
-    this journey chooses the leg. "The payout itself" is the default, and the
-    documents that belong to no movement go there (F23's own journey).
+    statement belongs to the sale it settles — so this journey attaches from
+    the leg's own button in the trail. The documents that belong to no
+    movement go on the payout itself (F23's own journey).
   */
-  await choose(page, 'Attach to').click();
-  await page.getByRole('option', { name: /Transaction003/ }).click();
+  await page
+    .getByRole('button', { name: 'Attach a document to Transaction003' })
+    .click();
 
-  await choose(page, 'Kind').click();
+  const dialog = page.getByRole('dialog');
+  await choose(dialog, 'Kind').click();
   await page.getByRole('option', { name: 'statement' }).click();
 
   /*
@@ -76,7 +74,7 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
     into, and it is deliberately clipped rather than `display: none` so that it
     stays reachable by keyboard — which is also what keeps it addressable here.
   */
-  await page.getByLabel('Choose a file').setInputFiles({
+  await dialog.getByLabel('Choose a file').setInputFiles({
     name: filename,
     mimeType: 'application/pdf',
     buffer: aPdf(token),
@@ -84,10 +82,10 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
 
   // Nothing is stored until it is named (F26): the file waits, under the
   // name it came with, for somebody to say go ahead.
-  await expect(page.getByLabel('Filename')).toHaveValue(filename);
-  await page.getByRole('button', { name: 'Attach document' }).click();
+  await expect(dialog.getByLabel('Filename')).toHaveValue(filename);
+  await dialog.getByRole('button', { name: 'Attach document' }).click();
 
-  await expect(page.getByText('Document attached')).toBeVisible();
+  await expect(page.getByText(`${filename} attached`)).toBeVisible();
 
   // It appears against the leg it was attached to, in the trail itself.
   await expect(
@@ -138,9 +136,9 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
   */
   await page.getByRole('button', { name: `Delete ${filename}` }).click();
 
-  const dialog = page.getByRole('dialog');
-  await expect(dialog).toContainText(`Delete ${filename}?`);
-  await dialog.getByRole('button', { name: 'Delete document' }).click();
+  const confirmation = page.getByRole('dialog');
+  await expect(confirmation).toContainText(`Delete ${filename}?`);
+  await confirmation.getByRole('button', { name: 'Delete document' }).click();
 
   await expect(page.getByText(new RegExp(`${filename} deleted`))).toBeVisible();
 

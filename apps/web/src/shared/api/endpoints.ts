@@ -39,6 +39,7 @@ import type {
   TransactionJson,
   TransactionsResponse,
   UpdateAccountCommand,
+  UpdateTraderCommand,
   UpdateTransactionCommand,
 } from './types';
 
@@ -146,6 +147,17 @@ export function createTrader(
   return request<{ trader: TraderJson }>('/api/traders', {
     method: 'POST',
     body: command,
+  });
+}
+
+/** F27 — the code, the name and the notes as they now read. */
+export function updateTrader({
+  traderId,
+  ...trader
+}: UpdateTraderCommand): Promise<{ trader: TraderJson }> {
+  return request<{ trader: TraderJson }>(`/api/traders/${String(traderId)}`, {
+    method: 'PUT',
+    body: trader,
   });
 }
 

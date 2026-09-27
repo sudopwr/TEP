@@ -27,6 +27,7 @@ import type {
   RecordCompany,
   RecordPayout,
   RecordSale,
+  EditTrader,
   RecordTrader,
   RecordTransaction,
   RunDataQualityChecks,
@@ -71,6 +72,7 @@ export interface UseCases {
   readonly listCompanies: ListCompanies;
 
   readonly recordTrader: RecordTrader;
+  readonly editTrader: EditTrader;
   readonly listTraders: ListTraders;
 
   readonly recordAccount: RecordAccount;

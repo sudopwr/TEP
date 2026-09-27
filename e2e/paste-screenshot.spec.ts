@@ -33,13 +33,22 @@ test('pastes a screenshot straight into the payout (F25)', async ({
     .getByText('TradeifyPayout001')
     .click();
 
-  await expect(
-    page.getByRole('heading', { name: 'Attach a document' }),
-  ).toBeVisible();
+  /*
+    The attach dialog is where a dropzone lives now: the payout screen's own
+    upload panel is hidden, so this is the one way in — and the one place a
+    paste has anywhere to land.
+  */
+  await page
+    .getByRole('button', { name: 'Attach a document', exact: true })
+    .click();
+
+  const dialog = page.getByRole('dialog');
 
   // The shortcut is on screen, because one nobody knows about is one nobody
   // uses. (⌘V on a Mac; the runner is not one.)
-  await expect(page.getByText(/paste an image from the clipboard/i)).toBeVisible();
+  await expect(
+    dialog.getByText(/paste an image from the clipboard/i),
+  ).toBeVisible();
 
   /*
     A paste, as the browser delivers one.
@@ -73,13 +82,13 @@ test('pastes a screenshot straight into the payout (F25)', async ({
     one the trail shows and F7 searches. The application proposes one; the
     reader types the one they will recognise.
   */
-  const proposed = page.getByLabel('Filename');
+  const proposed = dialog.getByLabel('Filename');
   await expect(proposed).toHaveValue(/^pasted-.*\.png$/);
 
   await proposed.fill('hdfc-credit-10-march');
-  await page.getByRole('button', { name: 'Attach document' }).click();
+  await dialog.getByRole('button', { name: 'Attach document' }).click();
 
-  await expect(page.getByText('Document attached')).toBeVisible();
+  await expect(page.getByText(/hdfc-credit-10-march\.png attached/)).toBeVisible();
 
   /*
     Stored under the typed name, with the ending kept.
@@ -134,10 +143,6 @@ test('a text paste still goes where it was typed', async ({ page, world }) => {
     .getByRole('table', { name: 'Payouts' })
     .getByText('TradeifyPayout001')
     .click();
-
-  await expect(
-    page.getByRole('heading', { name: 'Attach a document' }),
-  ).toBeVisible();
 
   // Inside the attach dialog, which is where a dropzone and a text field sit
   // together — the exact place a greedy paste handler would do damage.

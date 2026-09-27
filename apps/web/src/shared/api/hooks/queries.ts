@@ -106,6 +106,23 @@ export function usePayouts(
 }
 
 /**
+ * Every payout there is, whoever it belongs to and whenever it happened.
+ *
+ * Deliberately *not* scoped, and that is the whole point of it: the register
+ * of traders counts what each person owns, and "three payouts" has to mean
+ * three however the bar at the top is set — a count that moved when somebody
+ * narrowed the screen would be worse than no count. It shares the cache
+ * entry an unnarrowed `usePayouts` reads, so the common case is free.
+ */
+export function useAllPayouts(): UseQueryResult<readonly PayoutJson[]> {
+  return useQuery({
+    queryKey: queryKeys.payouts.list({}),
+    queryFn: ({ signal }) => fetchPayouts({}, signal),
+    select: (data) => data.payouts,
+  });
+}
+
+/**
  * The years there is anything to show, newest first (F24).
  *
  * Deliberately reads the *unscoped* list: the year dropdown must offer 2024

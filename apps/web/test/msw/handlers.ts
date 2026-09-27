@@ -62,6 +62,20 @@ export const handlers = [
   http.post('/api/traders', () =>
     HttpResponse.json({ trader: OTHER_TRADER }, { status: 201 }),
   ),
+  /*
+    A PUT echoes what it was sent, with the id from the URL.
+
+    Echoing rather than answering with a fixture, because the dialog's whole
+    job is to send the trader as it now is — a canned response would let a
+    form that sent the wrong body pass.
+  */
+  http.put('/api/traders/:id', async ({ request, params }) => {
+    const body = (await request.json()) as Record<string, unknown>;
+
+    return HttpResponse.json({
+      trader: { notes: null, ...body, id: Number(params['id']) },
+    });
+  }),
 
   http.get('/api/accounts', () => HttpResponse.json({ accounts: ACCOUNTS })),
   http.post('/api/accounts', () =>
@@ -388,6 +402,19 @@ export const traderCanBeAdded = (trader: TraderJson) => {
     }),
   ];
 };
+
+/** 409 — somebody else already has that code, on the way in or on an edit. */
+export const traderCodeTakenOnEdit = (code: string) =>
+  http.put('/api/traders/:id', () =>
+    HttpResponse.json(
+      {
+        code: 'trader_code_taken',
+        message: `A trader with the code '${code}' already exists.`,
+        details: { code },
+      },
+      { status: 409 },
+    ),
+  );
 
 /** 409 — somebody already has that code. */
 export const traderCodeTaken = (code: string) =>

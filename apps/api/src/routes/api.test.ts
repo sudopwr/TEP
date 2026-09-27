@@ -244,6 +244,79 @@ describe('/api routes', () => {
       expect(response.json().code).toBe('trader_not_found');
     });
 
+    it('edits one: the code, the name and the notes together (F27)', async () => {
+      const response = await put('/api/traders/1', {
+        code: 'kalpesh',
+        name: 'Kalpesh',
+        notes: 'the one the sheet belonged to',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().trader).toMatchObject({
+        id: 1,
+        code: 'kalpesh',
+        name: 'Kalpesh',
+      });
+
+      const listed = await get('/api/traders');
+      expect(listed.json().traders).toMatchObject([{ name: 'Kalpesh' }]);
+    });
+
+    it('lets a trader keep their own code while the name changes', async () => {
+      const response = await put('/api/traders/1', {
+        code: 'default',
+        name: 'Renamed',
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().trader.notes).toBeNull();
+    });
+
+    it('409s a code somebody else has, and 404s a trader who is not there', async () => {
+      await post('/api/traders', { code: 'priya', name: 'Priya' });
+
+      const taken = await put('/api/traders/1', {
+        code: 'priya',
+        name: 'Me',
+      });
+      const missing = await put('/api/traders/999', {
+        code: 'ghost',
+        name: 'Ghost',
+      });
+
+      expect(taken.statusCode).toBe(409);
+      expect(taken.json().code).toBe('trader_code_taken');
+      expect(missing.statusCode).toBe(404);
+      expect(missing.json().code).toBe('trader_not_found');
+    });
+
+    it('keeps the payouts of the trader it renamed', async () => {
+      // The id is what payouts hang off, and it is not editable — a rename
+      // that orphaned a ledger would be the worst kind of edit.
+      await post('/api/payouts', {
+        code: 'TradeifyPayout002',
+        traderId: 1,
+        companyId: 1,
+        grossAmount: '10.00',
+        currencyCode: 'USD',
+      });
+
+      await put('/api/traders/1', { code: 'kalpesh', name: 'Kalpesh' });
+
+      const mine = await get('/api/payouts?traderId=1');
+      expect(mine.json().payouts).toHaveLength(1);
+    });
+
+    it('400s a body carrying an id, rather than quietly ignoring it', async () => {
+      const response = await put('/api/traders/1', {
+        id: 7,
+        code: 'kalpesh',
+        name: 'Kalpesh',
+      });
+
+      expect(response.statusCode).toBe(400);
+    });
+
     it('rejects a payout with no trader at all', async () => {
       // There is no "whoever" column: the schema makes trader_id NOT NULL,
       // and the edge refuses before the adapter has to.

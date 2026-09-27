@@ -28,6 +28,7 @@ import {
   RecordCompany,
   RecordPayout,
   RecordSale,
+  EditTrader,
   RecordTrader,
   RecordTransaction,
   RunDataQualityChecks,
@@ -137,6 +138,7 @@ export function buildContainer(
     listCompanies: new ListCompanies({ companies }),
 
     recordTrader: new RecordTrader({ traders }),
+    editTrader: new EditTrader({ traders }),
     listTraders: new ListTraders({ traders }),
 
     recordAccount: new RecordAccount({ accounts, companies, currencies }),

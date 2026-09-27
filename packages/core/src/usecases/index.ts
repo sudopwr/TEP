@@ -198,6 +198,12 @@ export type {
 } from './record-trader';
 export { RecordTrader } from './record-trader';
 
+export type {
+  EditTraderCommand,
+  EditTraderDependencies,
+} from './edit-trader';
+export { EditTrader } from './edit-trader';
+
 export type { ListTradersDependencies } from './list-traders';
 export { ListTraders } from './list-traders';
 

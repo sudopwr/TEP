@@ -390,6 +390,14 @@ export interface CreateTraderCommand {
 }
 
 /**
+ * An edit is a **replacement** (F27), like an account's: what it does not
+ * carry, the trader no longer has.
+ */
+export interface UpdateTraderCommand extends CreateTraderCommand {
+  readonly traderId: number;
+}
+
+/**
  * The selection every scoped screen shares (F24): whose money, and when.
  *
  * One shape rather than three loose arguments, because the four screens that

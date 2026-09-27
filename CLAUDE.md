@@ -45,6 +45,7 @@ fees.
 | F24 | Several traders in one ledger: add one, switch, and scope every payout-derived screen to a trader and a period: a first and last month, so a tax year is expressible |
 | F25 | Paste a screenshot or an image from the clipboard to attach it as a document |
 | F26 | Name a file before it is stored, whichever way it arrived |
+| F27 | A Traders screen: the register, with each person's payout count; add and edit from it |
 
 ### Non-functional
 | # | Requirement |
@@ -80,12 +81,14 @@ GenerateFinancialYearReport.** A date range: credited / TDS / fees by company.
 them in §5a, which is their authority. **UC15–UC18 — DeletePayout, DeleteTransaction,
 EditTransaction, DeleteDocument** (F18, F20–F22) and **UC19–UC21 — LinkDocument,
 DetachDocument, ListDocumentsFor** (F23): each counts first, then does one atomic thing;
-§13's "what deletes, and what refuses" is the reasoning. **UC22, UC23 — RecordTrader,
-ListTraders.** F24: a person payouts belong to, with no credential of any kind. **UC24 —
-the scope** (`payout-scope.ts`): trader and range, both optional, honoured *identically*
-by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**, because §3 assumed they existed:
-`RecordCompany`, `RecordAccount`, `EditAccount`, `DeleteAccount`, `ListCompanies`,
-`ListAccounts`, `ListPayouts`, `ListTransactions`, `GetDocument`, `ImportLegacyCsv`.
+§13's "what deletes, and what refuses" is the reasoning. **UC22, UC23, UC25 —
+RecordTrader, ListTraders, EditTrader.** F24 and F27: a person payouts belong to, with
+no credential of any kind; an edit is a replacement and never touches the id their
+payouts hang off. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
+optional, honoured *identically* by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**,
+because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `EditAccount`,
+`DeleteAccount`, `ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
+`GetDocument`, `ImportLegacyCsv`.
 
 ## 4. Domain glossary
 
@@ -119,7 +122,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  11 spec files, 27 journeys, each against a world of its own
+e2e/                  11 spec files, 29 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,

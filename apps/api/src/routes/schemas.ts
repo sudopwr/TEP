@@ -387,3 +387,9 @@ export const createTraderBody = z
     notes: z.string().max(4096).nullish(),
   })
   .strict();
+
+/**
+ * The same shape, and deliberately not a partial one: an edit is a
+ * replacement (F27), so what is left out is cleared rather than kept.
+ */
+export const updateTraderBody = createTraderBody;

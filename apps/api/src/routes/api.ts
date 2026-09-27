@@ -27,6 +27,7 @@ import {
   searchDocumentsQuery,
   settlementQuery,
   updateAccountBody,
+  updateTraderBody,
   updateTransactionBody,
 } from './schemas';
 import { parseOrThrow } from './validate';
@@ -103,6 +104,28 @@ export function registerApiRoutes(app: FastifyInstance): void {
     });
 
     return reply.status(201).send({ trader: out.trader(trader) });
+  });
+
+  /*
+    F27 — correct one: the code, the name, the notes.
+
+    A PUT, because an edit here is a replacement like every other in this
+    file: what the body leaves out, the trader no longer has. There is no
+    DELETE beside it — `payouts.trader_id` is ON DELETE RESTRICT, and a
+    trader with no payouts is a name in a dropdown that costs nothing.
+  */
+  app.put('/api/traders/:id', async (request) => {
+    const { id } = parseOrThrow(idParam, request.params, 'params');
+    const body = parseOrThrow(updateTraderBody, request.body, 'body');
+
+    const trader = await app.useCases.editTrader.execute({
+      traderId: id,
+      code: body.code,
+      name: body.name,
+      ...(body.notes === undefined ? {} : { notes: body.notes }),
+    });
+
+    return { trader: out.trader(trader) };
   });
 
   // ---------- Accounts (F1) ----------

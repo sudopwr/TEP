@@ -1,6 +1,7 @@
 export {
   useAccountBalances,
   useAccounts,
+  useAllPayouts,
   useCompanies,
   useDataQuality,
   useDocumentSearch,
@@ -23,6 +24,7 @@ export {
   useDeletePayout,
   useDeleteTransaction,
   useEditAccount,
+  useEditTrader,
   useEditTransaction,
   useRecordAccount,
   useRecordCompany,

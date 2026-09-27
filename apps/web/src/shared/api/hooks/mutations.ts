@@ -10,6 +10,7 @@ import {
   createAccount,
   createCompany,
   createTrader,
+  updateTrader,
   createPayout,
   createTransaction,
   deleteAccount,
@@ -45,6 +46,7 @@ import type {
   TransactionJson,
   UpdateAccountCommand,
   TraderJson,
+  UpdateTraderCommand,
   UpdateTransactionCommand,
 } from '../types';
 
@@ -99,6 +101,27 @@ export function useRecordTrader(): UseMutationResult<
 
   return useMutation({
     mutationFn: createTrader,
+    onSuccess: () => invalidateAll(client, [queryKeys.traders.all()]),
+  });
+}
+
+/**
+ * F27 — renaming a trader touches the trader list, and nothing else.
+ *
+ * Not the payouts, the balances or the checks: a trader holds only identity,
+ * and every figure on those screens hangs off the id, which no edit changes.
+ * The name is read from this one list wherever it appears — the picker at the
+ * top of the shell and the register itself.
+ */
+export function useEditTrader(): UseMutationResult<
+  { trader: TraderJson },
+  Error,
+  UpdateTraderCommand
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: updateTrader,
     onSuccess: () => invalidateAll(client, [queryKeys.traders.all()]),
   });
 }

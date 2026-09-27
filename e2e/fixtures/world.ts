@@ -250,9 +250,15 @@ export function field(scope: Page | Locator, label: string): Locator {
   return scope.getByLabel(new RegExp(String.raw`^${label}\s*\*?$`));
 }
 
-/** A select rendered by `TextField select`, which is a combobox. */
-export function choose(page: Page, label: string): Locator {
-  return page.getByRole('combobox', { name: new RegExp(`^${label}`) });
+/**
+ * A select rendered by `TextField select`, which is a combobox.
+ *
+ * `Page | Locator` for the same reason as `field`: a dialog's selects have to
+ * be found within it, or a screen with a ‘Kind’ of its own behind the dialog
+ * makes the name ambiguous the moment one opens.
+ */
+export function choose(scope: Page | Locator, label: string): Locator {
+  return scope.getByRole('combobox', { name: new RegExp(`^${label}`) });
 }
 
 export { expect } from '@playwright/test';

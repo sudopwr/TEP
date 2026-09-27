@@ -138,7 +138,13 @@ Newest last. Never delete an entry — supersede it.
   range, the bar not re-cutting a year somebody asked for. **A period is two months, not
   a year**: a tax year starts in April, so April 2024 to March 2025 must be sayable, the
   year list reaches back a year further than the data, and clearing either end clears
-  both. **In UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th.
+  both. **In UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th. **A
+  trader is edited, never deleted** (F27): `payouts.trader_id` is ON DELETE RESTRICT, so
+  removing one would mean a ledger of awards to nobody, while one without payouts costs
+  a line in a dropdown — so the register offers Edit and no Delete at all. The edit is a
+  replacement like an account's, and it cannot touch the id, which is what the payouts
+  hang off. Its payout column is counted from an **unscoped** read (`useAllPayouts`): a
+  count that moved when somebody narrowed the bar would be worse than no count.
   `004_traders.sql` adds `trader_id` by **rebuilding the table**: with foreign keys on,
   `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it is SQLite's
   12-step dance under `defer_foreign_keys` and `legacy_alter_table`, §10 and the views

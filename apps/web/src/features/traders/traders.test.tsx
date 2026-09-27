@@ -1,10 +1,12 @@
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
 import { OTHER_TRADER } from '../../../test/msw/fixtures';
 import {
   traderCanBeAdded,
   traderCodeTaken,
+  traderCodeTakenOnEdit,
 } from '../../../test/msw/handlers';
 import { server } from '../../../test/msw/server';
 import { renderApp, screen, waitFor, within } from '../../../test/renderApp';
@@ -263,5 +265,177 @@ describe('adding a trader', () => {
     // way to add a credential, and the copy says so out loud.
     expect(document.querySelector('input[type="password"]')).toBeNull();
     expect(screen.getByText(/not a sign-in/)).toBeInTheDocument();
+  });
+});
+
+describe('the Traders screen (F27)', () => {
+  /*
+    Found fresh every time, never held.
+
+    A row is replaced whenever the table re-renders — and it re-renders as
+    each of its two queries settles, from a skeleton first — so a row
+    captured a moment ago is a detached node showing what it showed then.
+    Both helpers re-find it on every attempt, and neither nests a wait inside
+    a wait: the inner one would eat the outer one's budget and time out.
+  */
+  const findRow = (name: string): HTMLElement => {
+    const table = screen.getByRole('table', { name: 'Traders' });
+    const row = within(table).getByText(name).closest('tr');
+
+    if (row === null) throw new Error(`${name} is not in a row`);
+
+    return row;
+  };
+
+  const rowFor = (name: string): Promise<HTMLElement> =>
+    waitFor(() => findRow(name));
+
+  /** The payout count on one trader's row, once the table has settled. */
+  const expectCount = async (name: string, count: string): Promise<void> => {
+    await waitFor(
+      () => {
+        expect(within(findRow(name)).getByText(count)).toBeInTheDocument();
+      },
+      // The count needs both queries — the register and the unscoped payout
+      // list — and the row shows 0 until the second lands. More than the
+      // one-second default allows for two round trips through MSW.
+      { timeout: SETTLE_MS },
+    );
+  };
+
+  it('is reachable from the rail, and lists everybody', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/payouts' });
+
+    await user.click(await screen.findByRole('link', { name: 'Traders' }));
+
+    const table = await screen.findByRole('table', { name: 'Traders' });
+    expect(await within(table).findByText('Me')).toBeInTheDocument();
+    expect(within(table).getByText('Priya')).toBeInTheDocument();
+    expect(within(table).getByText('priya')).toBeInTheDocument();
+  });
+
+  it('counts each trader’s payouts, whatever the bar is showing', async () => {
+    // The register, not a view of the selection: "one payout" has to mean
+    // one, or the column is worse than no column.
+    const user = userEvent.setup();
+    renderApp({ route: '/traders' });
+
+    await expectCount('Me', '1');
+
+    // Narrow the bar to the other trader; the counts must not move.
+    await user.click(screen.getByRole('combobox', { name: /^Trader/ }));
+    await user.click(await screen.findByRole('option', { name: 'Priya' }));
+
+    await expectCount('Me', '1');
+    await expectCount('Priya', '1');
+  });
+
+  it('renames one from the row it is read on', async () => {
+    const user = userEvent.setup();
+    renderApp({ route: '/traders' });
+
+    await user.click(
+      within(await rowFor('Me')).getByRole('button', { name: 'Edit' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const name = within(dialog).getByRole('textbox', { name: /Trader name/ });
+    await user.clear(name);
+    await user.type(name, 'Kalpesh');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save trader' }),
+    );
+
+    expect(await screen.findByText('Kalpesh saved')).toBeInTheDocument();
+  });
+
+  it('sends the whole trader, so leaving the notes out clears them', async () => {
+    let sent: Record<string, unknown> | null = null;
+    server.use(
+      http.put('/api/traders/:id', async ({ request, params }) => {
+        sent = (await request.json()) as Record<string, unknown>;
+
+        return HttpResponse.json({
+          trader: { ...sent, id: Number(params['id']), notes: null },
+        });
+      }),
+    );
+
+    const user = userEvent.setup();
+    renderApp({ route: '/traders' });
+
+    await user.click(
+      within(await rowFor('Me')).getByRole('button', { name: 'Edit' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    await user.clear(within(dialog).getByRole('textbox', { name: /Notes/ }));
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save trader' }),
+    );
+
+    await waitFor(() => {
+      expect(sent).toMatchObject({ code: 'default', name: 'Me' });
+    });
+    expect(sent).not.toHaveProperty('notes');
+  });
+
+  it('says plainly when the code belongs to somebody else', async () => {
+    server.use(traderCodeTakenOnEdit('priya'));
+    const user = userEvent.setup();
+    renderApp({ route: '/traders' });
+
+    await user.click(
+      within(await rowFor('Me')).getByRole('button', { name: 'Edit' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    const code = within(dialog).getByRole('textbox', { name: /Trader code/ });
+    await user.clear(code);
+    await user.type(code, 'priya');
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Save trader' }),
+    );
+
+    expect(await screen.findByText(/already exists/)).toBeInTheDocument();
+    // Still open, with what was typed still in it.
+    expect(code).toHaveValue('priya');
+  });
+
+  it('adds one from the screen as well as from the bar', async () => {
+    server.use(...traderCanBeAdded({ id: 3, code: 'sam', name: 'Sam', notes: null }));
+    const user = userEvent.setup();
+    renderApp({ route: '/traders' });
+
+    await user.click(
+      await screen.findByRole('button', { name: 'Add trader' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Trader name/ }),
+      'Sam',
+    );
+    await user.type(
+      within(dialog).getByRole('textbox', { name: /Trader code/ }),
+      'sam',
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Add trader' }));
+
+    expect(await screen.findByText('Sam added')).toBeInTheDocument();
+    expect(
+      await within(
+        await screen.findByRole('table', { name: 'Traders' }),
+      ).findByText('Sam'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers no way to delete one, because their payouts hang off them', async () => {
+    renderApp({ route: '/traders' });
+
+    await screen.findByRole('table', { name: 'Traders' });
+
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
   });
 });

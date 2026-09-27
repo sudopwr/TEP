@@ -21,7 +21,6 @@ import {
 import { DataQualityScreen } from './features/data-quality';
 import {
   DocumentSearch,
-  DocumentUpload,
   PayoutDocuments,
   useDocumentAttachments,
 } from './features/documents';
@@ -36,7 +35,7 @@ import {
   FinancialYearReport,
   SettlementPanel,
 } from './features/reports';
-import { ScopeBar } from './features/traders';
+import { ScopeBar, TraderList } from './features/traders';
 import {
   RecordTransactionForm,
   TransactionTree,
@@ -63,6 +62,7 @@ import { AppShell, type Destination } from './shared/layout';
 
 const DESTINATIONS: readonly Destination[] = [
   { label: 'Payouts', to: '/payouts' },
+  { label: 'Traders', to: '/traders' },
   { label: 'Accounts', to: '/accounts' },
   { label: 'Balances', to: '/balances' },
   { label: 'Documents', to: '/documents' },
@@ -352,6 +352,7 @@ export function AppRoutes() {
           path="/payouts/:payoutId/transactions/new"
           element={<RecordTransactionPage />}
         />
+        <Route path="/traders" element={<TraderList />} />
         <Route path="/accounts" element={<AccountList />} />
         <Route path="/accounts/new" element={<RecordAccountForm />} />
         <Route path="/balances" element={<BalancesPage />} />
