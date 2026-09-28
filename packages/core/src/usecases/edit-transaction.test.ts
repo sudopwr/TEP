@@ -190,3 +190,48 @@ describe('EditTransaction', () => {
     ).resolves.toEqual(reference.SALE_003);
   });
 });
+
+describe('EditTransaction and the chain fields (F28)', () => {
+  it('corrects a mistyped address', async () => {
+    // The commonest thing to get wrong about a transfer, and the reason the
+    // three fields are part of the row rather than carried like a reference.
+    const { world, useCase } = setup();
+
+    const edited = await useCase.execute(
+      command({
+        fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+        toAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+        explorerUrl: 'https://tronscan.org/#/transaction/9f2c',
+      }),
+    );
+
+    expect(edited.fromAddress).toBe('TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa');
+    const stored = await world.transactions.findById(edited.id);
+    expect(stored?.explorerUrl).toBe(
+      'https://tronscan.org/#/transaction/9f2c',
+    );
+  });
+
+  it('clears them when they are left out, because an edit is a replacement', async () => {
+    const { useCase } = setup();
+
+    await useCase.execute(
+      command({ fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa' }),
+    );
+    const cleared = await useCase.execute(command());
+
+    expect(cleared.fromAddress).toBeNull();
+    expect(cleared.explorerUrl).toBeNull();
+  });
+
+  it('still carries the platform references, which the form never offers', async () => {
+    // The distinction: a reference came off a statement and survives every
+    // edit (§9 defect 3), while an address is typed here and is replaced.
+    const { useCase } = setup();
+
+    const edited = await useCase.execute(command({ toAddress: '0xabc' }));
+
+    expect(edited.fromExternalRef).toBe(reference.TRANSFER_A.fromExternalRef);
+    expect(edited.toExternalRef).toBe(reference.TRANSFER_A.toExternalRef);
+  });
+});

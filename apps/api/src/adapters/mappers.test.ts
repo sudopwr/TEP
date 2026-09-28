@@ -126,6 +126,9 @@ describe('row mappers', () => {
       rate_applied: 9826120000n,
       from_external_ref: 'CDX-ORD-9001',
       to_external_ref: '1.43908E+19',
+      from_address: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+      to_address: null,
+      explorer_url: 'https://tronscan.org/#/transaction/9f2c',
       notes: null,
     };
 
@@ -144,6 +147,18 @@ describe('row mappers', () => {
       expect(transaction.fromExternalRef).toBe('CDX-ORD-9001');
       // Already a float when it reached the sheet; still a string here.
       expect(transaction.toExternalRef).toBe('1.43908E+19');
+    });
+
+    it('carries the chain columns, which the schema always had (F28)', () => {
+      const transaction = toTransaction(row, currencies);
+
+      expect(transaction.fromAddress).toBe(
+        '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+      );
+      expect(transaction.toAddress).toBeNull();
+      expect(transaction.explorerUrl).toBe(
+        'https://tronscan.org/#/transaction/9f2c',
+      );
     });
 
     it('keeps the rate a bigint, never a float', () => {

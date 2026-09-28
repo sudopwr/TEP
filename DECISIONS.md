@@ -138,14 +138,57 @@ Newest last. Never delete an entry — supersede it.
   range, the bar not re-cutting a year somebody asked for. **A period is two months, not
   a year**: a tax year starts in April, so April 2024 to March 2025 must be sayable, the
   year list reaches back a year further than the data, and clearing either end clears
-  both. **In UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th. **A
-  trader is edited, never deleted** (F27): `payouts.trader_id` is ON DELETE RESTRICT, so
-  removing one would mean a ledger of awards to nobody, while one without payouts costs
-  a line in a dropdown — so the register offers Edit and no Delete at all. The edit is a
-  replacement like an account's, and it cannot touch the id, which is what the payouts
-  hang off. Its payout column is counted from an **unscoped** read (`useAllPayouts`): a
-  count that moved when somebody narrowed the bar would be worse than no count.
-  `004_traders.sql` adds `trader_id` by **rebuilding the table**: with foreign keys on,
-  `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it is SQLite's
-  12-step dance under `defer_foreign_keys` and `legacy_alter_table`, §10 and the views
-  proven after.
+  both. **In UTC**: local, `new Date(2025, 2, 31)` reaches the server as the 30th. **The
+  application now makes one outbound request** (F29), and every part of that sentence is
+  load-bearing: *one* — reading a pasted explorer link; *outbound* — the first thing
+  here ever to leave the machine, which §1 had said it never did; *request* — made when
+  somebody pastes and asks, never on a schedule, carrying a transaction hash and nothing
+  about the payout. **The pasted link is parsed, never fetched**: `parseExplorerLink`
+  reduces it to a chain and a hash in the *domain*, and the adapter builds its own URL
+  from constants — a service that fetched what it was handed would read the cloud
+  metadata endpoint or a printer on the LAN for anybody who asked, and the tests name
+  those attempts. **A token transfer's `to` is the contract, not the person**: every
+  USDT transfer on Ethereum has `to` = `0xdac17f…`, so the recipient is decoded out of
+  the `transfer(address,uint256)` call data, and a call that cannot be decoded leaves
+  the field empty rather than filling it confidently and wrongly. **Not-found and
+  cannot-read are different answers** — 404 against 503 — because one means the link is
+  wrong and the other means this is not set up; a reader who cannot tell them apart
+  retypes a link that was right. That 503 is also why `describeError` now passes a
+  *typed* 5xx message through, while an untyped `internal_error` still gets the opaque
+  sentence that keeps SQLite strings off the screen. **The key lives in `.env`**, beside
+  `SESSION_SECRET` and never in the bundle; absent is a supported state, and the fields
+  stay typeable. **What is filled in is a suggestion**: the form never overwrites an
+  address somebody typed, only the one it filled itself. **A bare hash is accepted
+  too**, because that is what an exchange hands you: it names no chain, so the ones
+  sharing its shape (Ethereum, BSC, Polygon — the same software) are asked in turn and
+  the first that has heard of it wins, while 64 hex without `0x` is Tron and
+  unambiguous. The field then takes back the **canonical page**, which it must: that
+  column is rendered as an anchor and the edge takes only http(s), so a hash left in it
+  would be refused on save. ~~The key is read from `process.env`.~~ Superseded by
+  **every setting is read by name, environment first and `.env` second**
+  (`config/env-file.ts`): nothing loads that file into the environment — the bootstrap
+  had only ever pulled `SESSION_SECRET` out of it — so a key written into `.env` was
+  invisible and the interface reported it missing. The wiring now has a name and a test
+  of its own, because the bug was in the wiring and a test one layer below it would have
+  passed. **The chain fields were always in the schema** (F28): `from_address`,
+  `to_address` and `explorer_url` are in `001_initial.sql`, and until now nothing above
+  it wrote them — the addresses **snapshot on the leg** because the wallet used that day
+  is a fact about the transfer, while `account_identifiers` says which addresses an
+  account has. The interface offers them when a **wallet is on either side or a token is
+  on either side**, since a wallet can be topped up in fiat and an exchange can send
+  USDT without a wallet in sight; the browser spots a token by §6's scale, having no
+  `kind` column to read. **The link is validated at both ends**: it is rendered as an
+  anchor, so the edge takes only http and https and the component refuses to render
+  anything else — a `javascript:` URL in a ledger is a script the reader runs by
+  clicking their own evidence, and `noreferrer` keeps the payout out of the explorer's
+  logs. An address on a rupee leg is **odd, not impossible**, so nothing refuses one
+  (§7). **A trader is edited, never deleted** (F27): `payouts.trader_id` is ON DELETE
+  RESTRICT, so removing one would mean a ledger of awards to nobody, while one without
+  payouts costs a line in a dropdown — so the register offers Edit and no Delete at all.
+  The edit is a replacement like an account's, and it cannot touch the id, which is what
+  the payouts hang off. Its payout column is counted from an **unscoped** read
+  (`useAllPayouts`): a count that moved when somebody narrowed the bar would be worse
+  than no count. `004_traders.sql` adds `trader_id` by **rebuilding the table**: with
+  foreign keys on, `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it
+  is SQLite's 12-step dance under `defer_foreign_keys` and `legacy_alter_table`, §10 and
+  the views proven after.

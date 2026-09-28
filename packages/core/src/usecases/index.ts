@@ -204,6 +204,13 @@ export type {
 } from './edit-trader';
 export { EditTrader } from './edit-trader';
 
+export type {
+  ChainTransferFound,
+  LookUpChainTransferCommand,
+  LookUpChainTransferDependencies,
+} from './look-up-chain-transfer';
+export { LookUpChainTransfer } from './look-up-chain-transfer';
+
 export type { ListTradersDependencies } from './list-traders';
 export { ListTraders } from './list-traders';
 

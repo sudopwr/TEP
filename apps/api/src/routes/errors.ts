@@ -37,6 +37,8 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   ['UnresolvableFeeBasisError', 400],
   ['InvalidUsernameError', 400],
   ['PasswordPolicyError', 400],
+  // A link this application does not read is a request it cannot act on.
+  ['UnsupportedExplorerError', 400],
 
   // 401 — who are you. Both carry one message by design; see §5a.
   ['AuthenticationFailedError', 401],
@@ -50,6 +52,7 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   ['TransactionNotFoundError', 404],
   ['UserNotFoundError', 404],
   ['DocumentNotFoundError', 404],
+  ['ChainTransferNotFoundError', 404],
 
   // 409 — the request is fine, the world disagrees with it.
   ['UsernameTakenError', 409],
@@ -61,6 +64,15 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   // 422 — the data on file cannot answer this, and no request can fix it.
   ['AmbiguousFeeScheduleError', 422],
   ['DocumentFileMissingError', 422],
+
+  /*
+    503 — this application is fine and something it depends on is not.
+
+    The only entry that is about the world outside the machine (F29): no
+    API key, no network, a rate limit. Distinct from a 404 on purpose — the
+    link may be perfectly good, and the addresses can still be typed.
+  */
+  ['ChainLookupUnavailableError', 503],
 ]);
 
 /** The status a domain error means, or 500 if nobody has decided. */

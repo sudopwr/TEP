@@ -38,6 +38,10 @@ export interface RecordTransactionCommand {
   readonly toAmount: string;
   readonly toCurrencyCode: string;
   readonly rate: bigint | null;
+  /** F28 — the chain's own record of this leg: both ends and the link. */
+  readonly fromAddress?: string | null;
+  readonly toAddress?: string | null;
+  readonly explorerUrl?: string | null;
   readonly notes?: string | null;
 }
 
@@ -102,6 +106,9 @@ export class RecordTransaction {
       fromAmount: Money.fromDecimalString(command.fromAmount, fromCurrency),
       toAmount: Money.fromDecimalString(command.toAmount, toCurrency),
       rate: command.rate,
+      fromAddress: command.fromAddress ?? null,
+      toAddress: command.toAddress ?? null,
+      explorerUrl: command.explorerUrl ?? null,
       notes: command.notes ?? null,
     });
   }

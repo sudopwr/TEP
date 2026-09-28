@@ -23,6 +23,7 @@ import {
   ListCompanies,
   ListPayouts,
   ListTraders,
+  LookUpChainTransfer,
   ListTransactions,
   RecordAccount,
   RecordCompany,
@@ -40,6 +41,10 @@ import {
 } from '@payout/core';
 
 import { CryptoIdGenerator } from './adapters/crypto-id-generator';
+import {
+  HttpChainLookup,
+  type ChainLookupConfig,
+} from './adapters/http-chain-lookup';
 import { loadCurrencyRegistry } from './adapters/currency-registry';
 import { FileCsvReader } from './adapters/file-csv-reader';
 import { FileSystemDocumentStore } from './adapters/filesystem-document-store';
@@ -91,6 +96,13 @@ export interface ContainerOptions {
   readonly sessionLifetimeMs?: number;
   readonly clock?: Clock;
   readonly ids?: IdGenerator;
+  /**
+   * Where explorer links are read (F29).
+   *
+   * The one adapter that talks to the internet, so the one a test always
+   * wants to point somewhere else — a stub server, or nowhere at all.
+   */
+  readonly chainLookup?: ChainLookupConfig;
 }
 
 export function buildContainer(
@@ -138,6 +150,9 @@ export function buildContainer(
     listCompanies: new ListCompanies({ companies }),
 
     recordTrader: new RecordTrader({ traders }),
+    lookUpChainTransfer: new LookUpChainTransfer({
+      chain: new HttpChainLookup(options.chainLookup ?? {}),
+    }),
     editTrader: new EditTrader({ traders }),
     listTraders: new ListTraders({ traders }),
 

@@ -1,9 +1,15 @@
 import userEvent from '@testing-library/user-event';
+import { HttpResponse, http } from 'msw';
 import { describe, expect, it } from 'vitest';
 
-import { REFERENCE_TRAIL } from '../../../test/msw/reference-payout';
+import {
+  REFERENCE_TRAIL,
+  REFERENCE_TRANSACTIONS,
+} from '../../../test/msw/reference-payout';
 import {
   answering,
+  chainLookupUnavailable,
+  chainTransferNotFound,
   deleteFails,
   invalidRequest,
   unreachable,
@@ -525,6 +531,50 @@ describe('editing a leg', () => {
     expect(within(dialog).getByLabelText(/^Amount sent/)).not.toHaveValue('');
   });
 
+  it('offers the chain fields on a wallet leg, filled in (F28)', async () => {
+    // Transfer A is TrustWallet -> CoinDCX in USDT, so it is a chain hop by
+    // both halves of the rule. The trail fixture has no addresses on it, so
+    // the fields are there and empty — which is the state somebody fills in.
+    const dialog = await openTheEditor('Transaction007');
+
+    expect(
+      within(dialog).getByLabelText(/^From wallet address/),
+    ).toHaveValue('');
+    expect(within(dialog).getByLabelText(/^Transaction link/)).toBeInTheDocument();
+  });
+
+  it('sends the address that was typed into it', async () => {
+    const sent = new Promise<Record<string, unknown>>((resolve) => {
+      server.use(
+        http.put('/api/transactions/:id', async ({ request, params }) => {
+          const body = (await request.json()) as Record<string, unknown>;
+          resolve(body);
+
+          return HttpResponse.json({
+            transaction: {
+              ...REFERENCE_TRANSACTIONS[6],
+              id: Number(params['id']),
+              fromAddress: body['fromAddress'],
+            },
+          });
+        }),
+      );
+    });
+
+    const dialog = await openTheEditor('Transaction007');
+    await userEvent.type(
+      within(dialog).getByLabelText(/^From wallet address/),
+      'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+    );
+    await userEvent.click(
+      within(dialog).getByRole('button', { name: 'Save leg' }),
+    );
+
+    expect(await sent).toMatchObject({
+      fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+    });
+  });
+
   it('says what it will not touch, and what the checks will say', async () => {
     // The fees are the honest consequence: they stay as recorded, and §7
     // flags them rather than the edit recomputing them behind the reader.
@@ -732,5 +782,449 @@ describe('documents on a leg', () => {
     );
 
     expect(asked).toEqual(['Transaction003/coindcx-march.pdf']);
+  });
+});
+
+describe('the chain fields (F28)', () => {
+  const open = async () => {
+    renderFeature(
+      <RecordTransactionForm
+        payoutId={1}
+        onRecorded={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    await screen.findByRole('combobox', { name: /From account/ });
+  };
+
+  const choose = async (field: RegExp, option: RegExp | string) => {
+    await userEvent.click(screen.getByRole('combobox', { name: field }));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+  };
+
+  /** The body the form posted, whatever shape it was. */
+  const posted = (): Promise<Record<string, unknown>> =>
+    new Promise((resolve) => {
+      server.use(
+        http.post('/api/transactions', async ({ request }) => {
+          resolve((await request.json()) as Record<string, unknown>);
+
+          return HttpResponse.json(
+            { transaction: REFERENCE_TRANSACTIONS[2] },
+            { status: 201 },
+          );
+        }),
+      );
+    });
+
+  it('asks for them once a wallet is on either side', async () => {
+    await open();
+
+    expect(
+      screen.queryByLabelText(/^From wallet address/),
+    ).not.toBeInTheDocument();
+
+    await choose(/From account/, 'TrustWallet');
+
+    expect(screen.getByLabelText(/^From wallet address/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^To wallet address/)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Transaction link or hash/)).toBeInTheDocument();
+  });
+
+  it('asks for them when the money is a token, wallet or no wallet', async () => {
+    // A hop between an exchange and a platform still leaves a chain behind
+    // if what moved was USDT.
+    await open();
+    await choose(/From account/, 'CoinDCX');
+    await choose(/Currency sent/, 'USDT');
+
+    expect(screen.getByLabelText(/^Transaction link or hash/)).toBeInTheDocument();
+  });
+
+  it('leaves them off a rupee leg between two banks', async () => {
+    await open();
+    await choose(/From account/, 'CoinDCX');
+    await choose(/Currency sent/, 'INR');
+    await choose(/To account/, 'HDFC');
+    await choose(/Currency received/, 'INR');
+
+    expect(
+      screen.queryByLabelText(/^From wallet address/),
+    ).not.toBeInTheDocument();
+  });
+
+  it('sends the three fields with the leg', async () => {
+    const sent = posted();
+    await open();
+
+    await userEvent.type(
+      screen.getByLabelText(/^Reference code/),
+      'Transaction900',
+    );
+    await choose(/From account/, 'TrustWallet');
+    await choose(/Currency sent/, 'USDT');
+    await choose(/To account/, 'CoinDCX');
+    await choose(/Currency received/, 'USDT');
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), '10');
+    await userEvent.type(screen.getByLabelText(/^Amount received/), '10');
+
+    await userEvent.type(
+      screen.getByLabelText(/^From wallet address/),
+      'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+    );
+    await userEvent.type(
+      screen.getByLabelText(/^To wallet address/),
+      '0x8f3a1c4b',
+    );
+    await userEvent.type(
+      screen.getByLabelText(/^Transaction link or hash/),
+      'https://tronscan.org/tx/9f2c',
+    );
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    expect(await sent).toMatchObject({
+      fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+      toAddress: '0x8f3a1c4b',
+      explorerUrl: 'https://tronscan.org/tx/9f2c',
+    });
+  });
+
+  it('sends nothing for the fields it never showed', async () => {
+    // A wallet address typed for one kind and left behind when the reader
+    // changed their mind must not be filed against a bank transfer.
+    const sent = posted();
+    await open();
+
+    await userEvent.type(
+      screen.getByLabelText(/^Reference code/),
+      'Transaction901',
+    );
+    await choose(/From account/, 'CoinDCX');
+    await choose(/Currency sent/, 'INR');
+    await choose(/To account/, 'HDFC');
+    await choose(/Currency received/, 'INR');
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), '100');
+    await userEvent.type(screen.getByLabelText(/^Amount received/), '100');
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    const body = await sent;
+    expect(body).not.toHaveProperty('fromAddress');
+    expect(body).not.toHaveProperty('explorerUrl');
+  });
+
+  /** The §10 trail with the root leg given a chain to have moved along. */
+  const trailWithChain = (chain: Record<string, string>) => {
+    const [credit, ...rest] = REFERENCE_TRAIL.roots;
+    if (credit === undefined) throw new Error('the trail has no root');
+
+    return answering('/api/payouts/:id/trail', {
+      ...REFERENCE_TRAIL,
+      roots: [
+        {
+          ...credit,
+          transaction: { ...credit.transaction, ...chain },
+          children: [],
+        },
+        ...rest,
+      ],
+    });
+  };
+
+  it('shows the addresses and the link on the leg in the trail', async () => {
+    server.use(
+      trailWithChain({
+        fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+        toAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+        explorerUrl: 'https://tronscan.org/tx/9f2c',
+      }),
+    );
+
+    renderFeature(<TransactionTree payoutId={1} />);
+    await screen.findByRole('tree', { name: /Money trail/ });
+
+    // Middle-truncated: the ends are what a reader checks against a wallet
+    // app, and the whole address is in the title for copying.
+    const address = await screen.findByTitle(
+      'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+    );
+    expect(address).toHaveTextContent('TQ5NMqJj');
+    expect(address).toHaveTextContent('sz9Xsa');
+
+    const link = screen.getByRole('link', { name: 'View on explorer' });
+    expect(link).toHaveAttribute('href', 'https://tronscan.org/tx/9f2c');
+    expect(link).toHaveAttribute('target', '_blank');
+    // No referrer: the explorer has no business knowing which page sent it.
+    expect(link.getAttribute('rel')).toContain('noreferrer');
+  });
+
+  it('refuses to render a link that is not http, whatever is on file', async () => {
+    // The server rejects these (`explorerUrl` is checked at the edge), so
+    // this is the second lock: a ledger must never hand the reader a
+    // `javascript:` anchor to click.
+    server.use(trailWithChain({ explorerUrl: 'javascript:alert(1)' }));
+
+    renderFeature(<TransactionTree payoutId={1} />);
+    await screen.findByRole('tree', { name: /Money trail/ });
+
+    expect(
+      screen.queryByRole('link', { name: 'View on explorer' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('says nothing at all on the legs that have none', async () => {
+    renderFeature(<TransactionTree payoutId={1} />);
+    await screen.findByRole('tree', { name: /Money trail/ });
+
+    expect(
+      screen.queryByRole('link', { name: 'View on explorer' }),
+    ).not.toBeInTheDocument();
+  });
+});
+
+describe('filling the addresses from the link (F29)', () => {
+  const PASTED =
+    'https://etherscan.io/tx//0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94';
+  const SENDER = '0x1111111111111111111111111111111111111111';
+  const RECIPIENT = '0x2222222222222222222222222222222222222222';
+
+  /*
+    Pasted, not typed.
+
+    It is what a person does with a link, and it is one event rather than
+    sixty-six: `userEvent.type` re-renders the form for every character, and
+    under a loaded suite that alone took this past the timeout.
+  */
+  const pasteInto = async (label: RegExp, text: string): Promise<void> => {
+    await userEvent.click(screen.getByLabelText(label));
+    await userEvent.paste(text);
+  };
+
+  /** The form, open on a wallet leg so the three fields are on screen. */
+  const onAWalletLeg = async () => {
+    renderFeature(
+      <RecordTransactionForm
+        payoutId={1}
+        onRecorded={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    await screen.findByRole('combobox', { name: /From account/ });
+    await userEvent.click(
+      screen.getByRole('combobox', { name: /From account/ }),
+    );
+    await userEvent.click(
+      await screen.findByRole('option', { name: 'TrustWallet' }),
+    );
+  };
+
+  it('fills both addresses a moment after the link is pasted', async () => {
+    // The whole point: the link is already in the clipboard of anybody who
+    // has just made the transfer, and typing an address by hand is how a
+    // ledger ends up with one that is almost right.
+    await onAWalletLeg();
+
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^From wallet address/)).toHaveValue(
+          SENDER,
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^To wallet address/)).toHaveValue(RECIPIENT);
+  });
+
+  it('says where they came from, and that they are worth checking', async () => {
+    await onAWalletLeg();
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    expect(
+      await screen.findByText(/Filled in from ethereum/, undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('never overwrites an address that was typed by hand', async () => {
+    // A form that fights the reader is worse than one that does nothing.
+    await onAWalletLeg();
+
+    await userEvent.type(
+      screen.getByLabelText(/^From wallet address/),
+      'TMyOwnWalletAddress',
+    );
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    // The empty one fills; the typed one is left alone.
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^To wallet address/)).toHaveValue(
+          RECIPIENT,
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^From wallet address/)).toHaveValue(
+      'TMyOwnWalletAddress',
+    );
+  });
+
+  it('says what happened when the explorer cannot be read', async () => {
+    // A 503 is not a 404: the link may be perfectly good, and the message
+    // ends by saying the addresses can still be typed.
+    server.use(chainLookupUnavailable());
+    await onAWalletLeg();
+
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    expect(
+      await screen.findByText(/ETHERSCAN_API_KEY/, undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+    // And the fields are still there to type into.
+    expect(screen.getByLabelText(/^From wallet address/)).toHaveValue('');
+  });
+
+  it('says so when the chain has never seen that transaction', async () => {
+    server.use(chainTransferNotFound());
+    await onAWalletLeg();
+
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    expect(
+      await screen.findByText(/has no transaction/, undefined, {
+        timeout: 5_000,
+      }),
+    ).toBeInTheDocument();
+  });
+
+  it('asks once for one link, however many times it renders', async () => {
+    let asked = 0;
+    server.use(
+      http.post('/api/chain/lookup', () => {
+        asked += 1;
+
+        return HttpResponse.json({
+          chain: 'ethereum',
+          hash: '0xabc',
+          explorerUrl: PASTED,
+          fromAddress: SENDER,
+          toAddress: RECIPIENT,
+          tokenContract: null,
+        });
+      }),
+    );
+
+    await onAWalletLeg();
+    await pasteInto(/^Transaction link or hash/, PASTED);
+
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^To wallet address/)).toHaveValue(
+          RECIPIENT,
+        );
+      },
+      { timeout: 5_000 },
+    );
+
+    // Filling the fields re-renders the form; that must not be a second
+    // request to somebody else's server.
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    expect(asked).toBe(1);
+  });
+
+  it('takes a bare hash, and puts the link back in the field', async () => {
+    // What an exchange hands you is a hash. The chain is worked out by
+    // asking, and the field takes back the page it was found on — which is
+    // also what the column can store, since it is rendered as an anchor.
+    await onAWalletLeg();
+
+    await pasteInto(
+      /^Transaction link or hash/,
+      '0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94',
+    );
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByLabelText(/^Transaction link or hash/),
+        ).toHaveValue(
+          'https://etherscan.io/tx/0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94',
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^From wallet address/)).toHaveValue(SENDER);
+  });
+
+  it('does not ask again for the link it just filled in', async () => {
+    let asked = 0;
+    server.use(
+      http.post('/api/chain/lookup', () => {
+        asked += 1;
+
+        return HttpResponse.json({
+          chain: 'ethereum',
+          hash: '0xabc',
+          explorerUrl: 'https://etherscan.io/tx/0xabc',
+          fromAddress: SENDER,
+          toAddress: RECIPIENT,
+          tokenContract: null,
+        });
+      }),
+    );
+
+    await onAWalletLeg();
+    await pasteInto(
+      /^Transaction link or hash/,
+      '0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94',
+    );
+
+    await waitFor(
+      () => {
+        expect(
+          screen.getByLabelText(/^Transaction link or hash/),
+        ).toHaveValue('https://etherscan.io/tx/0xabc');
+      },
+      { timeout: 5_000 },
+    );
+
+    // Rewriting the field must not look the new value up in its turn.
+    await new Promise((resolve) => setTimeout(resolve, 1_200));
+    expect(asked).toBe(1);
+  });
+
+  it('leaves the fields alone until there is a link at all', async () => {
+    let asked = 0;
+    server.use(
+      http.post('/api/chain/lookup', () => {
+        asked += 1;
+
+        return HttpResponse.json({
+          chain: 'ethereum',
+          hash: '0xabc',
+          explorerUrl: PASTED,
+          fromAddress: SENDER,
+          toAddress: RECIPIENT,
+          tokenContract: null,
+        });
+      }),
+    );
+
+    await onAWalletLeg();
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+
+    expect(asked).toBe(0);
   });
 });

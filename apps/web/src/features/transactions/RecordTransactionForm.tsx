@@ -21,6 +21,14 @@ import { describeError, fieldErrors } from '../../shared/api/errors';
 import { AmountField, ErrorState } from '../../shared/components';
 import { useToast } from '../../shared/feedback';
 
+import {
+  ChainFieldset,
+  EMPTY_CHAIN,
+  movesOnChain,
+  toChainCommand,
+  type ChainValues,
+} from './chain';
+
 /**
  * F3/F4 — record one leg of the tree.
  *
@@ -95,6 +103,7 @@ export function RecordTransactionForm({
   const [toCurrency, setToCurrency] = useState('');
   const [rate, setRate] = useState('');
   const [tds, setTds] = useState('');
+  const [chain, setChain] = useState<ChainValues>(EMPTY_CHAIN);
 
   /*
     `useAccounts`, not `useAccountBalances`. Balances are derived from
@@ -121,6 +130,13 @@ export function RecordTransactionForm({
   const sameAccount = fromAccountId !== '' && fromAccountId === toAccountId;
 
   const isSale = kind === 'sale';
+  /** F28 — a wallet on either side, or a token on either side. */
+  const onChain = movesOnChain({
+    from,
+    to,
+    fromCurrency,
+    toCurrency,
+  });
   const mutation = isSale ? recordSale : recordMovement;
   const sameCurrency =
     !isSale && fromCurrency !== '' && fromCurrency === toCurrency;
@@ -139,6 +155,10 @@ export function RecordTransactionForm({
       fromAmount,
       fromCurrencyCode: fromCurrency,
       ...(parentId === '' ? {} : { parentId: Number(parentId) }),
+      // Sent only when the fields are on screen: a wallet address left over
+      // from a kind the reader changed their mind about would be recorded
+      // against a leg that never went near a chain (F28).
+      ...(onChain ? toChainCommand(chain) : {}),
     };
 
     if (isSale) {
@@ -420,6 +440,20 @@ export function RecordTransactionForm({
             )}
           </Box>
         )}
+
+        {/*
+          Only for a hop that went along a chain (F28) — a wallet on either
+          side, or a token on either side. Asking a bank transfer for a wallet
+          address is asking for a blank.
+        */}
+        {onChain ? (
+          <ChainFieldset
+            values={chain}
+            onChange={setChain}
+            errors={errors}
+            disabled={mutation.isPending}
+          />
+        ) : null}
 
         {failure === null ? null : (
           <Box sx={{ mt: 2 }}>

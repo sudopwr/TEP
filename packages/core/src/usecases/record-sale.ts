@@ -37,6 +37,10 @@ export interface RecordSaleCommand {
   /** Statutory, taken from the statement rather than computed. */
   readonly tds?: string | null;
   readonly rounding?: RoundingMode;
+  /** F28 — a sale leaves an exchange, so it has an address and a link too. */
+  readonly fromAddress?: string | null;
+  readonly toAddress?: string | null;
+  readonly explorerUrl?: string | null;
   readonly notes?: string | null;
 }
 
@@ -90,6 +94,9 @@ export class RecordSale {
       toAmount: grossProceeds.toDecimalString(),
       toCurrencyCode: command.settlementCurrencyCode,
       rate: command.rate,
+      fromAddress: command.fromAddress ?? null,
+      toAddress: command.toAddress ?? null,
+      explorerUrl: command.explorerUrl ?? null,
       notes: command.notes ?? null,
     });
 

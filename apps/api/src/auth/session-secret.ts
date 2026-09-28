@@ -2,6 +2,8 @@ import { randomBytes } from 'node:crypto';
 import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
+import { readEnvFileValue } from '../config/env-file';
+
 /**
  * `SESSION_SECRET` — the key the session cookie is signed with (§5a).
  *
@@ -14,31 +16,6 @@ import path from 'node:path';
 /** 32 bytes, base64url — the same shape and strength as a session id. */
 export function generateSessionSecret(): string {
   return randomBytes(32).toString('base64url');
-}
-
-/** Pull one `KEY=value` out of a .env file. No interpolation, no export. */
-function readFromEnvFile(file: string, key: string): string | null {
-  if (!existsSync(file)) {
-    return null;
-  }
-
-  for (const line of readFileSync(file, 'utf8').split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (trimmed.length === 0 || trimmed.startsWith('#')) {
-      continue;
-    }
-
-    const equals = trimmed.indexOf('=');
-    if (equals === -1 || trimmed.slice(0, equals).trim() !== key) {
-      continue;
-    }
-
-    const value = trimmed.slice(equals + 1).trim();
-    // Strip one layer of surrounding quotes, the only quoting we emit.
-    return value.replace(/^["'](.*)["']$/, '$1');
-  }
-
-  return null;
 }
 
 export interface SessionSecretResult {
@@ -69,7 +46,7 @@ export function loadOrCreateSessionSecret(
     return { secret: fromEnvironment, source: 'environment' };
   }
 
-  const fromFile = readFromEnvFile(envFile, 'SESSION_SECRET');
+  const fromFile = readEnvFileValue(envFile, 'SESSION_SECRET');
   if (fromFile !== null && fromFile.length > 0) {
     return { secret: fromFile, source: 'file' };
   }

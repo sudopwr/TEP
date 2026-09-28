@@ -24,7 +24,8 @@ import {
 
 const TXN_COLUMNS = `id, code, payout_id, parent_id, txn_date, kind,
   from_account_id, to_account_id, from_amount, from_currency,
-  to_amount, to_currency, rate_applied, from_external_ref, to_external_ref, notes`;
+  to_amount, to_currency, rate_applied, from_external_ref, to_external_ref,
+  from_address, to_address, explorer_url, notes`;
 
 const FEE_COLUMNS = 'id, transaction_id, fee_type, amount, currency_code';
 
@@ -38,12 +39,14 @@ const SQL = {
              (code, payout_id, parent_id, txn_date, kind,
               from_account_id, to_account_id, from_amount, from_currency,
               to_amount, to_currency, rate_applied,
-              from_external_ref, to_external_ref, notes)
+              from_external_ref, to_external_ref,
+              from_address, to_address, explorer_url, notes)
            VALUES
              (@code, @payoutId, @parentId, @txnDate, @kind,
               @fromAccountId, @toAccountId, @fromAmount, @fromCurrency,
               @toAmount, @toCurrency, @rate,
-              @fromExternalRef, @toExternalRef, @notes)`,
+              @fromExternalRef, @toExternalRef,
+              @fromAddress, @toAddress, @explorerUrl, @notes)`,
   update: `UPDATE transactions SET
              code = @code, payout_id = @payoutId, parent_id = @parentId,
              txn_date = @txnDate, kind = @kind,
@@ -51,7 +54,9 @@ const SQL = {
              from_amount = @fromAmount, from_currency = @fromCurrency,
              to_amount = @toAmount, to_currency = @toCurrency,
              rate_applied = @rate, from_external_ref = @fromExternalRef,
-             to_external_ref = @toExternalRef, notes = @notes
+             to_external_ref = @toExternalRef, from_address = @fromAddress,
+             to_address = @toAddress, explorer_url = @explorerUrl,
+             notes = @notes
            WHERE id = @id`,
 
   selectAllFees: `SELECT ${FEE_COLUMNS} FROM transaction_fees ORDER BY id`,
@@ -126,6 +131,9 @@ interface TransactionWrite {
   readonly rate: bigint | null;
   readonly fromExternalRef: string | null;
   readonly toExternalRef: string | null;
+  readonly fromAddress: string | null;
+  readonly toAddress: string | null;
+  readonly explorerUrl: string | null;
   readonly notes: string | null;
 }
 
@@ -324,6 +332,9 @@ export class SqliteTransactionRepository implements TransactionRepository {
       rate: transaction.rate,
       fromExternalRef: transaction.fromExternalRef ?? null,
       toExternalRef: transaction.toExternalRef ?? null,
+      fromAddress: transaction.fromAddress ?? null,
+      toAddress: transaction.toAddress ?? null,
+      explorerUrl: transaction.explorerUrl ?? null,
       notes: transaction.notes ?? null,
     };
   }

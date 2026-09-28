@@ -240,3 +240,85 @@ describe('RecordTransaction (UC2)', () => {
     expect(world.transactions.all()).toHaveLength(before);
   });
 });
+
+describe('the chain fields (F28)', () => {
+  // TrustWallet -> CoinDCX, USDT both sides: the leg the three fields exist
+  // for. They are optional columns, so the checks are about what is kept,
+  // not about what is refused.
+  const ADDRESSES = {
+    fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+    toAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+    explorerUrl: 'https://tronscan.org/#/transaction/9f2c',
+  } as const;
+
+  it('keeps both addresses and the link on the leg', async () => {
+    const { useCase } = setup();
+
+    const leg = await useCase.execute(command(ADDRESSES));
+
+    expect(leg.fromAddress).toBe(ADDRESSES.fromAddress);
+    expect(leg.toAddress).toBe(ADDRESSES.toAddress);
+    expect(leg.explorerUrl).toBe(ADDRESSES.explorerUrl);
+  });
+
+  it('reads them back from the repository, not just from the return value', async () => {
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(command(ADDRESSES));
+    const stored = await world.transactions.findById(leg.id);
+
+    expect(stored?.fromAddress).toBe(ADDRESSES.fromAddress);
+    expect(stored?.explorerUrl).toBe(ADDRESSES.explorerUrl);
+  });
+
+  it('leaves them null when the leg never touched a chain', async () => {
+    const { useCase } = setup();
+
+    const leg = await useCase.execute(command());
+
+    expect(leg.fromAddress).toBeNull();
+    expect(leg.toAddress).toBeNull();
+    expect(leg.explorerUrl).toBeNull();
+  });
+
+  it('knows a token moved, which is what the fields are for', async () => {
+    const { useCase } = setup();
+
+    const usdt = await useCase.execute(command());
+    const rupees = await useCase.execute(
+      command({
+        code: 'Transaction101',
+        fromAccountId: 4,
+        toAccountId: 5,
+        fromAmount: '1000.00',
+        fromCurrencyCode: 'INR',
+        toAmount: '1000.00',
+        toCurrencyCode: 'INR',
+      }),
+    );
+
+    expect(usdt.movesToken()).toBe(true);
+    expect(rupees.movesToken()).toBe(false);
+  });
+
+  it('takes an address on a leg that moved no token, since odd is not impossible', async () => {
+    // §7's line: the checks flag what is suspicious and the schema refuses
+    // only what cannot be true. An address on a rupee transfer is neither.
+    const { useCase } = setup();
+
+    const leg = await useCase.execute(
+      command({
+        code: 'Transaction102',
+        fromAccountId: 4,
+        toAccountId: 5,
+        fromAmount: '1000.00',
+        fromCurrencyCode: 'INR',
+        toAmount: '1000.00',
+        toCurrencyCode: 'INR',
+        fromAddress: 'an address on a bank transfer',
+      }),
+    );
+
+    expect(leg.fromAddress).toBe('an address on a bank transfer');
+  });
+});

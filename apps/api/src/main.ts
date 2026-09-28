@@ -9,6 +9,8 @@ import { buildContainer } from './container';
 import { openDatabase, type SqliteDatabase } from './db/connection';
 import { migrate } from './db/migrate';
 import { defaultWebRoot, webAppIsBuilt } from './routes/web';
+import type { ChainLookupConfig } from './adapters/http-chain-lookup';
+import { settingValue } from './config/env-file';
 import { buildServer } from './server';
 
 export interface BootstrapOptions {
@@ -42,6 +44,34 @@ export interface BootstrapOptions {
    * first-run notice printed to nobody is just noise in a test report.
    */
   readonly logger?: boolean;
+}
+
+/**
+ * F29's one outbound call, and the key it needs.
+ *
+ * **Read from the file as well as the environment**, which is the whole
+ * reason this is a named function with a test. Nothing loads `.env` into
+ * `process.env` — the bootstrap reads each setting it wants by name — and
+ * the first version of this read only the environment, so a key sitting in
+ * `.env` was invisible and the interface said it was not set.
+ *
+ * Absent is still a supported state: lookups are simply off, the interface
+ * says so, and the three fields stay typeable. The key never reaches the
+ * browser, because a key in a bundle is a key anyone can spend.
+ */
+export function chainLookupFrom(
+  envFile: string,
+  environment: NodeJS.ProcessEnv = process.env,
+): ChainLookupConfig {
+  const key = settingValue('ETHERSCAN_API_KEY', envFile, environment);
+  const etherscan = settingValue('PAYOUT_ETHERSCAN_API', envFile, environment);
+  const tron = settingValue('PAYOUT_TRONSCAN_API', envFile, environment);
+
+  return {
+    ...(key === undefined ? {} : { etherscanApiKey: key }),
+    ...(etherscan === undefined ? {} : { etherscanBaseUrl: etherscan }),
+    ...(tron === undefined ? {} : { tronBaseUrl: tron }),
+  };
 }
 
 export interface StartedServer {
@@ -133,6 +163,7 @@ export async function start(
       filesRoot,
       webRoot,
       logger: speak,
+      chainLookup: chainLookupFrom(options.envFile ?? path.resolve('.env')),
     });
 
     const address = await app.listen({ host, port });

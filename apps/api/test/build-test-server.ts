@@ -9,6 +9,7 @@ import * as reference from '@core/domain/reference-payout.fixture';
 import { bulkLoad } from '../src/adapters/maintenance';
 import type { SqliteDatabase } from '../src/db/connection';
 import { buildServer } from '../src/server';
+import type { ChainLookupConfig } from '../src/adapters/http-chain-lookup';
 
 import { openTestDatabase } from './open-test-database';
 
@@ -63,6 +64,13 @@ export interface BuildTestServerOptions {
    * would tie a Fastify test to a Vite build.
    */
   readonly webRoot?: string;
+  /**
+   * Where explorer links are read (F29).
+   *
+   * Always stubbed in a test — a suite that could reach Etherscan is a suite
+   * that fails when the network does, and a key nobody has.
+   */
+  readonly chainLookup?: ChainLookupConfig;
 }
 
 /**
@@ -88,6 +96,9 @@ export async function buildTestServer(
     clock,
     filesRoot,
     ...(options.webRoot === undefined ? {} : { webRoot: options.webRoot }),
+    ...(options.chainLookup === undefined
+      ? {}
+      : { chainLookup: options.chainLookup }),
   });
 
   return {

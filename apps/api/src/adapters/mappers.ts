@@ -89,6 +89,9 @@ export interface TransactionRow {
   readonly rate_applied: bigint | null;
   readonly from_external_ref: string | null;
   readonly to_external_ref: string | null;
+  readonly from_address: string | null;
+  readonly to_address: string | null;
+  readonly explorer_url: string | null;
   readonly notes: string | null;
 }
 
@@ -232,6 +235,9 @@ export function toTransaction(
     rate: row.rate_applied,
     fromExternalRef: row.from_external_ref,
     toExternalRef: row.to_external_ref,
+    fromAddress: row.from_address,
+    toAddress: row.to_address,
+    explorerUrl: row.explorer_url,
     notes: row.notes,
   });
 }

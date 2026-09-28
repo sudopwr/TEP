@@ -107,6 +107,9 @@ export function transaction(value: Transaction): Record<string, unknown> {
     rate: value.rate === null ? null : value.rate.toString(),
     fromExternalRef: value.fromExternalRef,
     toExternalRef: value.toExternalRef,
+    fromAddress: value.fromAddress,
+    toAddress: value.toAddress,
+    explorerUrl: value.explorerUrl,
     notes: value.notes,
   };
 }

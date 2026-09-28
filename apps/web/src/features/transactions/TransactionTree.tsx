@@ -28,6 +28,8 @@ import {
 } from '../../shared/components';
 import { useToast } from '../../shared/feedback';
 
+import { ExplorerLink, ShortAddress } from './chain';
+
 import { EditTransactionDialog } from './EditTransactionDialog';
 
 /**
@@ -165,6 +167,8 @@ function LegLabel({
         </Typography>
       </Box>
 
+      <ChainLine transaction={transaction} />
+
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1 }}>
         <Typography variant="body2" sx={{ color: 'muted.main' }}>
           {KIND_LABELS[transaction.kind] ?? transaction.kind} ·{' '}
@@ -207,6 +211,45 @@ function LegLabel({
           Delete
         </Button>
       </Box>
+    </Box>
+  );
+}
+
+/**
+ * The chain's own record of the hop, under the two account names (F28).
+ *
+ * Under the accounts rather than in the aside, because these are the same
+ * fact as "TrustWallet → CoinDCX" told precisely: the account is who it is,
+ * and the address is where it actually went. Absent entirely on a leg that
+ * has none, which is most of them.
+ */
+function ChainLine({ transaction }: { readonly transaction: TransactionJson }) {
+  const { fromAddress, toAddress, explorerUrl } = transaction;
+
+  if (fromAddress === null && toAddress === null && explorerUrl === null) {
+    return null;
+  }
+
+  return (
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'baseline',
+        flexWrap: 'wrap',
+        gap: 1,
+        mt: 0.25,
+      }}
+    >
+      {fromAddress === null ? null : <ShortAddress value={fromAddress} />}
+
+      {fromAddress !== null && toAddress !== null ? (
+        <Box component="span" aria-hidden sx={{ color: 'muted.main' }}>
+          →
+        </Box>
+      ) : null}
+
+      {toAddress === null ? null : <ShortAddress value={toAddress} />}
+      {explorerUrl === null ? null : <ExplorerLink url={explorerUrl} />}
     </Box>
   );
 }

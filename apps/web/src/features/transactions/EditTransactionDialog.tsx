@@ -18,6 +18,13 @@ import {
 import { describeError, fieldErrors } from '../../shared/api/errors';
 import { AmountField, ErrorState, formatMinor } from '../../shared/components';
 
+import {
+  ChainFieldset,
+  movesOnChain,
+  toChainCommand,
+  type ChainValues,
+} from './chain';
+
 /**
  * F21 — correct a leg, in place on the trail it was read from.
  *
@@ -114,6 +121,12 @@ function EditTransactionForm({
     transaction.rate === null ? '' : formatMinor(transaction.rate, 8),
   );
   const [notes, setNotes] = useState(transaction.notes ?? '');
+  // F28 — the chain's own record of the hop, as correctable as the amounts.
+  const [chain, setChain] = useState<ChainValues>({
+    fromAddress: transaction.fromAddress ?? '',
+    toAddress: transaction.toAddress ?? '',
+    explorerUrl: transaction.explorerUrl ?? '',
+  });
 
   const options = accounts.data ?? [];
   const from = options.find((one) => one.id === Number(fromAccountId));
@@ -123,6 +136,7 @@ function EditTransactionForm({
   // §7: a rate is meaningless when the currency does not change, and the
   // database refuses one — so the field goes rather than being refused later.
   const sameCurrency = fromCurrency === toCurrency;
+  const onChain = movesOnChain({ from, to, fromCurrency, toCurrency });
 
   const errors = fieldErrors(edit.error);
 
@@ -142,6 +156,10 @@ function EditTransactionForm({
         toAmount,
         toCurrencyCode: toCurrency,
         ...(sameCurrency || rate.trim() === '' ? { rate: null } : { rate }),
+        // Sent only while the fields are on screen. An edit is a replacement,
+        // so leaving them out is how an address recorded by mistake is taken
+        // off again.
+        ...(onChain ? toChainCommand(chain) : {}),
         notes: notes.trim() === '' ? null : notes.trim(),
       },
       {
@@ -337,6 +355,15 @@ function EditTransactionForm({
             />
           </Box>
         )}
+
+        {onChain ? (
+          <ChainFieldset
+            values={chain}
+            onChange={setChain}
+            errors={errors}
+            disabled={edit.isPending}
+          />
+        ) : null}
 
         <TextField
           label="Notes"

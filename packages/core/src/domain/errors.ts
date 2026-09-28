@@ -358,6 +358,49 @@ export class TraderNotFoundError extends DomainError {
   }
 }
 
+/** A link to an explorer this application does not read (F29). */
+export class UnsupportedExplorerError extends DomainError {
+  constructor(readonly hosts: readonly string[]) {
+    super(
+      'UnsupportedExplorerError',
+      `That link is not one this application can read. It knows ${hosts.join(', ')}; ` +
+        'type the addresses in instead.',
+    );
+  }
+}
+
+/** The explorer has no such transaction. Usually a mistyped or truncated hash. */
+export class ChainTransferNotFoundError extends DomainError {
+  constructor(
+    readonly chain: string,
+    readonly hash: string,
+  ) {
+    super(
+      'ChainTransferNotFoundError',
+      `${chain} has no transaction ${hash}. Check the link, or type the addresses in.`,
+    );
+  }
+}
+
+/**
+ * The lookup could not be made at all — no key, no network, rate limited.
+ *
+ * Deliberately distinct from "not found": one says the link is wrong and the
+ * other says the reading of it failed, and a reader who cannot tell them
+ * apart will keep retyping a link that was right all along.
+ */
+export class ChainLookupUnavailableError extends DomainError {
+  constructor(
+    readonly chain: string,
+    readonly reason: string,
+  ) {
+    super(
+      'ChainLookupUnavailableError',
+      `Could not read ${chain} just now: ${reason} The addresses can be typed in.`,
+    );
+  }
+}
+
 /** A trader code that already belongs to another trader. */
 export class TraderCodeTakenError extends DomainError {
   constructor(readonly code: string) {

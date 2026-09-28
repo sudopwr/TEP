@@ -41,12 +41,38 @@ export interface TransactionProps {
    */
   readonly fromExternalRef?: string | null;
   readonly toExternalRef?: string | null;
+  /**
+   * Where the value left from and where it arrived, on a chain (F28).
+   *
+   * A *snapshot*, not a reference to `account_identifiers`: the wallet a
+   * transfer used that day is a fact about the transfer, and the account may
+   * have been given a new address since. The normalized table says which
+   * addresses an account has; these two say which were used.
+   *
+   * Only a leg that touched a chain has them, and nothing here enforces
+   * that — an address on a bank transfer is odd rather than impossible, and
+   * §7 keeps that distinction.
+   */
+  readonly fromAddress?: string | null;
+  readonly toAddress?: string | null;
+  /**
+   * The explorer page for this transaction, as a URL.
+   *
+   * The one field that is *evidence anyone else can check*: a reference is a
+   * string from a statement, and this is a link to the chain itself. Stored
+   * whole rather than as a hash plus a template, because which explorer a
+   * chain is read on is the reader's choice and not this application's.
+   */
+  readonly explorerUrl?: string | null;
   readonly notes?: string | null;
 }
 
 type StoredProps = TransactionProps & {
   readonly fromExternalRef: string | null;
   readonly toExternalRef: string | null;
+  readonly fromAddress: string | null;
+  readonly toAddress: string | null;
+  readonly explorerUrl: string | null;
   readonly notes: string | null;
 };
 
@@ -102,6 +128,9 @@ export class Transaction {
       ...props,
       fromExternalRef: props.fromExternalRef ?? null,
       toExternalRef: props.toExternalRef ?? null,
+      fromAddress: props.fromAddress ?? null,
+      toAddress: props.toAddress ?? null,
+      explorerUrl: props.explorerUrl ?? null,
       notes: props.notes ?? null,
     });
   }
@@ -158,8 +187,40 @@ export class Transaction {
     return this.#props.toExternalRef;
   }
 
+  get fromAddress(): string | null {
+    return this.#props.fromAddress;
+  }
+
+  get toAddress(): string | null {
+    return this.#props.toAddress;
+  }
+
+  get explorerUrl(): string | null {
+    return this.#props.explorerUrl;
+  }
+
   get notes(): string | null {
     return this.#props.notes;
+  }
+
+  /**
+   * True when either side of this leg is a crypto amount (F28).
+   *
+   * What the addresses and the explorer link are *for*, and the half of the
+   * question this row can answer on its own. The other half — whether either
+   * account is a wallet — needs the accounts, so the interface asks both.
+   *
+   * `scale > 2` rather than a list of tickers: the currencies table marks
+   * crypto by kind, which the domain's `Currency` does not carry, and the
+   * thing that actually distinguishes them here is that no fiat this
+   * application handles is stored to more than three decimals while a token
+   * is stored to eight (§6).
+   */
+  movesToken(): boolean {
+    return (
+      this.#props.fromAmount.currency.scale > 3 ||
+      this.#props.toAmount.currency.scale > 3
+    );
   }
 
   /**

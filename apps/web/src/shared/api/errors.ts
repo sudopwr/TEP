@@ -104,10 +104,17 @@ export function describeError(error: unknown): ErrorDescription {
     };
   }
 
-  if (error.status >= 500) {
-    // Never the server's 500 body: it says "Something went wrong." on
-    // purpose, so that a SQLite string or a file path cannot escape. Which
-    // means this is the one case where the sentence has to be written here.
+  if (error.status >= 500 && error.code === 'internal_error') {
+    /*
+      Never the server's *unhandled* 500 body: it says "Something went
+      wrong." on purpose, so that a SQLite string or a file path cannot
+      escape. Which means this is the one case where the sentence has to be
+      written here.
+
+      A 5xx that carries a typed code is a different animal — F29's 503 is
+      `ChainLookupUnavailableError`, whose message was written for the reader
+      and ends by telling them what to do instead. It falls through.
+    */
     return {
       message: 'The server could not complete that.',
       action:

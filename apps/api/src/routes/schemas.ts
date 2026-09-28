@@ -250,6 +250,40 @@ void _everyKindIsHandled;
  * optional would push the decision into the route as an `if`, which is the
  * business logic routes are not allowed to hold.
  */
+/**
+ * The two ends of a chain hop, and the page it can be read on (F28).
+ *
+ * An address is text and nothing more: a chain this application has never
+ * heard of is still a chain, and a validator that only knew Ethereum's 0x
+ * form would refuse a TRON address that is perfectly correct.
+ *
+ * The link is checked, and for one reason: the browser renders it as an
+ * anchor, so `javascript:` in this column would be a script the reader runs
+ * by clicking their own evidence. Only http and https, parseable by `URL`.
+ */
+const chainFields = {
+  fromAddress: z.string().trim().max(256).nullish(),
+  toAddress: z.string().trim().max(256).nullish(),
+  explorerUrl: z
+    .string()
+    .trim()
+    .max(2048)
+    .refine(isWebUrl, {
+      message: 'a transaction link must be an http or https address',
+    })
+    .nullish(),
+} as const;
+
+function isWebUrl(value: string): boolean {
+  try {
+    const { protocol } = new URL(value);
+
+    return protocol === 'http:' || protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 const movementBody = z
   .object({
     kind: z.enum(MOVEMENT_KINDS),
@@ -264,6 +298,7 @@ const movementBody = z
     toAmount: positiveDecimalString,
     toCurrencyCode: currencyCode,
     rate: scaledRate.nullish(),
+    ...chainFields,
     notes: z.string().max(4096).nullish(),
   })
   .strict();
@@ -284,6 +319,9 @@ const saleBody = z
     settlementCurrencyCode: currencyCode,
     /** Statutory, from the statement — never computed (§8, §13). */
     tds: decimalString.nullish(),
+    // A sale leaves an exchange, so it has a from-address and a link as
+    // often as a transfer does (F28).
+    ...chainFields,
     notes: z.string().max(4096).nullish(),
   })
   .strict();
@@ -315,6 +353,7 @@ export const updateTransactionBody = z
     toAmount: positiveDecimalString,
     toCurrencyCode: currencyCode,
     rate: scaledRate.nullish(),
+    ...chainFields,
     notes: z.string().max(4096).nullish(),
   })
   .strict();
@@ -393,3 +432,14 @@ export const createTraderBody = z
  * replacement (F27), so what is left out is cleared rather than kept.
  */
 export const updateTraderBody = createTraderBody;
+
+/**
+ * A link to look up (F29).
+ *
+ * Only its length is checked here. What it *points at* is the domain's
+ * business — `parseExplorerLink` decides whether it names an explorer this
+ * application reads, and nothing is fetched until it says yes.
+ */
+export const chainLookupBody = z
+  .object({ link: z.string().trim().min(1).max(2048) })
+  .strict();

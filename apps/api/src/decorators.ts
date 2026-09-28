@@ -22,6 +22,7 @@ import type {
   ListCompanies,
   ListPayouts,
   ListTraders,
+  LookUpChainTransfer,
   ListTransactions,
   RecordAccount,
   RecordCompany,
@@ -74,6 +75,7 @@ export interface UseCases {
   readonly recordTrader: RecordTrader;
   readonly editTrader: EditTrader;
   readonly listTraders: ListTraders;
+  readonly lookUpChainTransfer: LookUpChainTransfer;
 
   readonly recordAccount: RecordAccount;
   readonly editAccount: EditAccount;

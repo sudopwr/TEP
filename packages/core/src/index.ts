@@ -83,6 +83,16 @@ export type {
 export { compareToActual, expectedFees } from './domain/fee-engine';
 
 export * from './ports/index';
+
+export {
+  CHAINS,
+  explorerHosts,
+  explorerUrlFor,
+  parseChainCandidates,
+  parseChainHash,
+  parseExplorerLink,
+} from './domain/chain-reference';
+export type { Chain, ChainReference } from './domain/chain-reference';
 export * from './usecases/index';
 
 export {
@@ -90,6 +100,9 @@ export {
   AccountInUseError,
   TraderCodeTakenError,
   TraderNotFoundError,
+  UnsupportedExplorerError,
+  ChainTransferNotFoundError,
+  ChainLookupUnavailableError,
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
   AuthenticationFailedError,

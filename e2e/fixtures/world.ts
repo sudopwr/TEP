@@ -1,5 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,8 +17,13 @@ import { start, type StartedServer } from '../../apps/api/src/main';
  * Everything is real: the migrations that ship, the importer that corrects
  * §9's defects, and the Fastify server started through `main.ts`'s own
  * `start` — serving the built interface itself, from one process on one
- * origin, which is exactly what `npm start` does. Nothing is stubbed, and the
- * only thing a test supplies is where the data lives.
+ * origin, which is exactly what `npm start` does. The only thing a test
+ * supplies is where the data lives.
+ *
+ * One stand-in, and only since F29: the explorer a chain lookup reads. That
+ * request is the single thing this application sends off the machine, and a
+ * suite that really sent it would need somebody's API key and somebody
+ * else's uptime.
  *
  * **Per test, not per worker.** Half of these journeys change the world — they
  * set a password, record a leg, upload a file — and the other half assert on
@@ -74,6 +80,60 @@ interface Running {
  * the database these tests read is the database the owner would have after
  * importing their sheet, corrections and all.
  */
+/**
+ * The explorer, stood in for.
+ *
+ * F29 is the one feature that leaves the machine, and a suite that actually
+ * left it would need an API key and somebody else's uptime. This answers in
+ * the shape Etherscan's V2 proxy does, for any hash: a plain transfer from
+ * `SENDER` to `RECIPIENT`.
+ *
+ * It listens on loopback and on a port the OS picks, like everything else
+ * here, so two workers never collide.
+ */
+export const STUB_SENDER = '0x1111111111111111111111111111111111111111';
+export const STUB_RECIPIENT = '0x2222222222222222222222222222222222222222';
+
+async function startStubExplorer(): Promise<{
+  readonly url: string;
+  close(): Promise<void>;
+}> {
+  const server = createServer((request, response) => {
+    const known = (request.url ?? '').includes('txhash=0x');
+
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        result: known
+          ? { from: STUB_SENDER, to: STUB_RECIPIENT, input: '0x' }
+          : null,
+      }),
+    );
+  });
+
+  await new Promise<void>((resolve) => {
+    server.listen(0, '127.0.0.1', resolve);
+  });
+
+  const address = server.address();
+  if (address === null || typeof address === 'string') {
+    throw new Error('the stub explorer did not get a port');
+  }
+
+  return {
+    url: `http://127.0.0.1:${String(address.port)}/api`,
+    close: () =>
+      new Promise<void>((resolve, reject) => {
+        server.close((error) => {
+          if (error) reject(error);
+          else resolve();
+        });
+      }),
+  };
+}
+
 async function startWorld(): Promise<Running> {
   const directory = mkdtempSync(path.join(tmpdir(), 'payout-e2e-'));
   const databasePath = path.join(directory, 'app.db');
@@ -102,6 +162,19 @@ async function startWorld(): Promise<Running> {
   } finally {
     seeding.close();
   }
+
+  /*
+    Pointed at the stub through the environment, which is how an operator
+    configures it too (`.env`). Set before `start`, restored after, so one
+    world cannot leak its explorer into the next.
+  */
+  const explorer = await startStubExplorer();
+  const previous = {
+    key: process.env['ETHERSCAN_API_KEY'],
+    api: process.env['PAYOUT_ETHERSCAN_API'],
+  };
+  process.env['ETHERSCAN_API_KEY'] = 'e2e-key-not-a-real-one';
+  process.env['PAYOUT_ETHERSCAN_API'] = explorer.url;
 
   const api: StartedServer = await start({
     // 0 asks the OS for a free port, so a run collides with neither a dev
@@ -135,9 +208,23 @@ async function startWorld(): Promise<Running> {
     world,
     close: async () => {
       await api.close();
+      await explorer.close();
+
+      restore('ETHERSCAN_API_KEY', previous.key);
+      restore('PAYOUT_ETHERSCAN_API', previous.api);
+
       rmSync(directory, { recursive: true, force: true });
     },
   };
+}
+
+/** Put an environment variable back, including back to absent. */
+function restore(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
 }
 
 /**

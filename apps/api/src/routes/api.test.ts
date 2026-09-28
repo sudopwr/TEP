@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SqliteDocumentRepository } from '../adapters/sqlite-document-repository';
 
@@ -430,6 +430,206 @@ describe('/api routes', () => {
       expect((await get('/api/accounts/balances?traderId=0')).statusCode).toBe(
         400,
       );
+    });
+  });
+
+  describe('reading a transfer off its link (F29)', () => {
+    const HASH =
+      '0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94';
+    const PASTED = `https://etherscan.io/tx//${HASH}`;
+    const SENDER = '0x1111111111111111111111111111111111111111';
+    const RECIPIENT = '0x2222222222222222222222222222222222222222';
+
+    /*
+      The explorer, stubbed. No test here goes near the network.
+
+      A *fresh* `Response` per call, not one resolved repeatedly: a body can
+      only be read once, so a reused response makes the second lookup fail
+      with "body is unusable" — which arrives as a 503 and looks like a bug
+      in the code under test. A bare hash asks up to three times.
+    */
+    const explorer = (body: unknown, status = 200) =>
+      vi.fn().mockImplementation(
+        () =>
+          new Response(JSON.stringify(body), {
+            status,
+            headers: { 'content-type': 'application/json' },
+          }),
+      );
+
+    const withExplorer = async (fetch: typeof globalThis.fetch) => {
+      server = await buildTestServer({
+        chainLookup: { etherscanApiKey: 'test-key', fetch },
+      });
+      cookie = await authenticate(server);
+    };
+
+    it('answers with both ends of the transfer', async () => {
+      await withExplorer(
+        explorer({
+          result: { from: SENDER, to: RECIPIENT, input: '0x' },
+        }) as unknown as typeof globalThis.fetch,
+      );
+
+      const response = await post('/api/chain/lookup', { link: PASTED });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        chain: 'ethereum',
+        hash: HASH,
+        fromAddress: SENDER,
+        toAddress: RECIPIENT,
+      });
+    });
+
+    it('never fetches the link it was handed', async () => {
+      // The whole safety argument: the pasted string is parsed into a chain
+      // and a hash, and the request is built here from constants.
+      const fetch = explorer({ result: { from: SENDER, to: RECIPIENT } });
+      await withExplorer(fetch as unknown as typeof globalThis.fetch);
+
+      await post('/api/chain/lookup', { link: PASTED });
+
+      const [url] = fetch.mock.calls[0] as [string];
+      expect(url.startsWith('https://api.etherscan.io/')).toBe(true);
+    });
+
+    it('400s a link to somewhere it does not read, and fetches nothing', async () => {
+      const fetch = explorer({});
+      await withExplorer(fetch as unknown as typeof globalThis.fetch);
+
+      const attempts = [
+        'http://169.254.169.254/latest/meta-data/',
+        'https://example.com/tx/0xabc',
+        `https://etherscan.io@evil.test/tx/${HASH}`,
+      ];
+
+      for (const link of attempts) {
+        const response = await post('/api/chain/lookup', { link });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json().code).toBe('unsupported_explorer');
+      }
+
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('404s a hash the chain has never seen', async () => {
+      await withExplorer(
+        explorer({ result: null }) as unknown as typeof globalThis.fetch,
+      );
+
+      const response = await post('/api/chain/lookup', { link: PASTED });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().code).toBe('chain_transfer_not_found');
+    });
+
+    it('503s when the lookup itself could not be made', async () => {
+      // Not a 404: the link may be perfectly good. The difference is what
+      // stops somebody retyping a correct link over and over.
+      server = await buildTestServer({ chainLookup: {} });
+      cookie = await authenticate(server);
+
+      const response = await post('/api/chain/lookup', { link: PASTED });
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json().code).toBe('chain_lookup_unavailable');
+      expect(response.json().message).toMatch(/ETHERSCAN_API_KEY/);
+    });
+
+    it('401s without a session, like every other data route', async () => {
+      await withExplorer(explorer({}) as unknown as typeof globalThis.fetch);
+
+      const response = await server.app.inject({
+        method: 'POST',
+        url: '/api/chain/lookup',
+        payload: { link: PASTED },
+      });
+
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('takes a bare hash and works out which chain it is on', async () => {
+      // What an exchange gives you is a hash, not a page. Ethereum, BSC and
+      // Polygon share its shape, so they are asked in turn.
+      const fetch = vi
+        .fn()
+        .mockResolvedValueOnce(
+          new Response(JSON.stringify({ result: null }), {
+            headers: { 'content-type': 'application/json' },
+          }),
+        )
+        .mockResolvedValueOnce(
+          new Response(
+            JSON.stringify({
+              result: { from: SENDER, to: RECIPIENT, input: '0x' },
+            }),
+            { headers: { 'content-type': 'application/json' } },
+          ),
+        );
+
+      await withExplorer(fetch as unknown as typeof globalThis.fetch);
+
+      const response = await post('/api/chain/lookup', { link: HASH });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        chain: 'bsc',
+        fromAddress: SENDER,
+        toAddress: RECIPIENT,
+        // The canonical page, built for the hash: the field stores this,
+        // and a hash in that column would be refused on save.
+        explorerUrl: `https://bscscan.com/tx/${HASH}`,
+      });
+    });
+
+    it('gives a link back its canonical form as well', async () => {
+      await withExplorer(
+        explorer({
+          result: { from: SENDER, to: RECIPIENT, input: '0x' },
+        }) as unknown as typeof globalThis.fetch,
+      );
+
+      const response = await post('/api/chain/lookup', { link: PASTED });
+
+      // The doubled slash does not survive into what gets stored.
+      expect(response.json().explorerUrl).toBe(
+        `https://etherscan.io/tx/${HASH}`,
+      );
+    });
+
+    it('404s a hash no chain has heard of, naming the ones it asked', async () => {
+      await withExplorer(
+        explorer({ result: null }) as unknown as typeof globalThis.fetch,
+      );
+
+      const response = await post('/api/chain/lookup', { link: HASH });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().message).toMatch(/ethereum, bsc, polygon/);
+    });
+
+    it('400s a string that is neither a link nor a hash', async () => {
+      const fetch = explorer({});
+      await withExplorer(fetch as unknown as typeof globalThis.fetch);
+
+      const response = await post('/api/chain/lookup', {
+        link: 'the one from tuesday',
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('400s a body with no link, or one longer than any URL', async () => {
+      await withExplorer(explorer({}) as unknown as typeof globalThis.fetch);
+
+      expect((await post('/api/chain/lookup', {})).statusCode).toBe(400);
+      expect(
+        (await post('/api/chain/lookup', { link: 'x'.repeat(2049) }))
+          .statusCode,
+      ).toBe(400);
     });
   });
 
@@ -988,6 +1188,130 @@ describe('/api routes', () => {
 
       expect(response.statusCode).toBe(401);
       expect(response.json().code).toBe('authentication_required');
+    });
+  });
+
+  describe('the chain fields on a leg (F28)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    const chainLeg = (overrides: Record<string, unknown> = {}) => ({
+      kind: 'transfer',
+      code: 'Transaction900',
+      payoutId: 1,
+      txnDate: '2025-03-15',
+      fromAccountId: 3,
+      toAccountId: 4,
+      fromAmount: '10.00000000',
+      fromCurrencyCode: 'USDT',
+      toAmount: '10.00000000',
+      toCurrencyCode: 'USDT',
+      fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+      toAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+      explorerUrl: 'https://tronscan.org/#/transaction/9f2c',
+      ...overrides,
+    });
+
+    it('records both addresses and the link, and serves them back', async () => {
+      const created = await post('/api/transactions', chainLeg());
+
+      expect(created.statusCode).toBe(201);
+      expect(created.json().transaction).toMatchObject({
+        fromAddress: 'TQ5NMqJjW3kG4pM4Y7mHs2jWc1ZLsz9Xsa',
+        toAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+        explorerUrl: 'https://tronscan.org/#/transaction/9f2c',
+      });
+
+      // Off the disk, not out of the response: the columns were in
+      // `001_initial.sql` from the start and nothing had ever written them.
+      const listed = await get('/api/transactions?payoutId=1');
+      const stored = listed
+        .json()
+        .transactions.find(
+          (one: { code: string }) => one.code === 'Transaction900',
+        );
+      expect(stored.toAddress).toBe(
+        '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+      );
+    });
+
+    it('serves null for the legs that predate them', async () => {
+      const listed = await get('/api/transactions?payoutId=1');
+
+      expect(listed.json().transactions[0]).toMatchObject({
+        fromAddress: null,
+        toAddress: null,
+        explorerUrl: null,
+      });
+    });
+
+    it('refuses a `javascript:` link, which the browser would run', async () => {
+      // The one field that is rendered as an anchor. A reader clicking their
+      // own evidence must not be running a script.
+      const response = await post(
+        '/api/transactions',
+        chainLeg({ explorerUrl: 'javascript:alert(document.cookie)' }),
+      );
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json().details.issues[0].path).toBe('explorerUrl');
+    });
+
+    it('refuses anything that is not a URL at all', async () => {
+      const response = await post(
+        '/api/transactions',
+        chainLeg({ explorerUrl: 'tronscan, the one with 9f2c' }),
+      );
+
+      expect(response.statusCode).toBe(400);
+    });
+
+    it('takes them on a sale as well, which also leaves an exchange', async () => {
+      const response = await post('/api/transactions', {
+        kind: 'sale',
+        code: 'Transaction901',
+        payoutId: 1,
+        txnDate: '2025-03-15',
+        fromAccountId: 4,
+        toAccountId: 5,
+        fromAmount: '10.00000000',
+        fromCurrencyCode: 'USDT',
+        rate: '97.6652',
+        settlementCurrencyCode: 'INR',
+        fromAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+        explorerUrl: 'https://tronscan.org/#/transaction/aa01',
+      });
+
+      expect(response.statusCode).toBe(201);
+      expect(response.json().transaction).toMatchObject({
+        fromAddress: '0x8f3a1c4b2d5e6f708192a3b4c5d6e7f809a1b2c3',
+        explorerUrl: 'https://tronscan.org/#/transaction/aa01',
+      });
+    });
+
+    it('corrects them on an edit, and clears what the body leaves out', async () => {
+      const created = await post('/api/transactions', chainLeg());
+      const id = String(created.json().transaction.id);
+
+      const edited = await put(`/api/transactions/${id}`, {
+        code: 'Transaction900',
+        txnDate: '2025-03-15',
+        fromAccountId: 3,
+        toAccountId: 4,
+        fromAmount: '10.00000000',
+        fromCurrencyCode: 'USDT',
+        toAmount: '10.00000000',
+        toCurrencyCode: 'USDT',
+        fromAddress: 'TCorrectedAddress111111111111111111',
+      });
+
+      expect(edited.statusCode).toBe(200);
+      expect(edited.json().transaction).toMatchObject({
+        fromAddress: 'TCorrectedAddress111111111111111111',
+        toAddress: null,
+        explorerUrl: null,
+      });
     });
   });
 

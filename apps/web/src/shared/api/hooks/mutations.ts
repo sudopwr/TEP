@@ -10,6 +10,7 @@ import {
   createAccount,
   createCompany,
   createTrader,
+  lookUpChainTransfer,
   updateTrader,
   createPayout,
   createTransaction,
@@ -27,6 +28,7 @@ import type {
   AccountJson,
   CompanyJson,
   CreateAccountCommand,
+  ChainTransferJson,
   CreateCompanyCommand,
   CreateTraderCommand,
   CreatePayoutCommand,
@@ -83,6 +85,23 @@ export function useRecordCompany(): UseMutationResult<
     mutationFn: createCompany,
     onSuccess: () => invalidateAll(client, [queryKeys.companies.all()]),
   });
+}
+
+/**
+ * F29 — read a transfer off its explorer link.
+ *
+ * A mutation for a read, deliberately: it is a POST, it is asked for rather
+ * than fetched on render, and it must never be retried or cached — the
+ * answer is a suggestion for a form, not a fact about this ledger, and an
+ * automatic retry would be a second request to somebody else's server.
+ * Nothing is invalidated, because nothing here changed.
+ */
+export function useChainLookup(): UseMutationResult<
+  ChainTransferJson,
+  Error,
+  string
+> {
+  return useMutation({ mutationFn: lookUpChainTransfer, retry: false });
 }
 
 /**

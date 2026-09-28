@@ -3,6 +3,7 @@ import type {
   AccountJson,
   AccountsResponse,
   BalancesResponse,
+  ChainTransferJson,
   ChangeCredentialsCommand,
   CompaniesResponse,
   CompanyJson,
@@ -158,6 +159,25 @@ export function updateTrader({
   return request<{ trader: TraderJson }>(`/api/traders/${String(traderId)}`, {
     method: 'PUT',
     body: trader,
+  });
+}
+
+// ---------- The chain (F29) ----------
+
+/**
+ * Ask the server to read a transfer off its explorer link.
+ *
+ * A POST that changes nothing, because the link belongs in a body: it is
+ * long, and a query string would put it in the server's access log and the
+ * browser's history. The browser never calls an explorer itself — CORS would
+ * refuse it, and the API key would have to ship in the bundle.
+ */
+export function lookUpChainTransfer(
+  link: string,
+): Promise<ChainTransferJson> {
+  return request<ChainTransferJson>('/api/chain/lookup', {
+    method: 'POST',
+    body: { link },
   });
 }
 

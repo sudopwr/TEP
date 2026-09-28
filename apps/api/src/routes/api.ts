@@ -15,6 +15,7 @@ import {
   createAccountBody,
   createCompanyBody,
   createPayoutBody,
+  chainLookupBody,
   createTraderBody,
   createTransactionBody,
   dataQualityQuery,
@@ -126,6 +127,34 @@ export function registerApiRoutes(app: FastifyInstance): void {
     });
 
     return { trader: out.trader(trader) };
+  });
+
+  /*
+    F29 — read the two ends of a transfer off its explorer link, or off a
+    bare transaction hash.
+
+    A POST, though it changes nothing: the link goes in the body rather than
+    a query string so it stays out of access logs and out of the browser's
+    history, and it can be long. The only route in this application that
+    causes an outbound request, and it makes one only when asked.
+  */
+  app.post('/api/chain/lookup', async (request) => {
+    const body = parseOrThrow(chainLookupBody, request.body, 'body');
+
+    const transfer = await app.useCases.lookUpChainTransfer.execute({
+      link: body.link,
+    });
+
+    return {
+      chain: transfer.chain,
+      hash: transfer.hash,
+      // The canonical page, even when a bare hash was pasted: that is what
+      // the form stores, and a hash in the link column would be refused.
+      explorerUrl: transfer.explorerUrl,
+      fromAddress: transfer.fromAddress,
+      toAddress: transfer.toAddress,
+      tokenContract: transfer.tokenContract ?? null,
+    };
   });
 
   // ---------- Accounts (F1) ----------
@@ -320,6 +349,13 @@ export function registerApiRoutes(app: FastifyInstance): void {
         rate: body.rate,
         settlementCurrencyCode: body.settlementCurrencyCode,
         ...(body.tds === undefined ? {} : { tds: body.tds }),
+        ...(body.fromAddress === undefined
+          ? {}
+          : { fromAddress: body.fromAddress }),
+        ...(body.toAddress === undefined ? {} : { toAddress: body.toAddress }),
+        ...(body.explorerUrl === undefined
+          ? {}
+          : { explorerUrl: body.explorerUrl }),
         ...(body.notes === undefined ? {} : { notes: body.notes }),
         rounding: 'half-up' satisfies RoundingMode,
       });
@@ -346,6 +382,13 @@ export function registerApiRoutes(app: FastifyInstance): void {
       toAmount: body.toAmount,
       toCurrencyCode: body.toCurrencyCode,
       rate: body.rate ?? null,
+      ...(body.fromAddress === undefined
+        ? {}
+        : { fromAddress: body.fromAddress }),
+      ...(body.toAddress === undefined ? {} : { toAddress: body.toAddress }),
+      ...(body.explorerUrl === undefined
+        ? {}
+        : { explorerUrl: body.explorerUrl }),
       ...(body.notes === undefined ? {} : { notes: body.notes }),
     });
 
@@ -378,6 +421,13 @@ export function registerApiRoutes(app: FastifyInstance): void {
       toAmount: body.toAmount,
       toCurrencyCode: body.toCurrencyCode,
       rate: body.rate ?? null,
+      ...(body.fromAddress === undefined
+        ? {}
+        : { fromAddress: body.fromAddress }),
+      ...(body.toAddress === undefined ? {} : { toAddress: body.toAddress }),
+      ...(body.explorerUrl === undefined
+        ? {}
+        : { explorerUrl: body.explorerUrl }),
       ...(body.notes === undefined ? {} : { notes: body.notes }),
     });
 

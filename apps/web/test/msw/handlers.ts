@@ -57,6 +57,26 @@ export const handlers = [
     HttpResponse.json({ company: TRADEIFY }, { status: 201 }),
   ),
 
+  /*
+    F29 — the explorer, one layer further away.
+
+    The browser asks the server and the server asks the chain; MSW stands in
+    for the first hop only, which is the one the interface can see.
+  */
+  http.post('/api/chain/lookup', () =>
+    HttpResponse.json({
+      chain: 'ethereum',
+      hash: '0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94',
+      // The canonical page, whatever was pasted — a bare hash comes back
+      // with a link built for it (F29).
+      explorerUrl:
+        'https://etherscan.io/tx/0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94',
+      fromAddress: '0x1111111111111111111111111111111111111111',
+      toAddress: '0x2222222222222222222222222222222222222222',
+      tokenContract: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+    }),
+  ),
+
   // ---------- Traders and the shared scope (F24) ----------
   http.get('/api/traders', () => HttpResponse.json({ traders: TRADERS })),
   http.post('/api/traders', () =>
@@ -378,6 +398,32 @@ export const companyCanBeAdded = (company: CompanyJson) => {
     }),
   ];
 };
+
+/** The explorer cannot be read: no key, no network, a rate limit (F29). */
+export const chainLookupUnavailable = () =>
+  http.post('/api/chain/lookup', () =>
+    HttpResponse.json(
+      {
+        code: 'chain_lookup_unavailable',
+        message:
+          'Could not read ethereum just now: no ETHERSCAN_API_KEY is set in .env. The addresses can be typed in.',
+      },
+      { status: 503 },
+    ),
+  );
+
+/** The chain has never seen that hash (F29). */
+export const chainTransferNotFound = () =>
+  http.post('/api/chain/lookup', () =>
+    HttpResponse.json(
+      {
+        code: 'chain_transfer_not_found',
+        message:
+          'ethereum has no transaction 0xdead. Check the link, or type the addresses in.',
+      },
+      { status: 404 },
+    ),
+  );
 
 /**
  * A trader who is not on file until they are added (F24).

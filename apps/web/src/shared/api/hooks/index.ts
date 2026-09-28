@@ -17,6 +17,7 @@ export {
 
 export {
   useAttachDocument,
+  useChainLookup,
   useDetachDocument,
   useLinkDocument,
   useDeleteAccount,

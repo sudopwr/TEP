@@ -8,11 +8,12 @@ contradicts the code, the code is wrong or this file is stale — say so, don't 
 
 A local application tracking trading-firm payouts from gross award to net rupees in the
 bank, every document attached and every fee accounted for. One machine, `127.0.0.1`, one
-user signing in, several traders it keeps payouts for (F24). A payout arrives as USD on
-a prop firm platform and moves through a processor, crypto wallets and an exchange
-before landing as INR in a bank, each hop with its own fee, rate, reference and
-document. That lived in a spreadsheet, where copy-paste destroyed four amounts and two
-fees.
+user signing in, several traders it keeps payouts for (F24). It talks to nothing, bar
+one request it makes only when asked: reading a pasted explorer link (F29). A payout
+arrives as USD on a prop firm platform and moves through a processor, crypto wallets and
+an exchange before landing as INR in a bank, each hop with its own fee, rate, reference
+and document. That lived in a spreadsheet, where copy-paste destroyed four amounts and
+two fees.
 
 ## 2. Requirements
 
@@ -46,6 +47,8 @@ fees.
 | F25 | Paste a screenshot or an image from the clipboard to attach it as a document |
 | F26 | Name a file before it is stored, whichever way it arrived |
 | F27 | A Traders screen: the register, with each person's payout count; add and edit from it |
+| F28 | A leg that moved along a chain carries both wallet addresses and a link to the transaction |
+| F29 | Paste that link — or just the transaction hash — and the two addresses fill themselves, read off the chain and still editable |
 
 ### Non-functional
 | # | Requirement |
@@ -57,6 +60,7 @@ fees.
 | N5 | One command starts dev, one command builds, one command runs all tests |
 | N6 | Data lives in `data/` — `app.db` plus `files/`. Backup = copy that folder |
 | N7 | Binds `127.0.0.1` only. Sign-in gates every route except `/health` and auth |
+| N11 | One outbound request exists (F29's explorer lookup), made only when asked, carrying only a transaction hash, to a host in a compiled-in list |
 | N9 | Passwords stored only as an argon2id hash; plaintext never touches disk, logs, or an error |
 | N10 | The server refuses a non-loopback address while the default password is in place |
 | N8 | UI components are independent and reusable — no feature imports another feature's components |
@@ -84,7 +88,9 @@ DetachDocument, ListDocumentsFor** (F23): each counts first, then does one atomi
 §13's "what deletes, and what refuses" is the reasoning. **UC22, UC23, UC25 —
 RecordTrader, ListTraders, EditTrader.** F24 and F27: a person payouts belong to, with
 no credential of any kind; an edit is a replacement and never touches the id their
-payouts hang off. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
+payouts hang off. **UC26 — LookUpChainTransfer.** F29: parse the link, then ask the
+explorer — in that order, so the adapter is handed a chain and a hash and never the
+pasted string. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
 optional, honoured *identically* by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**,
 because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `EditAccount`,
 `DeleteAccount`, `ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
@@ -112,7 +118,7 @@ packages/core/        ZERO dependencies. Never Fastify, SQLite or React.
 apps/api/             Fastify + better-sqlite3; serves the built UI too
   adapters/ routes/   implements core ports, the only SQL / thin: parse (zod), one use case, serialize
   routes/web.ts       the one static mount, plus the SPA fallback
-  auth/ db/           hashing, cookie, guards / pragmas, migrations, seeds
+  auth/ db/ config/   hashing, cookie, guards / pragmas, migrations, seeds / the .env reader
   container.ts        the only file importing both a use case and an adapter
   decorators.ts server.ts main.ts   instance types / plugin order and guards / migrate, check bind, listen
 
@@ -122,7 +128,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  11 spec files, 29 journeys, each against a world of its own
+e2e/                  12 spec files, 35 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,
@@ -174,7 +180,10 @@ cascade.
 expired, and a session extends past its half-life. Cookie: `httpOnly`, `sameSite=lax`,
 `secure=false` (loopback has no TLS), `path=/`, 30 days, session ID only.
 `SESSION_SECRET` lives in gitignored `.env`, made on first run; losing it only signs
-everyone out.
+everyone out. **Nothing loads `.env` into `process.env`**: `config/env-file.ts` reads
+one named setting at a time, environment first and the file second, so a setting nobody
+asks for there is one that does not exist — which is exactly how F29's key was invisible
+while sitting in the file.
 
 ## 6. Money
 
@@ -194,6 +203,8 @@ By database constraints, not repeated in code unless the message needs to be fri
 - amounts are positive
 - every payout has a trader (`trader_id` NOT NULL, ON DELETE RESTRICT: a person with
   payouts cannot be deleted out from under them)
+- `from_address`, `to_address` and `explorer_url` are free text on the leg (F28) —
+  an address on a bank transfer is odd rather than impossible, so nothing refuses it
 
 Enforced by views, not constraints — suspicious rather than impossible, since enforcing
 "cross-currency implies a rate" would block entry before the rate is known

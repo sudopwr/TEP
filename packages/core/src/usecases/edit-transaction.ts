@@ -27,6 +27,10 @@ export interface EditTransactionCommand {
   readonly toAmount: string;
   readonly toCurrencyCode: string;
   readonly rate: bigint | null;
+  /** F28 — correctable like the rest of the row, and as often mistyped. */
+  readonly fromAddress?: string | null;
+  readonly toAddress?: string | null;
+  readonly explorerUrl?: string | null;
   readonly notes?: string | null;
 }
 
@@ -106,6 +110,12 @@ export class EditTransaction {
         // defect 3 destroyed one already, and this form does not offer them.
         fromExternalRef: existing.fromExternalRef,
         toExternalRef: existing.toExternalRef,
+        // The addresses and the link are *not* carried: they are part of the
+        // row being replaced (F28), and a mistyped address is exactly the
+        // kind of thing this use case exists to correct.
+        fromAddress: command.fromAddress ?? null,
+        toAddress: command.toAddress ?? null,
+        explorerUrl: command.explorerUrl ?? null,
         notes: command.notes ?? null,
       }),
     );

@@ -98,7 +98,39 @@ export interface TransactionJson {
   readonly rate: string | null;
   readonly fromExternalRef: string | null;
   readonly toExternalRef: string | null;
+  /**
+   * Where the value left from and arrived at, on a chain, and the page it can
+   * be read on (F28). Null on every leg that never touched one — and on every
+   * leg recorded before the fields were offered.
+   */
+  readonly fromAddress: string | null;
+  readonly toAddress: string | null;
+  readonly explorerUrl: string | null;
   readonly notes: string | null;
+}
+
+/**
+ * What an explorer says about one transfer (F29).
+ *
+ * A *suggestion*, not a fact about the ledger: the fields it fills stay
+ * editable, because a withdrawal routed through a contract can hide the real
+ * recipient and only the reader knows which wallet was theirs.
+ */
+export interface ChainTransferJson {
+  readonly chain: string;
+  readonly hash: string;
+  /** The canonical page, built for a bare hash and echoed for a link. */
+  readonly explorerUrl: string;
+  readonly fromAddress: string;
+  readonly toAddress: string | null;
+  readonly tokenContract: string | null;
+}
+
+/** The three fields a chain hop has, as every command that writes one takes them. */
+export interface ChainFields {
+  readonly fromAddress?: string | null;
+  readonly toAddress?: string | null;
+  readonly explorerUrl?: string | null;
 }
 
 export type FeeType =
@@ -314,7 +346,7 @@ export interface CreatePayoutCommand {
 }
 
 /** A movement. Amounts and rates are strings — N1 reaches the wire too. */
-export interface CreateMovementCommand {
+export interface CreateMovementCommand extends ChainFields {
   readonly kind: Exclude<TransactionKind, 'sale'>;
   readonly code: string;
   readonly payoutId: number;
@@ -331,7 +363,7 @@ export interface CreateMovementCommand {
 }
 
 /** A sale. No `toAmount`: gross proceeds come from the rate (§13). */
-export interface CreateSaleCommand {
+export interface CreateSaleCommand extends ChainFields {
   readonly kind: 'sale';
   readonly code: string;
   readonly payoutId: number;
@@ -358,7 +390,7 @@ export type CreateTransactionCommand =
  * decimal string like every other number here; §6's 1e8 scaling happens at
  * the edge, never in the browser.
  */
-export interface UpdateTransactionCommand {
+export interface UpdateTransactionCommand extends ChainFields {
   readonly transactionId: number;
   readonly code: string;
   readonly txnDate: string;
