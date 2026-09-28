@@ -124,6 +124,10 @@ export interface ChainTransferJson {
   readonly fromAddress: string;
   readonly toAddress: string | null;
   readonly tokenContract: string | null;
+  /** How much moved, as a decimal string, or null if the token would not say. */
+  readonly amount: string | null;
+  /** `USDT`, `ETH` — what to check the amount against before using it. */
+  readonly tokenSymbol: string | null;
 }
 
 /** The three fields a chain hop has, as every command that writes one takes them. */

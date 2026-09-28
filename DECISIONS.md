@@ -147,21 +147,34 @@ Newest last. Never delete an entry — supersede it.
   reduces it to a chain and a hash in the *domain*, and the adapter builds its own URL
   from constants — a service that fetched what it was handed would read the cloud
   metadata endpoint or a printer on the LAN for anybody who asked, and the tests name
-  those attempts. **A token transfer's `to` is the contract, not the person**: every
-  USDT transfer on Ethereum has `to` = `0xdac17f…`, so the recipient is decoded out of
-  the `transfer(address,uint256)` call data, and a call that cannot be decoded leaves
-  the field empty rather than filling it confidently and wrongly. **Not-found and
-  cannot-read are different answers** — 404 against 503 — because one means the link is
-  wrong and the other means this is not set up; a reader who cannot tell them apart
-  retypes a link that was right. That 503 is also why `describeError` now passes a
-  *typed* 5xx message through, while an untyped `internal_error` still gets the opaque
-  sentence that keeps SQLite strings off the screen. **The key lives in `.env`**, beside
-  `SESSION_SECRET` and never in the bundle; absent is a supported state, and the fields
-  stay typeable. **What is filled in is a suggestion**: the form never overwrites an
-  address somebody typed, only the one it filled itself. **A bare hash is accepted
-  too**, because that is what an exchange hands you: it names no chain, so the ones
-  sharing its shape (Ethereum, BSC, Polygon — the same software) are asked in turn and
-  the first that has heard of it wins, while 64 hex without `0x` is Tron and
+  those attempts. ~~**A token transfer's `to` is the contract, not the person**: the
+  recipient is decoded out of the `transfer(address,uint256)` call data.~~ Superseded by
+  **read the `Transfer` event, not the call** (F30): decoding call data only ever worked
+  for a wallet-to-wallet send, and a LayerZero bridge — the transaction that prompted
+  this — has `to` = an upgradeable proxy and a `send(...)` nothing here could decode.
+  The receipt's `Transfer(from,to,value)` logs are what Etherscan prints as "ERC-20
+  Tokens Transferred", and they carry **both ends and the amount**. The *largest*
+  movement wins when a receipt holds several — a relayer fee and a router's hop are
+  plumbing, and the big one is what a person means, which is also what "Net Transfers"
+  shows; four topics means an ERC-721 and is skipped, since a moved picture is not an
+  amount. **The transfer's own ends, never the transaction's**: on a bridge the signer
+  is a relayer and `to` is a proxy, and neither is where the money was. **Decimals are
+  asked for, never assumed** (`decimals()`, cached per contract for the life of the
+  process): Ethereum's USDT keeps 6 where §6 stores 8, and reading one as the other is
+  §13's scale rule with a bigger blast radius — a token that will not say offers no
+  amount at all. The amount fills **each side on its own currency**, so an INR-to-USDT
+  leg fills only the received side, and a figure somebody typed is never overwritten.
+  **Not-found and cannot-read are different answers** — 404 against 503 — because one
+  means the link is wrong and the other means this is not set up; a reader who cannot
+  tell them apart retypes a link that was right. That 503 is also why `describeError`
+  now passes a *typed* 5xx message through, while an untyped `internal_error` still gets
+  the opaque sentence that keeps SQLite strings off the screen. **The key lives in
+  `.env`**, beside `SESSION_SECRET` and never in the bundle; absent is a supported
+  state, and the fields stay typeable. **What is filled in is a suggestion**: the form
+  never overwrites an address somebody typed, only the one it filled itself. **A bare
+  hash is accepted too**, because that is what an exchange hands you: it names no chain,
+  so the ones sharing its shape (Ethereum, BSC, Polygon — the same software) are asked
+  in turn and the first that has heard of it wins, while 64 hex without `0x` is Tron and
   unambiguous. The field then takes back the **canonical page**, which it must: that
   column is rendered as an anchor and the edge takes only http(s), so a hash left in it
   would be refused on save. ~~The key is read from `process.env`.~~ Superseded by

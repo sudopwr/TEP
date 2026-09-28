@@ -1122,6 +1122,8 @@ describe('filling the addresses from the link (F29)', () => {
           fromAddress: SENDER,
           toAddress: RECIPIENT,
           tokenContract: null,
+          amount: null,
+          tokenSymbol: null,
         });
       }),
     );
@@ -1181,6 +1183,8 @@ describe('filling the addresses from the link (F29)', () => {
           fromAddress: SENDER,
           toAddress: RECIPIENT,
           tokenContract: null,
+          amount: null,
+          tokenSymbol: null,
         });
       }),
     );
@@ -1218,6 +1222,8 @@ describe('filling the addresses from the link (F29)', () => {
           fromAddress: SENDER,
           toAddress: RECIPIENT,
           tokenContract: null,
+          amount: null,
+          tokenSymbol: null,
         });
       }),
     );
@@ -1226,5 +1232,141 @@ describe('filling the addresses from the link (F29)', () => {
     await new Promise((resolve) => setTimeout(resolve, 1_000));
 
     expect(asked).toBe(0);
+  });
+});
+
+describe('filling the amount from the chain (F30)', () => {
+  const PASTED =
+    'https://etherscan.io/tx//0xe167419f8be1f9383aae00ca0508b1c85cf0a0cf31c187d38ecf18e53fcc7a94';
+
+  const open = async () => {
+    renderFeature(
+      <RecordTransactionForm
+        payoutId={1}
+        onRecorded={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    await screen.findByRole('combobox', { name: /From account/ });
+  };
+
+  const choose = async (field: RegExp, option: RegExp | string) => {
+    await userEvent.click(screen.getByRole('combobox', { name: field }));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+  };
+
+  const pasteLink = async (): Promise<void> => {
+    await userEvent.click(screen.getByLabelText(/^Transaction link or hash/));
+    await userEvent.paste(PASTED);
+  };
+
+  it('fills both amounts on a USDT hop, since that is what moved', async () => {
+    // The screenshot's row: 45.9571 USDT. Typing it again by hand is the
+    // other way to get it wrong.
+    await open();
+    await choose(/From account/, 'TrustWallet');
+    await choose(/Currency sent/, 'USDT');
+    await choose(/To account/, 'CoinDCX');
+    await choose(/Currency received/, 'USDT');
+
+    await pasteLink();
+
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^Amount sent/)).toHaveValue('45.9571');
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^Amount received/)).toHaveValue('45.9571');
+  });
+
+  it('says what it filled, and in which token', async () => {
+    await open();
+    await choose(/From account/, 'TrustWallet');
+    await pasteLink();
+
+    expect(
+      await screen.findByText(/45\.9571 USDT/, undefined, { timeout: 5_000 }),
+    ).toBeInTheDocument();
+  });
+
+  it('leaves an amount that was typed by hand alone', async () => {
+    await open();
+    await choose(/From account/, 'TrustWallet');
+    await choose(/Currency sent/, 'USDT');
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), '10');
+
+    await pasteLink();
+
+    // The addresses still fill; the amount is the reader's.
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^From wallet address/)).not.toHaveValue(
+          '',
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^Amount sent/)).toHaveValue('10');
+  });
+
+  it('refuses to put a USDT figure into the side recorded in rupees', async () => {
+    /*
+      The one failure this feature exists to avoid: a number that looks
+      right and is not. Rupees out of CoinDCX into a wallet that holds
+      USDT — the chain's 45.9571 is the *received* side, and the sent side
+      is a rupee figure only the reader knows.
+    */
+    await open();
+    await choose(/From account/, 'CoinDCX');
+    await choose(/Currency sent/, 'INR');
+    await choose(/To account/, 'TrustWallet');
+    await choose(/Currency received/, 'USDT');
+
+    await pasteLink();
+
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^Amount received/)).toHaveValue(
+          '45.9571',
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^Amount sent/)).toHaveValue('');
+  });
+
+  it('fills nothing when the token would not say its decimals', async () => {
+    server.use(
+      http.post('/api/chain/lookup', () =>
+        HttpResponse.json({
+          chain: 'ethereum',
+          hash: '0xabc',
+          explorerUrl: PASTED,
+          fromAddress: '0x1111111111111111111111111111111111111111',
+          toAddress: '0x2222222222222222222222222222222222222222',
+          tokenContract: null,
+          amount: null,
+          tokenSymbol: null,
+        }),
+      ),
+    );
+
+    await open();
+    await choose(/From account/, 'TrustWallet');
+    await choose(/Currency sent/, 'USDT');
+
+    await pasteLink();
+
+    await waitFor(
+      () => {
+        expect(screen.getByLabelText(/^From wallet address/)).not.toHaveValue(
+          '',
+        );
+      },
+      { timeout: 5_000 },
+    );
+    expect(screen.getByLabelText(/^Amount sent/)).toHaveValue('');
   });
 });

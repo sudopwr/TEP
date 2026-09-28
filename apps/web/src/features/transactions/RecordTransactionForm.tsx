@@ -4,7 +4,7 @@ import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import { useState, type FormEvent } from 'react';
+import { useRef, useState, type FormEvent } from 'react';
 
 import { Link as RouterLink } from 'react-router-dom';
 
@@ -14,6 +14,7 @@ import {
   useSettlePayout,
   useTransactions,
   type AccountJson,
+  type ChainTransferJson,
   type CreateMovementCommand,
   type CreateSaleCommand,
 } from '../../shared/api';
@@ -141,6 +142,49 @@ export function RecordTransactionForm({
   const sameCurrency =
     !isSale && fromCurrency !== '' && fromCurrency === toCurrency;
   const errors = fieldErrors(mutation.error);
+
+
+  /*
+    What the chain said the amount was (F30).
+
+    Filled under the same rule as the addresses — only into a field that is
+    empty or that this filled before — and only when the token is the
+    currency being recorded. A USDT figure dropped into a leg somebody is
+    recording in rupees would be a number that looks right and is not, which
+    is the one failure this whole feature exists to avoid.
+  */
+  const filledAmounts = useRef<{ from: string; to: string }>({
+    from: '',
+    to: '',
+  });
+
+  const fillFromChain = (found: ChainTransferJson): void => {
+    if (found.amount === null || found.tokenSymbol === null) return;
+
+    const token = found.tokenSymbol.toUpperCase();
+    const matches = (currency: string): boolean =>
+      currency === '' || currency.toUpperCase() === token;
+
+    if (
+      matches(fromCurrency) &&
+      (fromAmount === '' || fromAmount === filledAmounts.current.from)
+    ) {
+      setFromAmount(found.amount);
+      filledAmounts.current = { ...filledAmounts.current, from: found.amount };
+    }
+
+    // Each side judged on its own currency: on an INR-to-USDT leg only the
+    // received side is the token, and a sale has no received field at all
+    // — its proceeds are rupees the chain knows nothing about.
+    if (
+      !isSale &&
+      matches(toCurrency) &&
+      (toAmount === '' || toAmount === filledAmounts.current.to)
+    ) {
+      setToAmount(found.amount);
+      filledAmounts.current = { ...filledAmounts.current, to: found.amount };
+    }
+  };
 
   const submit = (event: FormEvent): void => {
     event.preventDefault();
@@ -450,6 +494,7 @@ export function RecordTransactionForm({
           <ChainFieldset
             values={chain}
             onChange={setChain}
+            onFound={fillFromChain}
             errors={errors}
             disabled={mutation.isPending}
           />

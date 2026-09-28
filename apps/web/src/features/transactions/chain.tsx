@@ -105,11 +105,20 @@ const LOOKUP_DELAY_MS = 600;
 export function ChainFieldset({
   values,
   onChange,
+  onFound,
   errors = {},
   disabled = false,
 }: {
   readonly values: ChainValues;
   readonly onChange: (values: ChainValues) => void;
+  /**
+   * The whole transfer, for the form around this one (F30).
+   *
+   * The amount belongs to the leg, not to these three fields, so it is
+   * handed up rather than filled here — this component owns the chain and
+   * the form owns the money.
+   */
+  readonly onFound?: (transfer: ChainTransferJson) => void;
   readonly errors?: Readonly<Record<string, string | undefined>>;
   readonly disabled?: boolean;
 }) {
@@ -168,6 +177,7 @@ export function ChainFieldset({
 
     filled.current = { from: next.fromAddress, to: next.toAddress };
     onChange(next);
+    onFound?.(found);
   };
 
   /*
@@ -325,8 +335,11 @@ function LookupStatus({
   if (lookup.data !== undefined) {
     return (
       <Typography role="status" variant="body2" sx={{ color: 'muted.main', mt: 0.5 }}>
-        Filled in from {lookup.data.chain}. Check them against your wallet —
-        a transfer through a contract can name the contract, not the person.
+        {lookup.data.amount === null
+          ? `Filled in from ${lookup.data.chain}.`
+          : `Filled in from ${lookup.data.chain}: ${lookup.data.amount} ${lookup.data.tokenSymbol ?? ''}`.trim()}{' '}
+        Check it against your wallet — a transfer through a contract can name
+        the contract, not the person.
       </Typography>
     );
   }

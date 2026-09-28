@@ -154,6 +154,11 @@ export function registerApiRoutes(app: FastifyInstance): void {
       fromAddress: transfer.fromAddress,
       toAddress: transfer.toAddress,
       tokenContract: transfer.tokenContract ?? null,
+      // What moved, as the explorer prints it, and what the token calls
+      // itself (F30). Null when the token would not say its decimals —
+      // never a guessed scale (§13).
+      amount: transfer.amount ?? null,
+      tokenSymbol: transfer.tokenSymbol ?? null,
     };
   });
 

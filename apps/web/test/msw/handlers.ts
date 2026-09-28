@@ -74,6 +74,9 @@ export const handlers = [
       fromAddress: '0x1111111111111111111111111111111111111111',
       toAddress: '0x2222222222222222222222222222222222222222',
       tokenContract: '0xdac17f958d2ee523a2206206994597c13d831ec7',
+      // What the receipt's `Transfer` event said moved (F30).
+      amount: '45.9571',
+      tokenSymbol: 'USDT',
     }),
   ),
 

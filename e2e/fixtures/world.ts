@@ -93,24 +93,55 @@ interface Running {
  */
 export const STUB_SENDER = '0x1111111111111111111111111111111111111111';
 export const STUB_RECIPIENT = '0x2222222222222222222222222222222222222222';
+/** The wallet that signed, and the contract it called — neither is the money. */
+const STUB_SIGNER = '0xcbc1d3b66c60ece2bb4bbbf9ed81a37c85736027';
+const STUB_TOKEN = '0xdac17f958d2ee523a2206206994597c13d831ec7';
 
 async function startStubExplorer(): Promise<{
   readonly url: string;
   close(): Promise<void>;
 }> {
+  const word = (value: bigint): string =>
+    `0x${value.toString(16).padStart(64, '0')}`;
+  const topic = (address: string): string =>
+    `0x${address.slice(2).padStart(64, '0')}`;
+
   const server = createServer((request, response) => {
-    const known = (request.url ?? '').includes('txhash=0x');
+    const url = request.url ?? '';
+    const known = url.includes('txhash=0x');
+
+    /*
+      The four calls a lookup makes (F29, F30): the transaction, its
+      receipt, and the token's `decimals()` and `symbol()`. The receipt
+      carries one ERC-20 `Transfer` — 45.9571 USDT — which is the row a
+      ledger actually wants.
+    */
+    const result = url.includes('eth_getTransactionByHash')
+      ? known
+        ? { from: STUB_SIGNER, to: STUB_TOKEN, value: '0x0' }
+        : null
+      : url.includes('eth_getTransactionReceipt')
+        ? {
+            logs: [
+              {
+                address: STUB_TOKEN,
+                topics: [
+                  '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+                  topic(STUB_SENDER),
+                  topic(STUB_RECIPIENT),
+                ],
+                data: word(45_957_100n),
+              },
+            ],
+          }
+        : url.includes('data=0x313ce567')
+          ? word(6n)
+          : `0x${word(32n).slice(2)}${word(4n).slice(2)}${Buffer.from(
+              'USDT',
+            ).toString('hex').padEnd(64, '0')}`;
 
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(
-      JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        result: known
-          ? { from: STUB_SENDER, to: STUB_RECIPIENT, input: '0x' }
-          : null,
-      }),
-    );
+    response.end(JSON.stringify({ jsonrpc: '2.0', id: 1, result }));
   });
 
   await new Promise<void>((resolve) => {

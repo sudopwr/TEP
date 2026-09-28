@@ -233,3 +233,56 @@ test('takes a bare transaction hash and turns it into a link (F29)', async ({
       .getByRole('link', { name: 'View on explorer' }),
   ).toHaveAttribute('href', `https://etherscan.io/tx/${hash}`);
 });
+
+test('fills the amount that moved, off the token transfer (F30)', async ({
+  page,
+}) => {
+  /*
+    What Etherscan prints as "ERC-20 Tokens Transferred", which is the row
+    a ledger wants: the transaction's own `to` is whatever contract was
+    called — a bridge proxy, an exchange's withdrawal contract — while the
+    receipt's `Transfer` event says which address the tokens left, which
+    address received them, and how many.
+  */
+  await page.getByRole('button', { name: 'Record transaction' }).click();
+
+  await choose(page, 'What happened').click();
+  await page.getByRole('option', { name: /Transfer/ }).click();
+  await field(page, 'Reference code').fill('Transaction901');
+
+  await choose(page, 'From account').click();
+  await page.getByRole('option', { name: 'TrustWallet' }).click();
+  await choose(page, 'Currency sent').click();
+  await page.getByRole('option', { name: 'USDT' }).click();
+  await choose(page, 'To account').click();
+  await page.getByRole('option', { name: 'CoinDCX' }).click();
+  await choose(page, 'Currency received').click();
+  await page.getByRole('option', { name: 'USDT' }).click();
+
+  await page.getByLabel('Transaction link or hash').fill(ADDRESSES.link2);
+
+  // Both ends and the amount, none of it typed.
+  await expect(page.getByLabel('From wallet address')).toHaveValue(
+    STUB_SENDER,
+    { timeout: 10_000 },
+  );
+  await expect(page.getByLabel('To wallet address')).toHaveValue(
+    STUB_RECIPIENT,
+  );
+  await expect(page.getByLabel(/^Amount sent/)).toHaveValue('45.9571');
+  await expect(page.getByLabel(/^Amount received/)).toHaveValue('45.9571');
+  await expect(page.getByText(/45\.9571 USDT/)).toBeVisible();
+
+  await page.getByRole('button', { name: 'Record transaction' }).click();
+  await expect(page.getByText('Transaction recorded')).toBeVisible();
+
+  // And it is the figure that was stored, not something rounded on the way.
+  const served = await page.request.get('/api/transactions?payoutId=1');
+  const stored = (
+    (await served.json()) as {
+      transactions: { code: string; fromAmount: { amount: string } }[];
+    }
+  ).transactions.find((one) => one.code === 'Transaction901');
+
+  expect(stored?.fromAmount.amount).toBe('45.95710000');
+});

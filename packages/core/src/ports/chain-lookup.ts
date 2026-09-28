@@ -13,6 +13,20 @@ export interface ChainTransfer {
   readonly toAddress: string | null;
   /** The token contract the transfer went through, when it was a token. */
   readonly tokenContract?: string | null;
+  /**
+   * How much moved, as a decimal string (F30).
+   *
+   * A *string*, not a `Money`: the token is whatever the chain says it is —
+   * USDT keeps six decimals on Ethereum and this ledger stores it at eight
+   * (§6) — so what comes back is the number as a person reads it on the
+   * explorer, and the form converts when it is recorded. Absent when the
+   * token would not say how many decimals it keeps, because §13's rule
+   * about guessing a scale applies to a chain exactly as it does to a
+   * currency table.
+   */
+  readonly amount?: string | null;
+  /** What the token calls itself: `USDT`, `ETH`. Absent when it will not say. */
+  readonly tokenSymbol?: string | null;
 }
 
 /**

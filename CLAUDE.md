@@ -49,6 +49,7 @@ two fees.
 | F27 | A Traders screen: the register, with each person's payout count; add and edit from it |
 | F28 | A leg that moved along a chain carries both wallet addresses and a link to the transaction |
 | F29 | Paste that link — or just the transaction hash — and the two addresses fill themselves, read off the chain and still editable |
+| F30 | Read the token transfer itself — the "ERC-20 Tokens Transferred" row — so a bridge or a router fills the right two addresses, and the amount with them |
 
 ### Non-functional
 | # | Requirement |
@@ -128,7 +129,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  12 spec files, 35 journeys, each against a world of its own
+e2e/                  12 spec files, 36 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,
@@ -191,6 +192,11 @@ while sitting in the file.
 and rates are scaled by 1e8. Never `REAL`, never `number` arithmetic: `Money` does it,
 and throws on a currency mismatch.
 - `4599` INR = ₹45.99 · `75317770000` USDT = 753.1777 USDT · `9766520000` rate = 97.6652
+
+A token keeps its own decimals on its own chain, and they are **not** this table's:
+Ethereum's USDT keeps 6 where §6 stores 8. F30 asks the contract (`decimals()`) and
+writes the amount as the explorer prints it; the form converts when it is recorded, and
+a token that will not say offers no amount at all rather than a guessed scale.
 
 ## 7. Invariants
 

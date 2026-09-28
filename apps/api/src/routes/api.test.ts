@@ -551,23 +551,26 @@ describe('/api routes', () => {
     });
 
     it('takes a bare hash and works out which chain it is on', async () => {
-      // What an exchange gives you is a hash, not a page. Ethereum, BSC and
-      // Polygon share its shape, so they are asked in turn.
-      const fetch = vi
-        .fn()
-        .mockResolvedValueOnce(
-          new Response(JSON.stringify({ result: null }), {
-            headers: { 'content-type': 'application/json' },
-          }),
-        )
-        .mockResolvedValueOnce(
-          new Response(
-            JSON.stringify({
-              result: { from: SENDER, to: RECIPIENT, input: '0x' },
-            }),
-            { headers: { 'content-type': 'application/json' } },
-          ),
-        );
+      /*
+        What an exchange gives you is a hash, not a page. Ethereum, BSC and
+        Polygon share its shape, so they are asked in turn — and each ask is
+        a transaction *and* a receipt (F30), so the stub answers by what was
+        asked rather than by how many times.
+      */
+      const fetch = vi.fn().mockImplementation((url: string) => {
+        const onEthereum = url.includes('chainid=1&');
+        const body = url.includes('eth_getTransactionByHash')
+          ? {
+              result: onEthereum
+                ? null
+                : { from: SENDER, to: RECIPIENT, value: '0x0' },
+            }
+          : { result: { logs: [] } };
+
+        return new Response(JSON.stringify(body), {
+          headers: { 'content-type': 'application/json' },
+        });
+      });
 
       await withExplorer(fetch as unknown as typeof globalThis.fetch);
 
@@ -581,6 +584,56 @@ describe('/api routes', () => {
         // The canonical page, built for the hash: the field stores this,
         // and a hash in that column would be refused on save.
         explorerUrl: `https://bscscan.com/tx/${HASH}`,
+      });
+    });
+
+    it('carries the amount the receipt reported, and the token (F30)', async () => {
+      // The row Etherscan prints as "ERC-20 Tokens Transferred": the two
+      // ends and how much, read off the `Transfer` event rather than off
+      // the transaction, whose `to` is whatever contract was called.
+      const TOKEN = '0xdac17f958d2ee523a2206206994597c13d831ec7';
+      const fetch = vi.fn().mockImplementation((url: string) => {
+        const word = (value: bigint) =>
+          `0x${value.toString(16).padStart(64, '0')}`;
+        const topic = (address: string) =>
+          `0x${address.slice(2).padStart(64, '0')}`;
+
+        const body = url.includes('eth_getTransactionByHash')
+          ? { result: { from: SENDER, to: TOKEN, value: '0x0' } }
+          : url.includes('eth_getTransactionReceipt')
+            ? {
+                result: {
+                  logs: [
+                    {
+                      address: TOKEN,
+                      topics: [
+                        '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef',
+                        topic(SENDER),
+                        topic(RECIPIENT),
+                      ],
+                      data: word(45_957_100n),
+                    },
+                  ],
+                },
+              }
+            : url.includes('data=0x313ce567')
+              ? { result: word(6n) }
+              : { result: `0x${word(32n).slice(2)}${word(4n).slice(2)}${Buffer.from('USDT').toString('hex').padEnd(64, '0')}` };
+
+        return new Response(JSON.stringify(body), {
+          headers: { 'content-type': 'application/json' },
+        });
+      });
+
+      await withExplorer(fetch as unknown as typeof globalThis.fetch);
+
+      const response = await post('/api/chain/lookup', { link: PASTED });
+
+      expect(response.json()).toMatchObject({
+        fromAddress: SENDER.toLowerCase(),
+        toAddress: RECIPIENT.toLowerCase(),
+        amount: '45.9571',
+        tokenSymbol: 'USDT',
       });
     });
 
