@@ -20,7 +20,7 @@ import {
 } from './features/auth';
 import { DataQualityScreen } from './features/data-quality';
 import {
-  DocumentSearch,
+  DocumentRegister,
   PayoutDocuments,
   useDocumentAttachments,
 } from './features/documents';
@@ -356,7 +356,7 @@ export function AppRoutes() {
         <Route path="/accounts" element={<AccountList />} />
         <Route path="/accounts/new" element={<RecordAccountForm />} />
         <Route path="/balances" element={<BalancesPage />} />
-        <Route path="/documents" element={<DocumentSearch />} />
+        <Route path="/documents" element={<DocumentRegister />} />
         <Route path="/data-quality" element={<DataQualityScreen />} />
         <Route path="/reports" element={<FinancialYearReport />} />
         <Route path="/account" element={<AccountSettings />} />

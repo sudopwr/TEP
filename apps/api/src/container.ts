@@ -16,6 +16,7 @@ import {
   EditAccount,
   EditTransaction,
   LinkDocument,
+  ListDocuments,
   ListDocumentsFor,
   GetSettlement,
   ImportLegacyCsv,
@@ -198,6 +199,7 @@ export function buildContainer(
     deleteDocument: new DeleteDocument({ documents, store }),
     linkDocument: new LinkDocument({ documents }),
     detachDocument: new DetachDocument({ documents }),
+    listDocuments: new ListDocuments({ documents }),
     listDocumentsFor: new ListDocumentsFor({ documents }),
     searchDocuments: new SearchDocuments({ documents }),
 

@@ -5,6 +5,7 @@ export {
   useCompanies,
   useDataQuality,
   useDocumentSearch,
+  useDocuments,
   useFinancialYearReport,
   usePayoutDocuments,
   usePayoutTrail,

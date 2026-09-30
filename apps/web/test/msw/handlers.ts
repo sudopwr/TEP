@@ -10,6 +10,7 @@ import {
   OTHER_PAYOUT,
   OTHER_TRADER,
   PAYOUT,
+  REGISTER,
   REPORT,
   RISE_CO,
   SETTLEMENT,
@@ -277,6 +278,43 @@ export const handlers = [
     ),
   ]),
 
+  /*
+    F31 — the register, paged and filtered here rather than faked.
+
+    A handler that ignores `?page=` and answers the same ten rows would let a
+    Next button that sends nothing pass, which is the bug most worth catching.
+    So this does what the server does: narrow, count, then cut.
+  */
+  http.get('/api/documents', ({ request }) => {
+    const url = new URL(request.url);
+    const search = (url.searchParams.get('search') ?? '').trim().toLowerCase();
+    const perPage = Number(url.searchParams.get('perPage') ?? '10');
+
+    const matching = [...REGISTER]
+      .filter((one) => one.filename.toLowerCase().includes(search))
+      .sort((one, other) => {
+        // Newest first, an undated document counting as just arrived, which
+        // is `COALESCE(doc_date, date(created_at))` in the adapter.
+        const left = one.docDate ?? '9999-12-31';
+        const right = other.docDate ?? '9999-12-31';
+
+        return left === right ? other.id - one.id : right.localeCompare(left);
+      });
+
+    const pages = Math.max(1, Math.ceil(matching.length / perPage));
+    const page = Math.min(
+      Math.max(1, Number(url.searchParams.get('page') ?? '1')),
+      pages,
+    );
+
+    return HttpResponse.json({
+      documents: matching.slice((page - 1) * perPage, page * perPage),
+      total: matching.length,
+      page,
+      perPage,
+      pages,
+    });
+  }),
   http.get('/api/documents/search', () =>
     HttpResponse.json({ documents: DOCUMENTS }),
   ),

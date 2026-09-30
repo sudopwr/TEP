@@ -7,7 +7,9 @@ import {
 import type {
   Document,
   DocumentDraft,
+  DocumentFilter,
   DocumentId,
+  DocumentQuery,
   DocumentRepository,
   DocumentTarget,
 } from '@payout/core';
@@ -73,6 +75,44 @@ const SQL = {
              JOIN documents d ON d.id = documents_fts.rowid
             WHERE documents_fts MATCH ?
             ORDER BY documents_fts.rank`,
+
+  /*
+    The register (UC27): newest first, a page at a time.
+
+    `COALESCE(doc_date, date(created_at))` is the sort a reader expects — a
+    statement belongs to the month it covers, and only a document nobody
+    dated falls back to the evening it was uploaded. The id breaks ties, or
+    two documents dated the same day could swap places between one page and
+    the next and a row would be seen twice or not at all.
+
+    Four statements rather than one with `:search IS NULL`: the filtered
+    pair carry an FTS5 `MATCH`, which is a syntax error when handed an empty
+    string, and a prepared statement that is only valid half the time is one
+    nobody can read.
+  */
+  listAll: `SELECT ${DOC_COLUMNS_D} FROM documents d
+             ORDER BY COALESCE(d.doc_date, date(d.created_at)) DESC, d.id DESC
+             LIMIT ? OFFSET ?`,
+  countAll: `SELECT COUNT(*) AS n FROM documents`,
+
+  /*
+    The name *or* what is written inside (F7's promise, kept).
+
+    `LIKE` for the filename, because a register is browsed by fragments —
+    "coin" should find `coindcx-march.pdf`, and FTS5 matches whole words —
+    and the FTS index for the text, through a subquery so the ordering stays
+    the register's rather than the search engine's.
+  */
+  listMatching: `SELECT ${DOC_COLUMNS_D} FROM documents d
+                  WHERE d.filename LIKE ? ESCAPE '\\'
+                     OR d.id IN (SELECT rowid FROM documents_fts
+                                  WHERE documents_fts MATCH ?)
+                  ORDER BY COALESCE(d.doc_date, date(d.created_at)) DESC, d.id DESC
+                  LIMIT ? OFFSET ?`,
+  countMatching: `SELECT COUNT(*) AS n FROM documents d
+                   WHERE d.filename LIKE ? ESCAPE '\\'
+                      OR d.id IN (SELECT rowid FROM documents_fts
+                                   WHERE documents_fts MATCH ?)`,
 } as const;
 
 interface DocumentWrite {
@@ -97,6 +137,22 @@ export function toFtsPhrase(query: string): string {
   return `"${query.trim().replace(/"/g, '""')}"`;
 }
 
+/**
+ * Turn user text into a `LIKE` pattern that means what it looks like.
+ *
+ * `%` and `_` are wildcards in SQL, so a filename search for `50%.pdf` would
+ * otherwise match everything. They are escaped, and the escape character
+ * with them, under an explicit `ESCAPE` clause.
+ */
+export function toLikePattern(query: string): string {
+  const escaped = query
+    .trim()
+    .replace(/\\/g, '\\\\')
+    .replace(/[%_]/g, (character) => `\\${character}`);
+
+  return `%${escaped}%`;
+}
+
 export class SqliteDocumentRepository implements DocumentRepository {
   readonly #selectById;
   readonly #selectBySha;
@@ -107,6 +163,10 @@ export class SqliteDocumentRepository implements DocumentRepository {
   readonly #unlink;
   readonly #listFor;
   readonly #search;
+  readonly #listAll;
+  readonly #countAll;
+  readonly #listMatching;
+  readonly #countMatching;
   readonly #countLinks;
   readonly #delete;
 
@@ -136,6 +196,18 @@ export class SqliteDocumentRepository implements DocumentRepository {
       payout: database.prepare<[number, number]>(SQL.unlinkPayout),
       transaction: database.prepare<[number, number]>(SQL.unlinkTransaction),
     };
+
+    this.#listAll = database.prepare<[number, number], DocumentRow>(
+      SQL.listAll,
+    );
+    this.#countAll = database.prepare<[], { n: bigint }>(SQL.countAll);
+    this.#listMatching = database.prepare<
+      [string, string, number, number],
+      DocumentRow
+    >(SQL.listMatching);
+    this.#countMatching = database.prepare<[string, string], { n: bigint }>(
+      SQL.countMatching,
+    );
 
     this.#listFor = {
       company: database.prepare<[number], DocumentRow>(SQL.listForCompany),
@@ -213,6 +285,39 @@ export class SqliteDocumentRepository implements DocumentRepository {
     return Promise.resolve(
       this.#listFor[target.kind].all(target.id).map(toDocument),
     );
+  }
+
+  /**
+   * One page of the register (UC27), newest first.
+   *
+   * `LIMIT`/`OFFSET` rather than slicing in the caller: ten rows cost ten
+   * rows whether there are forty documents on file or forty thousand (N2).
+   */
+  async list(query: DocumentQuery): Promise<readonly Document[]> {
+    const rows =
+      query.search === undefined || query.search.trim() === ''
+        ? this.#listAll.all(query.limit, query.offset)
+        : this.#listMatching.all(
+            toLikePattern(query.search),
+            toFtsPhrase(query.search),
+            query.limit,
+            query.offset,
+          );
+
+    return Promise.resolve(rows.map(toDocument));
+  }
+
+  /** The same filter, counted — what "of 34" under the table is. */
+  async count(filter: DocumentFilter): Promise<number> {
+    const row =
+      filter.search === undefined || filter.search.trim() === ''
+        ? this.#countAll.get()
+        : this.#countMatching.get(
+            toLikePattern(filter.search),
+            toFtsPhrase(filter.search),
+          );
+
+    return Promise.resolve(Number(row?.n ?? 0n));
   }
 
   async search(query: string): Promise<readonly Document[]> {

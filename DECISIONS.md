@@ -205,3 +205,27 @@ Newest last. Never delete an entry — supersede it.
   foreign keys on, `ALTER TABLE ADD COLUMN ... NOT NULL REFERENCES` is impossible, so it
   is SQLite's 12-step dance under `defer_foreign_keys` and `legacy_alter_table`, §10 and
   the views proven after.
+- **A register is not a search** (F31, UC27): the Documents screen listed nothing until
+  something was typed, which is no help to the reader whose question is "what have I
+  got?" — they would need the answer to ask it. So `ListDocuments` sits beside
+  `SearchDocuments` rather than replacing it: UC9 answers nothing to an empty query and
+  is right to, and `AttachDocumentDialog` still wants exactly that, while the register
+  answers everything and narrows. **Counted first, then cut**, both in SQL: `COUNT(*)`
+  decides how many pages there are, and a request past the end answers the *last* page
+  rather than an empty one — a table reading "81–90 of 14" is lying about its own
+  contents, and the commonest way to see one is to delete your way off the end. The
+  screen therefore labels the page the server **served**, never the one it asked for.
+  `LIMIT`/`OFFSET` rather than slicing in the browser (N2), which also means **the
+  columns offer no sort of their own**: sorting ten rows of thirty-four client-side
+  reorders a page while looking like it reordered the register. **`LIKE` beside the FTS
+  index**, not instead of it: a register is browsed by fragments, and `MATCH` takes
+  whole words, so "coin" finds `coindcx-march.pdf` through the filename and "868.88"
+  finds it through the PDF text. `%` and `_` are escaped under an explicit `ESCAPE '\'`
+  — a search for `50%` that quietly returned everything would look like it worked.
+  **Newest by `doc_date`, the upload standing in**: a statement is dated by the month it
+  covers, and a pasted screenshot has no date at all, so `COALESCE(doc_date,
+  date(created_at))` puts the just-arrived one where the person who just pasted it will
+  look. The fake mirrors that with a `9999-12-31` sentinel, having no clock of its own.
+  Four prepared statements rather than one with `:search IS NULL`, because an FTS5
+  `MATCH` on an empty string is a syntax error — a statement valid half the time is one
+  nobody can read.

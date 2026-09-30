@@ -2,6 +2,8 @@ import { Document } from '../../src/domain/document';
 import type { DocumentId } from '../../src/domain/ids';
 import type {
   DocumentDraft,
+  DocumentFilter,
+  DocumentQuery,
   DocumentRepository,
   DocumentTarget,
 } from '../../src/ports/document-repository';
@@ -14,6 +16,17 @@ interface StoredLink {
 
 const keyOf = (documentId: DocumentId, target: DocumentTarget): string =>
   `${documentId}:${target.kind}:${target.id}`;
+
+/**
+ * Where a document nobody dated sorts: at the top, as just-arrived.
+ *
+ * SQL orders the register by `COALESCE(doc_date, date(created_at))`, and this
+ * fake has no clock — insertion order is its only sense of time. Treating an
+ * undated row as today's is what that COALESCE does for anything uploaded
+ * today, which in a test is everything, and the id then breaks the tie in the
+ * same direction.
+ */
+const UNDATED = '9999-12-31';
 
 export class FakeDocumentRepository implements DocumentRepository {
   readonly #rows = new Map<DocumentId, Document>();
@@ -111,6 +124,44 @@ export class FakeDocumentRepository implements DocumentRepository {
     }
 
     return Promise.resolve(documents);
+  }
+
+  /**
+   * The register, newest first (UC27), with the same ordering SQL uses:
+   * the document's own date, the upload standing in when it has none.
+   */
+  list(query: DocumentQuery): Promise<readonly Document[]> {
+    const matching = this.#matching(query.search);
+
+    return Promise.resolve(
+      matching.slice(query.offset, query.offset + query.limit),
+    );
+  }
+
+  count(filter: DocumentFilter): Promise<number> {
+    return Promise.resolve(this.#matching(filter.search).length);
+  }
+
+  /** Filtered and ordered, which both of the two above need. */
+  #matching(search: string | undefined): readonly Document[] {
+    const needle = (search ?? '').trim().toLowerCase();
+
+    const rows = [...this.#rows.values()].filter(
+      (document) =>
+        needle === '' ||
+        document.filename.toLowerCase().includes(needle) ||
+        (document.extractedText ?? '').toLowerCase().includes(needle),
+    );
+
+    return rows.sort((one, other) => {
+      const left = one.docDate ?? UNDATED;
+      const right = other.docDate ?? UNDATED;
+
+      // Newest first, and the id breaks a tie the way `ORDER BY … , id DESC`
+      // does — two statements for the same month must not swap places
+      // between one page and the next.
+      return left === right ? other.id - one.id : right.localeCompare(left);
+    });
   }
 
   /** A deliberately naive stand-in for FTS5: case-insensitive substring. */

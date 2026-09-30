@@ -140,3 +140,42 @@ export const DOCUMENTS: readonly DocumentJson[] = [
     docDate: '2025-03-31',
   },
 ];
+
+/**
+ * Fourteen documents, so page 2 exists and is short (F31).
+ *
+ * `DOCUMENTS` above is deliberately one row — several screens assert on that
+ * one statement by name — and a register needs more than one page to be worth
+ * testing at all. `coindcx-march.pdf` is the same row, so a test can page to
+ * it and preview it.
+ *
+ * Dated out of id order on purpose: the register is sorted by what a document
+ * is dated, and a fixture that agrees with insertion order cannot tell the two
+ * apart.
+ */
+export const REGISTER: readonly DocumentJson[] = [
+  ...DOCUMENTS,
+  ...[
+    ['tradeify-agreement.pdf', 'agreement', '2024-11-02'],
+    ['coindcx-january.pdf', 'statement', '2025-01-31'],
+    ['rise-withdrawal-1.png', 'screenshot', '2025-03-04'],
+    ['rise-withdrawal-2.png', 'screenshot', '2025-03-05'],
+    ['rise-withdrawal-3.png', 'screenshot', '2025-03-06'],
+    ['rise-withdrawal-4.png', 'screenshot', '2025-03-07'],
+    ['bank-credit-march.pdf', 'receipt', '2025-03-28'],
+    ['coindcx-february.pdf', 'statement', '2025-02-28'],
+    ['wallet-dust.png', 'screenshot', '2025-03-08'],
+    ['tds-certificate.pdf', 'other', '2025-04-15'],
+    ['bank-credit-april.pdf', 'receipt', '2025-04-02'],
+    ['coindcx-april.pdf', 'statement', '2025-04-30'],
+    ['ledger-notes.txt', null, null],
+  ].map(([filename, docType, docDate], index) => ({
+    id: 100 + index,
+    filename: filename as string,
+    mimeType: 'application/pdf',
+    byteSize: 4096,
+    sha256: String(index).repeat(64).slice(0, 64),
+    docType: docType as DocumentJson['docType'],
+    docDate: docDate as string | null,
+  })),
+];

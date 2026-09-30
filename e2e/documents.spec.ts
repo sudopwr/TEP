@@ -99,13 +99,18 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
   await page.getByRole('link', { name: 'Documents' }).click();
   await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
 
-  // Nothing is searched until something is typed: the API answers 400 to an
-  // empty query, and an empty search box is the normal state of one.
-  await expect(page.getByText('Search for a document.')).toBeVisible();
+  /*
+    It is already there, without a word being typed (F31).
+
+    Nothing dated it, so it sorts as just arrived — which is exactly where the
+    reader who just uploaded it will look for it.
+  */
+  const register = page.getByRole('table', { name: 'Documents' });
+  await expect(register.getByText(filename)).toBeVisible();
 
   await field(page, 'Search documents').fill(token);
 
-  const results = page.getByRole('table', { name: 'Search results' });
+  const results = register;
   await expect(results.getByText(filename)).toBeVisible();
   // Exact, because the filename contains the word too — the assertion is
   // about the Kind cell, which is what was chosen on the way in.
@@ -159,4 +164,46 @@ test('attaches a statement to a leg, finds it by searching, then deletes it', as
   ).toHaveCount(0);
 
   expect((await page.request.get(source as string)).status()).toBe(404);
+});
+
+/**
+ * Journey 37: the register itself — every document on file, ten at a time.
+ *
+ * The sheet names eleven distinct files (§9), so the world this runs in has
+ * two pages the moment it is imported, and no upload is needed to find out
+ * whether paging works. Which is the point: the ten rows on screen are a page
+ * of a list the server cut, not the whole list with the rest hidden, and the
+ * only way to tell the two apart is to ask for the eleventh.
+ */
+test('lists every document on file, a page at a time', async ({ page, world }) => {
+  await world.signIn(page, CHANGED_PASSWORD);
+
+  await page.getByRole('link', { name: 'Documents' }).click();
+  await expect(page.getByRole('heading', { name: 'Documents' })).toBeVisible();
+
+  // No search, and rows all the same: the register answers before it is asked.
+  const register = page.getByRole('table', { name: 'Documents' });
+  await expect(register.getByRole('row')).toHaveCount(11); // ten, plus the header
+  await expect(page.getByText('1–10 of 11')).toBeVisible();
+  await expect(page.getByText('Page 1 of 2')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+  await page.getByRole('button', { name: 'Next' }).click();
+
+  await expect(page.getByText('11–11 of 11')).toBeVisible();
+  await expect(page.getByText('Page 2 of 2')).toBeVisible();
+  await expect(register.getByRole('row')).toHaveCount(2);
+  await expect(page.getByRole('button', { name: 'Next' })).toBeDisabled();
+
+  // And the box narrows the same list rather than opening a different screen:
+  // four wallet screenshots, on one page, counted.
+  await field(page, 'Search documents').fill('trustwallet');
+
+  await expect(page.getByText('1–4 of 4')).toBeVisible();
+  await expect(register.getByText('trustwallet-1.png')).toBeVisible();
+
+  // A fragment, not a whole word: `LIKE` on the filename beside the FTS index.
+  await field(page, 'Search documents').fill('wallet-2');
+
+  await expect(page.getByText('1–1 of 1')).toBeVisible();
 });

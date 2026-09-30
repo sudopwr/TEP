@@ -29,3 +29,8 @@ export type {
 
 export type { TraderDraft, TraderRepository } from './trader-repository';
 export type { ChainLookup, ChainTransfer } from './chain-lookup';
+export type {
+  DocumentFilter,
+  DocumentPage,
+  DocumentQuery,
+} from './document-repository';

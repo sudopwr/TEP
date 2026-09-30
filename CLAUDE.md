@@ -50,6 +50,7 @@ two fees.
 | F28 | A leg that moved along a chain carries both wallet addresses and a link to the transaction |
 | F29 | Paste that link — or just the transaction hash — and the two addresses fill themselves, read off the chain and still editable |
 | F30 | Read the token transfer itself — the "ERC-20 Tokens Transferred" row — so a bridge or a router fills the right two addresses, and the amount with them |
+| F31 | A Documents screen: the register, newest first, ten a page, narrowed by a name or by what is written inside |
 
 ### Non-functional
 | # | Requirement |
@@ -91,7 +92,10 @@ RecordTrader, ListTraders, EditTrader.** F24 and F27: a person payouts belong to
 no credential of any kind; an edit is a replacement and never touches the id their
 payouts hang off. **UC26 — LookUpChainTransfer.** F29: parse the link, then ask the
 explorer — in that order, so the adapter is handed a chain and a hash and never the
-pasted string. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
+pasted string. **UC27 — ListDocuments.** F31: the register, newest first by `doc_date`
+and the upload standing in for an undated one, counted and cut in the database; a blank
+search means everything, which is what makes it not UC9, and a page past the end answers
+the last one. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
 optional, honoured *identically* by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**,
 because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `EditAccount`,
 `DeleteAccount`, `ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
@@ -129,7 +133,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  12 spec files, 36 journeys, each against a world of its own
+e2e/                  12 spec files, 37 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,

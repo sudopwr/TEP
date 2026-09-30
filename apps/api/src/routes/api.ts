@@ -22,6 +22,7 @@ import {
   financialYearQuery,
   idParam,
   listAccountsQuery,
+  listDocumentsQuery,
   listPayoutsQuery,
   linkDocumentBody,
   listTransactionsQuery,
@@ -632,6 +633,33 @@ export function registerApiRoutes(app: FastifyInstance): void {
    * filename is quoted and stripped of quotes and control characters, because
    * it came from an upload.
    */
+  /*
+    F31 — the register: every document on file, newest first, ten at a time.
+
+    A GET on the collection, where `/api/documents/search` is a question: this
+    one answers without being asked anything, and `?search=` narrows it. The
+    page that comes back reports the page it actually served rather than the
+    one that was asked for — UC27 corrects a request past the end, and the
+    browser needs to know which page it is looking at to label it.
+  */
+  app.get('/api/documents', async (request) => {
+    const query = parseOrThrow(listDocumentsQuery, request.query, 'query');
+
+    const page = await app.useCases.listDocuments.execute({
+      ...(query.search === undefined ? {} : { search: query.search }),
+      ...(query.page === undefined ? {} : { page: query.page }),
+      ...(query.perPage === undefined ? {} : { perPage: query.perPage }),
+    });
+
+    return {
+      documents: page.documents.map(out.document),
+      total: page.total,
+      page: page.page,
+      perPage: page.perPage,
+      pages: page.pages,
+    };
+  });
+
   app.get('/api/documents/:id', async (request, reply) => {
     const { id } = parseOrThrow(idParam, request.params, 'params');
 

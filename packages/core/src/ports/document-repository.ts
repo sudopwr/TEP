@@ -63,4 +63,42 @@ export interface DocumentRepository {
 
   /** Full-text search over filename and extracted text (UC9, FTS5). */
   search(query: string): Promise<readonly Document[]>;
+
+  /**
+   * One page of the register, newest first (UC27).
+   *
+   * Paged here rather than in the caller: `limit` and `offset` reach SQL, so
+   * ten rows cost ten rows however many are on file (N2).
+   */
+  list(query: DocumentQuery): Promise<readonly Document[]>;
+
+  /** How many the same filter matches, for the count under the table. */
+  count(filter: DocumentFilter): Promise<number>;
+}
+
+export interface DocumentFilter {
+  /**
+   * One term against two things: the filename, and the text inside a PDF.
+   *
+   * Two, because a reader who types "coindcx" means either — F7's promise is
+   * that a document is found by what it is called *or* by what is written in
+   * it, and a register that searched only names would quietly be worse than
+   * the search box it replaced.
+   */
+  readonly search?: string;
+}
+
+export interface DocumentQuery extends DocumentFilter {
+  readonly limit: number;
+  readonly offset: number;
+}
+
+/** A page, and enough to say "11–20 of 34" underneath it. */
+export interface DocumentPage {
+  readonly documents: readonly Document[];
+  readonly total: number;
+  /** 1-based, and already corrected if the page asked for is past the end. */
+  readonly page: number;
+  readonly perPage: number;
+  readonly pages: number;
 }

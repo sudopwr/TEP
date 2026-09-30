@@ -20,7 +20,7 @@ import {
 import { DocumentUpload } from './DocumentUpload';
 
 /**
- * Search, preview and upload — F6 and F7.
+ * The register, preview and upload — F6, F7 and F31.
  */
 
 /**
@@ -40,42 +40,128 @@ const confirmUpload = async (name?: string): Promise<void> => {
   );
 };
 
-describe('searching documents', () => {
-  it('asks nothing until there is something to search for', async () => {
-    // The API answers 400 to an empty query and is right to, but an empty
-    // search box is the normal state of a search box.
+describe('the document register (F31)', () => {
+  it('lists what is on file without being asked anything', async () => {
+    // The screen this replaced showed an invitation to search until something
+    // was typed, which is no help at all to a reader whose question is "what
+    // have I got?" — they would have to know the answer to ask it.
     renderApp({ route: '/documents' });
-
-    expect(
-      await screen.findByText('Search for a document.'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByRole('table', { name: 'Search results' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('shows what matched once a term is typed', async () => {
-    renderApp({ route: '/documents' });
-    await screen.findByText('Search for a document.');
-
-    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
 
     expect(await screen.findByText('coindcx-march.pdf')).toBeInTheDocument();
     expect(screen.getByText('20 KB')).toBeInTheDocument();
   });
 
-  it('names the term that found nothing, and offers a way out', async () => {
-    server.use(answering('/api/documents/search', { documents: [] }));
-
+  it('shows ten of them, and says how many there are', async () => {
     renderApp({ route: '/documents' });
-    await screen.findByText('Search for a document.');
+    await screen.findByText('coindcx-march.pdf');
+
+    const table = screen.getByRole('table', { name: 'Documents' });
+    // The header row is a row too.
+    expect(within(table).getAllByRole('row')).toHaveLength(11);
+    expect(screen.getByText('1–10 of 14')).toBeInTheDocument();
+    expect(screen.getByText('Page 1 of 2')).toBeInTheDocument();
+  });
+
+  it('puts the newest first, by the date on the document', async () => {
+    // Not by upload order, and not by id: a statement is dated by the month
+    // it covers. An undated one counts as just arrived.
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
+
+    const cells = screen
+      .getAllByRole('cell')
+      .map((cell) => cell.textContent ?? '');
+
+    expect(cells.indexOf('coindcx-april.pdf')).toBeLessThan(
+      cells.indexOf('coindcx-march.pdf'),
+    );
+    expect(cells.indexOf('ledger-notes.txt')).toBeLessThan(
+      cells.indexOf('coindcx-april.pdf'),
+    );
+  });
+
+  it('carries on to the rest, and back again', async () => {
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+
+    expect(await screen.findByText('11–14 of 14')).toBeInTheDocument();
+    expect(screen.getByText('tradeify-agreement.pdf')).toBeInTheDocument();
+    expect(screen.queryByText('coindcx-march.pdf')).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Previous' }));
+
+    expect(await screen.findByText('1–10 of 14')).toBeInTheDocument();
+  });
+
+  it('stops at both ends rather than asking for a page that is not there', async () => {
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
+
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('11–14 of 14');
+
+    expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+  });
+
+  it('narrows to what matched, and starts again at the first page', async () => {
+    // Page 2 of the whole register is past the end of a search for one word,
+    // and staying there would show an empty table as if nothing matched.
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
+
+    await userEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByText('11–14 of 14');
+
+    await userEvent.type(screen.getByLabelText('Search documents'), 'rise');
+
+    expect(await screen.findByText('1–4 of 4')).toBeInTheDocument();
+    expect(screen.getByText('rise-withdrawal-1.png')).toBeInTheDocument();
+  });
+
+  it('finds a fragment of a name, not only a whole word', async () => {
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
+
+    await userEvent.type(screen.getByLabelText('Search documents'), 'withdraw');
+
+    expect(await screen.findByText('1–4 of 4')).toBeInTheDocument();
+  });
+
+  it('names the term that found nothing, and offers a way out', async () => {
+    renderApp({ route: '/documents' });
+    await screen.findByText('coindcx-march.pdf');
 
     await userEvent.type(screen.getByLabelText('Search documents'), 'kraken');
 
     expect(await screen.findByText(/kraken/)).toBeInTheDocument();
-    expect(
+
+    await userEvent.click(
       screen.getByRole('button', { name: 'Clear the search' }),
-    ).toBeInTheDocument();
+    );
+
+    expect(await screen.findByText('coindcx-march.pdf')).toBeInTheDocument();
+  });
+
+  it('says plainly when nothing is on file at all', async () => {
+    // An empty register is not a failed search, and must not read like one.
+    server.use(
+      answering('/api/documents', {
+        documents: [],
+        total: 0,
+        page: 1,
+        perPage: 10,
+        pages: 1,
+      }),
+    );
+
+    renderApp({ route: '/documents' });
+
+    expect(await screen.findByText('No documents yet.')).toBeInTheDocument();
+    expect(screen.queryByText(/of 0/)).not.toBeInTheDocument();
   });
 });
 
@@ -95,9 +181,7 @@ describe('previewing a document', () => {
       printed in these very results.
     */
     renderApp({ route: '/documents' });
-    await screen.findByText('Search for a document.');
 
-    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
     await userEvent.click(await screen.findByText('coindcx-march.pdf'));
 
     const frame = await screen.findByTitle('coindcx-march.pdf');
@@ -106,9 +190,7 @@ describe('previewing a document', () => {
 
   it('shows the hash in full, since that is what identifies the bytes', async () => {
     renderApp({ route: '/documents' });
-    await screen.findByText('Search for a document.');
 
-    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
     await userEvent.click(await screen.findByText('coindcx-march.pdf'));
 
     expect(
@@ -412,11 +494,8 @@ describe('naming a file before it is stored (F26)', () => {
 describe('deleting a document', () => {
   const askToDelete = async (): Promise<HTMLElement> => {
     renderApp({ route: '/documents' });
-    // The screen is behind the auth probe: wait for it before typing.
-    await screen.findByText('Search for a document.');
-
-    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
-    await screen.findByRole('table', { name: 'Search results' });
+    // The screen is behind the auth probe: wait for the rows first.
+    await screen.findByText('coindcx-march.pdf');
 
     await userEvent.click(
       await screen.findByRole('button', { name: 'Delete coindcx-march.pdf' }),
@@ -457,10 +536,7 @@ describe('deleting a document', () => {
     // The row selects a document to preview; the button inside it must not,
     // or deleting would first show the reader what it is about to remove.
     renderApp({ route: '/documents' });
-    await screen.findByText('Search for a document.');
-
-    await userEvent.type(screen.getByLabelText('Search documents'), 'coindcx');
-    await screen.findByRole('table', { name: 'Search results' });
+    await screen.findByText('coindcx-march.pdf');
 
     await userEvent.click(
       await screen.findByRole('button', { name: 'Delete coindcx-march.pdf' }),
@@ -478,7 +554,7 @@ describe('deleting a document', () => {
     );
 
     expect(
-      await screen.findByRole('table', { name: 'Search results' }),
+      await screen.findByRole('table', { name: 'Documents' }),
     ).toBeInTheDocument();
     expect(screen.queryByText(/deleted/)).not.toBeInTheDocument();
   });

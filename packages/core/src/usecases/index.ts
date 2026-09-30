@@ -130,6 +130,12 @@ export type {
 export { SearchDocuments } from './search-documents';
 
 export type {
+  ListDocumentsCommand,
+  ListDocumentsDependencies,
+} from './list-documents';
+export { DOCUMENTS_PER_PAGE, ListDocuments } from './list-documents';
+
+export type {
   AuthenticateSessionCommand,
   AuthenticateSessionDependencies,
   AuthenticatedSession,

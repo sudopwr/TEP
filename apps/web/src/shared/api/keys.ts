@@ -1,4 +1,5 @@
 import type {
+  DocumentPageFilter,
   FinancialYearFilter,
   PayoutFilter,
   ScopeFilter,
@@ -121,6 +122,13 @@ export const queryKeys = {
   documents: {
     all: () => ['documents'] as const,
     search: (query: string) => ['documents', 'search', query] as const,
+    /**
+     * The register (F31). Separate from `search` above: the same words in the
+     * box mean a different request — one page of everything, narrowed —
+     * and sharing a key would serve one screen the other's answer.
+     */
+    list: (filter: DocumentPageFilter = {}) =>
+      ['documents', 'list', filter] as const,
     /**
      * What is attached to one payout (F23).
      *

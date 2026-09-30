@@ -368,6 +368,24 @@ export const searchDocumentsQuery = z
   .object({ q: z.string().min(1, 'a search needs something to search for') })
   .strict();
 
+/**
+ * The register's query (F31), every part of it optional.
+ *
+ * Unlike `searchDocumentsQuery` above, a blank `search` is allowed and means
+ * everything — the register is the screen a person opens before they know
+ * what they are looking for. Nothing is refused for being out of range
+ * either: UC27 clamps a page past the end to the last one and a page size of
+ * ten thousand to a hundred, and a 400 for a stale `?page=9` would be a
+ * dead-end where the use case has a sensible answer.
+ */
+export const listDocumentsQuery = z
+  .object({
+    search: z.string().max(256).optional(),
+    page: z.coerce.number().int().positive().optional(),
+    perPage: z.coerce.number().int().positive().optional(),
+  })
+  .strict();
+
 /** The non-file fields of the multipart upload. */
 export const attachDocumentFields = z
   .object({

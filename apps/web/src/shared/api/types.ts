@@ -305,6 +305,22 @@ export interface DocumentsResponse {
   readonly documents: readonly DocumentJson[];
 }
 
+/** One page of the register (F31), and where in it the reader is. */
+export interface DocumentPageJson extends DocumentsResponse {
+  readonly total: number;
+  /** The page actually served, which is not always the one asked for. */
+  readonly page: number;
+  readonly perPage: number;
+  readonly pages: number;
+}
+
+/** What the register was asked for: the box, and where in the list. */
+export interface DocumentPageFilter {
+  readonly search?: string;
+  readonly page?: number;
+  readonly perPage?: number;
+}
+
 // ---------- Command shapes ----------
 
 export interface CreateCompanyCommand {

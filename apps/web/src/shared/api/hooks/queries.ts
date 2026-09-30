@@ -5,6 +5,7 @@ import {
   fetchBalances,
   fetchCompanies,
   fetchDataQuality,
+  fetchDocuments,
   fetchFinancialYear,
   fetchPayoutDocuments,
   fetchPayoutTrail,
@@ -22,6 +23,8 @@ import type {
   CompanyJson,
   DataQualityIssueJson,
   DocumentJson,
+  DocumentPageFilter,
+  DocumentPageJson,
   FinancialYearFilter,
   FinancialYearReportJson,
   PayoutFilter,
@@ -222,6 +225,31 @@ export function useDataQuality(
     queryFn: ({ signal }) =>
       fetchDataQuality(payoutId, tolerancePct, scope, signal),
     select: (data) => data.issues,
+  });
+}
+
+/**
+ * F31 — the register: a page of every document on file, newest first.
+ *
+ * `placeholderData` keeps the previous page on screen while the next one is
+ * fetched, so paging does not blank the table and jump the page back to the
+ * top — the rows go slightly stale for a moment, which is what
+ * `isPlaceholderData` is for.
+ */
+export function useDocuments(
+  filter: DocumentPageFilter = {},
+): UseQueryResult<DocumentPageJson> {
+  const search = (filter.search ?? '').trim();
+  const query: DocumentPageFilter = {
+    ...(search === '' ? {} : { search }),
+    ...(filter.page === undefined ? {} : { page: filter.page }),
+    ...(filter.perPage === undefined ? {} : { perPage: filter.perPage }),
+  };
+
+  return useQuery({
+    queryKey: queryKeys.documents.list(query),
+    queryFn: ({ signal }) => fetchDocuments(query, signal),
+    placeholderData: (previous) => previous,
   });
 }
 

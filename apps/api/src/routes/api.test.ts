@@ -72,6 +72,7 @@ describe('/api routes', () => {
       '/api/payouts/1/settlement',
       '/api/transactions',
       '/api/documents/1',
+      '/api/documents',
       '/api/documents/search?q=x',
       '/api/accounts/balances',
       '/api/data-quality',
@@ -2252,6 +2253,93 @@ describe('/api routes', () => {
 
       it('400s a missing query', async () => {
         expect((await get('/api/documents/search')).statusCode).toBe(400);
+      });
+    });
+
+    describe('GET /api/documents (F31)', () => {
+      /** Twelve documents: enough that page 2 exists and is short. */
+      const fill = async () => {
+        for (let index = 1; index <= 12; index += 1) {
+          const month = String(index).padStart(2, '0');
+          await upload(
+            `statement number ${String(index)}`,
+            `coindcx-2024-${month}.pdf`,
+            { docDate: `2024-${month}-15` },
+          );
+        }
+      };
+
+      it('answers the first ten, newest first, with the count', async () => {
+        await fill();
+
+        const response = await get('/api/documents');
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toMatchObject({
+          total: 12,
+          page: 1,
+          perPage: 10,
+          pages: 2,
+        });
+        expect(response.json().documents).toHaveLength(10);
+        expect(response.json().documents[0].filename).toBe(
+          'coindcx-2024-12.pdf',
+        );
+      });
+
+      it('serves the rest on page two', async () => {
+        await fill();
+
+        const response = await get('/api/documents?page=2');
+
+        expect(response.json().documents).toHaveLength(2);
+        expect(response.json().documents[0].filename).toBe(
+          'coindcx-2024-02.pdf',
+        );
+      });
+
+      it('narrows by a fragment of a name', async () => {
+        await fill();
+        await upload('the agreement', 'tradeify-contract.pdf');
+
+        const response = await get('/api/documents?search=tradeify');
+
+        expect(response.json()).toMatchObject({ total: 1, pages: 1 });
+      });
+
+      it('answers the last page rather than an empty one', async () => {
+        // A stale `?page=9` from a bookmark, or from deleting your way off
+        // the end. A 400 here would be a dead end.
+        await fill();
+
+        const response = await get('/api/documents?page=9');
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json().page).toBe(2);
+      });
+
+      it('takes an empty search to mean everything', async () => {
+        await fill();
+
+        const response = await get('/api/documents?search=');
+
+        expect(response.json().total).toBe(12);
+      });
+
+      it('caps the page size rather than serving the lot', async () => {
+        await fill();
+
+        const response = await get('/api/documents?perPage=10000');
+
+        expect(response.json().perPage).toBe(100);
+      });
+
+      it('400s a parameter nobody offers', async () => {
+        expect((await get('/api/documents?sort=name')).statusCode).toBe(400);
+      });
+
+      it('400s a page that is not a number', async () => {
+        expect((await get('/api/documents?page=two')).statusCode).toBe(400);
       });
     });
 

@@ -1,20 +1,20 @@
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Paper from '@mui/material/Paper';
+import Stack from '@mui/material/Stack';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useMemo, useState } from 'react';
 
 import {
   useDeleteDocument,
-  useDocumentSearch,
+  useDocuments,
   type DocumentJson,
 } from '../../shared/api';
 import { describeError } from '../../shared/api/errors';
 import {
   ConfirmDialog,
   DataTable,
-  EmptyState,
   ErrorState,
   type Column,
 } from '../../shared/components';
@@ -23,20 +23,27 @@ import { useToast } from '../../shared/feedback';
 import { DocumentPreview, formatBytes } from './DocumentPreview';
 
 /**
- * F7 — full-text search across filenames and extracted PDF text.
+ * F31 — the register: every document on file, newest first, ten at a time.
  *
- * Results on the left, the file itself on the right. Searching a document
- * store is almost always a two-step act — find the candidate, confirm it is
- * the right one — and a list that only links out makes the second step a
- * round trip through a new tab for every guess.
+ * This screen used to be a search box and nothing else: it answered a question
+ * and showed an invitation until one was asked. But the commonest reason to
+ * open it is not to find a known file — it is to see what is on file at all,
+ * which a search box cannot answer, because you have to know the answer
+ * already to type the question. So the list comes first and the box narrows it.
  *
- * Nothing is searched until something is typed. The API answers 400 to an
- * empty query and is right to, but an empty search box is the normal state of
- * a search box and rendering an error into it would be absurd; `useDocumentSearch`
- * disables the query instead.
+ * **Newest first, and the server decides.** The order is a `doc_date` the
+ * reader recognises, falling back to the upload for anything undated, and the
+ * columns deliberately do not offer their own sort: sorting ten rows out of
+ * thirty-four in the browser would reorder *a page* while looking like it
+ * reordered the register, which is the kind of wrong that is hard to see.
+ *
+ * Rows on the left, the file itself on the right. Confirming that a candidate
+ * is the right document is half of every visit, and a list that only links out
+ * makes the second half a new tab per guess.
  */
-export function DocumentSearch() {
+export function DocumentRegister() {
   const [term, setTerm] = useState('');
+  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<DocumentJson | null>(null);
   /*
     The document being deleted, held as the row rather than its id.
@@ -48,9 +55,25 @@ export function DocumentSearch() {
   */
   const [deleting, setDeleting] = useState<DocumentJson | null>(null);
 
-  const results = useDocumentSearch(term);
+  const searched = term.trim();
+  const register = useDocuments({ search: searched, page });
   const remove = useDeleteDocument();
   const { notify } = useToast();
+
+  const documents = register.data?.documents ?? [];
+  /*
+    The page the server served, not the one that was asked for.
+
+    UC27 answers the last page to a request past the end — from a stale link,
+    or from deleting your way off it — and the label and the arrows have to
+    agree with the rows actually on screen.
+  */
+  const served = register.data?.page ?? page;
+  const pages = register.data?.pages ?? 1;
+  const total = register.data?.total ?? 0;
+  const perPage = register.data?.perPage ?? 10;
+  const first = documents.length === 0 ? 0 : (served - 1) * perPage + 1;
+  const last = first === 0 ? 0 : first + documents.length - 1;
 
   const columns: readonly Column<DocumentJson>[] = useMemo(
     () => [
@@ -60,7 +83,6 @@ export function DocumentSearch() {
         cell: (document) => (
           <Typography variant="numeric">{document.filename}</Typography>
         ),
-        sortBy: (document) => document.filename,
       },
       {
         id: 'type',
@@ -70,7 +92,6 @@ export function DocumentSearch() {
             {document.docType ?? '—'}
           </Typography>
         ),
-        sortBy: (document) => document.docType,
       },
       {
         id: 'date',
@@ -78,7 +99,6 @@ export function DocumentSearch() {
         cell: (document) => (
           <Typography variant="numeric">{document.docDate ?? '—'}</Typography>
         ),
-        sortBy: (document) => document.docDate,
       },
       {
         id: 'size',
@@ -89,13 +109,11 @@ export function DocumentSearch() {
             {formatBytes(document.byteSize)}
           </Typography>
         ),
-        sortBy: (document) => document.byteSize,
       },
       {
         id: 'actions',
         header: '',
         align: 'right',
-        // No `sortBy`: a column of buttons has nothing to sort on.
         cell: (document) => (
           <Button
             size="small"
@@ -123,8 +141,8 @@ export function DocumentSearch() {
         Documents
       </Typography>
       <Typography sx={{ color: 'muted.main', mb: 3 }}>
-        Every agreement, invoice, receipt and statement, searchable by name and
-        by what is written inside.
+        Every agreement, invoice, receipt and statement, newest first and
+        searchable by name or by what is written inside.
       </Typography>
 
       <TextField
@@ -132,6 +150,9 @@ export function DocumentSearch() {
         value={term}
         onChange={(event) => {
           setTerm(event.target.value);
+          // A narrower list has a different page 1, and staying on page 3 of
+          // the old one is the fastest way to see an empty table by mistake.
+          setPage(1);
         }}
         fullWidth
         size="small"
@@ -142,9 +163,9 @@ export function DocumentSearch() {
 
       <Box sx={{ display: 'flex', gap: 3, alignItems: 'flex-start' }}>
         <Box sx={{ flex: 1, minWidth: 0 }}>
-          {results.isError ? (
+          {register.isError ? (
             (() => {
-              const failure = describeError(results.error);
+              const failure = describeError(register.error);
 
               return (
                 <ErrorState
@@ -153,36 +174,74 @@ export function DocumentSearch() {
                     ? {}
                     : { detail: failure.action })}
                   onRetry={() => {
-                    void results.refetch();
+                    void register.refetch();
                   }}
                 />
               );
             })()
-          ) : term.trim() === '' ? (
-            <EmptyState
-              message="Search for a document."
-              hint="A company name, a month, an invoice number — anything that appears in the filename or in the text of a PDF."
-            />
           ) : (
-            <DataTable<DocumentJson>
-              rows={results.data ?? []}
-              columns={columns}
-              rowKey={(document) => document.id}
-              loading={results.isPending}
-              caption="Search results"
-              onRowClick={setSelected}
-              empty={{
-                message: `Nothing matched “${term.trim()}”.`,
-                hint: 'Full-text search matches whole words. Try a shorter term, or part of the filename.',
-                action: {
-                  label: 'Clear the search',
-                  onClick: () => {
-                    setTerm('');
-                    setSelected(null);
-                  },
-                },
-              }}
-            />
+            <>
+              <DataTable<DocumentJson>
+                rows={documents}
+                columns={columns}
+                rowKey={(document) => document.id}
+                loading={register.isPending}
+                caption="Documents"
+                onRowClick={setSelected}
+                empty={
+                  searched === ''
+                    ? {
+                        message: 'No documents yet.',
+                        hint: 'A document arrives with a payout or a leg: open one and attach the statement, the invoice or the screenshot that proves it.',
+                      }
+                    : {
+                        message: `Nothing matched “${searched}”.`,
+                        hint: 'A filename matches on any fragment; the text inside a PDF matches whole words. Try a shorter term.',
+                        action: {
+                          label: 'Clear the search',
+                          onClick: () => {
+                            setTerm('');
+                            setPage(1);
+                          },
+                        },
+                      }
+                }
+              />
+
+              {total === 0 ? null : (
+                <Stack
+                  direction="row"
+                  spacing={2}
+                  sx={{ mt: 2, alignItems: 'center' }}
+                >
+                  <Typography variant="numeric" sx={{ color: 'muted.main' }}>
+                    {`${String(first)}–${String(last)} of ${String(total)}`}
+                  </Typography>
+                  <Box sx={{ flex: 1 }} />
+                  <Button
+                    size="small"
+                    disabled={served <= 1 || register.isFetching}
+                    onClick={() => {
+                      setPage(served - 1);
+                    }}
+                  >
+                    Previous
+                  </Button>
+                  <Typography variant="numeric" sx={{ color: 'muted.main' }}>
+                    {`Page ${String(served)} of ${String(pages)}`}
+                  </Typography>
+                  <Button
+                    size="small"
+                    disabled={served >= pages || register.isFetching}
+                    onClick={() => {
+                      setPage(served + 1);
+                    }}
+                  >
+                    Next
+                  </Button>
+                </Stack>
+              )}
+            </>
           )}
         </Box>
 

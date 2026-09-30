@@ -16,6 +16,7 @@ import type {
   EditAccount,
   EditTransaction,
   LinkDocument,
+  ListDocuments,
   ListDocumentsFor,
   GetSettlement,
   ListAccounts,
@@ -96,6 +97,7 @@ export interface UseCases {
   readonly deleteDocument: DeleteDocument;
   readonly linkDocument: LinkDocument;
   readonly detachDocument: DetachDocument;
+  readonly listDocuments: ListDocuments;
   readonly listDocumentsFor: ListDocumentsFor;
   readonly searchDocuments: SearchDocuments;
   readonly getAccountBalances: GetAccountBalances;

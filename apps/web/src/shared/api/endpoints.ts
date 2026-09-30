@@ -19,20 +19,22 @@ import type {
   DocumentDeletedJson,
   DocumentDetachedJson,
   DocumentJson,
+  DocumentPageFilter,
+  DocumentPageJson,
   DocumentTargetJson,
   DocumentsResponse,
-  LinkDocumentCommand,
   FinancialYearFilter,
   FinancialYearReportJson,
+  LinkDocumentCommand,
   PayoutDeletedJson,
   PayoutFilter,
   PayoutJson,
   PayoutTrailJson,
   PayoutsResponse,
   SaleRecordedJson,
+  ScopeFilter,
   SessionUserJson,
   SettlementJson,
-  ScopeFilter,
   SignInCommand,
   TraderJson,
   TradersResponse,
@@ -337,6 +339,21 @@ export function deleteDocument(
   return request<DocumentDeletedJson>(`/api/documents/${String(documentId)}`, {
     method: 'DELETE',
   });
+}
+
+/** F31 — the register: a page of everything on file, newest first. */
+export function fetchDocuments(
+  filter: DocumentPageFilter,
+  signal?: AbortSignal,
+): Promise<DocumentPageJson> {
+  return request<DocumentPageJson>(
+    `/api/documents${queryString({
+      search: filter.search,
+      page: filter.page,
+      perPage: filter.perPage,
+    })}`,
+    wrapSignal(signal),
+  );
 }
 
 export function searchDocuments(
