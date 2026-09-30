@@ -1,6 +1,7 @@
 import {
   ACCOUNT_TYPES,
   DOCUMENT_TYPES,
+  SOURCE_CURRENCY_FEE_TYPES,
   TRANSACTION_KINDS,
   type TransactionKind,
 } from '@payout/core';
@@ -284,6 +285,23 @@ function isWebUrl(value: string): boolean {
   }
 }
 
+/**
+ * What the leg kept, and which of §8's two source-currency fees it was.
+ *
+ * A nested object rather than two loose fields, because neither half means
+ * anything alone: an amount with no type is a fee the ledger cannot file, and
+ * a type with no amount is nothing at all. `decimalString`, not the positive
+ * one — a recorded zero is a fact (`TransactionFee` allows it and refuses a
+ * negative), and the currency is never sent, because a charge is always in
+ * the currency the leg was sent in.
+ */
+const chargeBody = z
+  .object({
+    feeType: z.enum(SOURCE_CURRENCY_FEE_TYPES),
+    amount: decimalString,
+  })
+  .strict();
+
 const movementBody = z
   .object({
     kind: z.enum(MOVEMENT_KINDS),
@@ -299,6 +317,7 @@ const movementBody = z
     toCurrencyCode: currencyCode,
     rate: scaledRate.nullish(),
     ...chainFields,
+    charge: chargeBody.nullish(),
     notes: z.string().max(4096).nullish(),
   })
   .strict();

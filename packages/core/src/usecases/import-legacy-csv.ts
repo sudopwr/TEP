@@ -5,6 +5,7 @@ import type { IsoDate, TraderId, TransactionId } from '../domain/ids';
 import { Money, type RoundingMode } from '../domain/money';
 import type { Payout } from '../domain/payout';
 import type { Transaction, TransactionKind } from '../domain/transaction';
+import { SOURCE_CURRENCY_FEE_TYPES } from '../domain/transaction-fee';
 import type { FeeType } from '../domain/transaction-fee';
 import type { AccountRepository } from '../ports/account-repository';
 import type { CompanyRepository } from '../ports/company-repository';
@@ -89,11 +90,14 @@ const FEE_COLUMNS: readonly (readonly [string, FeeType])[] = [
   ['PlatformCharge', 'platform_charge'],
 ];
 
-/** Fees the sheet quotes in the leg's own source currency rather than INR. */
-const SOURCE_CURRENCY_FEES = new Set<FeeType>([
-  'network_fee',
-  'platform_charge',
-]);
+/**
+ * Fees the sheet quotes in the leg's own source currency rather than INR.
+ *
+ * The domain's list, not a second copy of it: the same two are the only ones
+ * a movement can be charged by hand, and two lists that must agree are one
+ * list too many.
+ */
+const SOURCE_CURRENCY_FEES = new Set<FeeType>(SOURCE_CURRENCY_FEE_TYPES);
 
 const DDMMYYYY = /^(\d{2})-(\d{2})-(\d{4})$/;
 

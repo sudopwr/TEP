@@ -164,6 +164,85 @@ test('records a leg under an existing parent and moves both screens', async ({
   await expect(balances.getByText('1.33230000')).toBeHidden();
 });
 
+// ---------- 7a. The charge a leg kept (F32) ----------
+
+/**
+ * Journey 38: the fee nobody writes down.
+ *
+ * §8's flat Rise fee is not a figure on any statement — it is the gap between
+ * $226.81 leaving and 222.78 USDT arriving, and every one of §10's four
+ * withdrawals paid it. So the form works it out from the two amounts the
+ * reader has already typed, and this journey checks the whole way through:
+ * filled in the browser from the domain's own arithmetic, posted as a fee,
+ * written as a `transaction_fees` row in the *source* currency, and shown on
+ * the leg that paid it.
+ *
+ * The note rides along, because a leg that cost money is usually a leg with
+ * something to explain — here, why there were four withdrawals and not one.
+ */
+test('works out what a withdrawal kept, and records it as a fee', async ({
+  page,
+}) => {
+  await openThePayout(page);
+
+  const trail = page.getByRole('tree', {
+    name: 'Money trail for TradeifyPayout001',
+  });
+  // Four withdrawals on file, each with its own network fee (§8).
+  await expect(trail.getByText('less Network fee')).toHaveCount(4);
+
+  await page.getByRole('button', { name: 'Record transaction' }).click();
+
+  await choose(page, 'What happened').click();
+  await page.getByRole('option', { name: /^Withdrawal/ }).click();
+
+  await field(page, 'Reference code').fill('Transaction0015');
+  await field(page, 'Date').fill('2025-03-21');
+
+  await choose(page, 'Follows on from').click();
+  await page.getByRole('option', { name: /Transaction001/ }).first().click();
+
+  await choose(page, 'From account').click();
+  await page.getByRole('option', { name: 'Rise' }).click();
+  await choose(page, 'Currency sent').click();
+  await page.getByRole('option', { name: 'USD' }).click();
+
+  await choose(page, 'To account').click();
+  await page.getByRole('option', { name: 'TrustWallet' }).click();
+  await choose(page, 'Currency received').click();
+  await page.getByRole('option', { name: 'USDT' }).click();
+
+  await field(page, 'Amount sent').fill('226.81');
+  await field(page, 'Amount received').fill('222.78');
+
+  /*
+    Nothing is claimed yet. Across two currencies the gap between the amounts
+    is mostly the rate, and §7 deliberately lets a leg be entered before its
+    rate is known — so the form says what it needs rather than guessing.
+  */
+  await expect(field(page, 'Charges')).toHaveValue('');
+
+  await field(page, 'Rate').fill('1.00000000');
+
+  // And there it is: the flat fee, worked out rather than looked up.
+  await expect(field(page, 'Charges')).toHaveValue('4.03');
+
+  await field(page, 'Notes').fill('Four withdrawals: Rise caps one at $250.');
+
+  await page.getByRole('button', { name: 'Record transaction' }).click();
+  await expect(page.getByText('Transaction recorded')).toBeVisible();
+
+  // A fifth network fee, on the leg just recorded, in dollars — because
+  // dollars are what left (§9's rule for the two source-currency fees).
+  await expect(trail.getByText('less Network fee')).toHaveCount(5);
+
+  const leg = trail
+    .getByRole('treeitem')
+    .filter({ hasText: 'Transaction0015' });
+  await expect(leg).toContainText('4.03');
+  await expect(leg).toContainText('USD');
+});
+
 // ---------- 8. The flagged dust row ----------
 
 test('flags the leg that sends more than its parent delivered', async ({

@@ -405,6 +405,210 @@ describe('RecordTransactionForm', () => {
   });
 });
 
+describe('what a leg kept (F32)', () => {
+  const open = async () => {
+    renderFeature(
+      <RecordTransactionForm
+        payoutId={1}
+        onRecorded={() => undefined}
+        onCancel={() => undefined}
+      />,
+    );
+
+    await screen.findByRole('combobox', { name: /From account/ });
+  };
+
+  const choose = async (field: RegExp, option: RegExp | string) => {
+    await userEvent.click(screen.getByRole('combobox', { name: field }));
+    await userEvent.click(await screen.findByRole('option', { name: option }));
+  };
+
+  /** The body the form posted. */
+  const posted = (): Promise<Record<string, unknown>> =>
+    new Promise((resolve) => {
+      server.use(
+        http.post('/api/transactions', async ({ request }) => {
+          resolve((await request.json()) as Record<string, unknown>);
+
+          return HttpResponse.json(
+            { transaction: REFERENCE_TRANSACTIONS[2] },
+            { status: 201 },
+          );
+        }),
+      );
+    });
+
+  /** A same-currency transfer with a fee hiding in the difference. */
+  const aTransferThatCost = async (sent: string, received: string) => {
+    await choose(/From account/, 'TrustWallet');
+    await choose(/Currency sent/, 'USDT');
+    await choose(/To account/, 'CoinDCX');
+    await choose(/Currency received/, 'USDT');
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), sent);
+    await userEvent.type(screen.getByLabelText(/^Amount received/), received);
+  };
+
+  it('fills itself in from the two amounts', async () => {
+    await open();
+    await aTransferThatCost('10.5', '10.2');
+
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('0.3');
+  });
+
+  it('follows the amounts while they are still being typed', async () => {
+    // Derived rather than copied: there is no stale figure to clear, because
+    // there is no figure — only the two amounts and a subtraction.
+    await open();
+    await aTransferThatCost('10.5', '10.2');
+
+    await userEvent.type(screen.getByLabelText(/^Amount received/), '5');
+
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('0.25');
+  });
+
+  it('says so when the leg cost nothing, rather than filling in a zero', async () => {
+    await open();
+    await aTransferThatCost('10.5', '10.5');
+
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('');
+    expect(
+      screen.getByText('Nothing was kept, so there is nothing to record.'),
+    ).toBeInTheDocument();
+  });
+
+  it('stands aside once the reader types their own figure', async () => {
+    await open();
+    await aTransferThatCost('10.5', '10.2');
+
+    await userEvent.clear(screen.getByLabelText(/^Charges/));
+    await userEvent.type(screen.getByLabelText(/^Charges/), '0.4');
+    // And the amounts move under it: their figure still stands.
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), '9');
+
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('0.4');
+  });
+
+  it('takes an emptied field as no charge at all', async () => {
+    await open();
+    await aTransferThatCost('10.5', '10.2');
+
+    await userEvent.clear(screen.getByLabelText(/^Charges/));
+    const sent = posted();
+    await userEvent.type(screen.getByLabelText(/^Reference code/), 'T14');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    expect(await sent).not.toHaveProperty('charge');
+  });
+
+  it('sends the charge with the leg, as a fee with a type', async () => {
+    await open();
+    await aTransferThatCost('10.5', '10.2');
+
+    const sent = posted();
+    await userEvent.type(screen.getByLabelText(/^Reference code/), 'T14');
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    expect(await sent).toMatchObject({
+      charge: { feeType: 'network_fee', amount: '0.3' },
+    });
+  });
+
+  it('works the fee out through the rate when the currencies differ', async () => {
+    // §10's withdrawal: $226.81 leaves Rise, 222.78 USDT arrives at 1.00000000,
+    // and Rise kept $4.03 of it.
+    await open();
+    await choose(/What happened/, /Withdrawal/);
+    await choose(/From account/, 'Rise');
+    await choose(/Currency sent/, 'USD');
+    await choose(/To account/, 'TrustWallet');
+    await choose(/Currency received/, 'USDT');
+    await userEvent.type(screen.getByLabelText(/^Amount sent/), '226.81');
+    await userEvent.type(screen.getByLabelText(/^Amount received/), '222.78');
+
+    // Nothing to divide by yet, so nothing is claimed.
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('');
+
+    await userEvent.type(screen.getByLabelText(/^Rate/), '1');
+
+    expect(screen.getByLabelText(/^Charges/)).toHaveValue('4.03');
+  });
+
+  it('files it as a network fee, or a platform charge on the award', async () => {
+    // The award arrives light because the firm charged for paying it; what
+    // happens after that is a processor or a chain taking its cut.
+    await open();
+
+    expect(
+      screen.getByRole('combobox', { name: /Charged as/ }),
+    ).toHaveTextContent('Network fee');
+
+    await choose(/What happened/, /Credit/);
+
+    expect(
+      screen.getByRole('combobox', { name: /Charged as/ }),
+    ).toHaveTextContent('Platform charge');
+  });
+
+  it('offers only the two a movement can be charged in its own currency', async () => {
+    // GST on a wallet transfer would be a rupee figure on a leg that never
+    // touched a rupee; the exchange's own fees are the sale's to compute.
+    await open();
+
+    await userEvent.click(screen.getByRole('combobox', { name: /Charged as/ }));
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual([
+      'Network fee',
+      'Platform charge',
+    ]);
+  });
+
+  it('asks a sale for no charge, since §8 works its fees out', async () => {
+    await open();
+    await choose(/What happened/, /Sale/);
+
+    expect(screen.queryByLabelText(/^Charges/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/^TDS withheld/)).toBeInTheDocument();
+  });
+
+  it('carries a note about the leg', async () => {
+    await open();
+    await aTransferThatCost('1.5', '1.5');
+
+    await userEvent.type(screen.getByLabelText(/^Reference code/), 'T14');
+    await userEvent.type(
+      screen.getByLabelText(/^Notes/),
+      'Split four ways because Rise caps a withdrawal.',
+    );
+
+    const sent = posted();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    expect(await sent).toMatchObject({
+      notes: 'Split four ways because Rise caps a withdrawal.',
+    });
+  });
+
+  it('sends no note when nothing was written', async () => {
+    await open();
+    await aTransferThatCost('1.5', '1.5');
+
+    await userEvent.type(screen.getByLabelText(/^Reference code/), 'T14');
+    const sent = posted();
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Record transaction' }),
+    );
+
+    expect(await sent).not.toHaveProperty('notes');
+  });
+});
+
 describe('deleting a leg', () => {
   const askToDelete = async (code: string): Promise<HTMLElement> => {
     await tree();

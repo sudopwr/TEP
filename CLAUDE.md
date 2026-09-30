@@ -51,6 +51,7 @@ two fees.
 | F29 | Paste that link — or just the transaction hash — and the two addresses fill themselves, read off the chain and still editable |
 | F30 | Read the token transfer itself — the "ERC-20 Tokens Transferred" row — so a bridge or a router fills the right two addresses, and the amount with them |
 | F31 | A Documents screen: the register, newest first, ten a page, narrowed by a name or by what is written inside |
+| F32 | A leg records what it kept: the charge, worked out from the two amounts and editable, plus a note about the leg |
 
 ### Non-functional
 | # | Requirement |
@@ -74,7 +75,10 @@ Each maps to one class in `packages/core/src/usecases/`.
 **UC1 — RecordPayout.** Trader, company, date, gross, currency, charges, reference;
 rejects gross <= 0, an unknown company, an unknown trader. **UC2 — RecordTransaction.**
 Rejects a same-account move, a rate on a same-currency move, a parent from another
-payout, a currency the destination cannot hold. **UC3 — RecordSale.** The important one:
+payout, a currency the destination cannot hold. F32's charge is written with the leg,
+as a fee in the **source** currency: `impliedCharge` works it out from the two amounts
+— through the rate when they are in different currencies — and the form offers it for
+editing rather than asking twice. **UC3 — RecordSale.** The important one:
 a USDT amount and an INR rate -> gross proceeds, §8's schedule for exchange fee and GST,
 TDS from the statement, net INR out. **UC4 — AttachDocument.** Hashes, stores, dedupes,
 links: re-uploading links the existing document rather than duplicating it. **UC5 —
@@ -133,7 +137,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  12 spec files, 37 journeys, each against a world of its own
+e2e/                  12 spec files, 38 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,
@@ -235,7 +239,9 @@ Declared in `fee_schedules`, not hardcoded:
 | Rise | network_fee | flat | ~$4.00 |
 
 The Rise fee is flat: four withdrawals cost $16.31 where one would have cost $4.03
-(§11).
+(§11). `network_fee` and `platform_charge` are quoted in the leg's **source** currency
+and are the only two a movement may be charged by hand (F32); the other three belong to
+the sale, computed from this table or taken from the statement.
 
 ## 9. Known defects in the source CSV
 

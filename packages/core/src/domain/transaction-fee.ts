@@ -14,6 +14,28 @@ export const FEE_TYPES = [
 
 export type FeeType = (typeof FEE_TYPES)[number];
 
+/**
+ * The two a leg is charged in its **own** currency, rather than in rupees.
+ *
+ * A network fee is taken out of the tokens being moved and a platform charge
+ * out of the award being paid, so both are denominated in the source currency
+ * — which is what `v_data_quality` assumes when it reconciles `to_amount`
+ * against the rate, and what the legacy sheet quotes them in (§9). The other
+ * three belong to the sale: TDS is statutory, and the exchange fee and GST
+ * come off the rupees it produces, computed from §8's schedule rather than
+ * typed by anybody.
+ *
+ * So these are also the only two a movement can be charged by hand: offering
+ * `gst` on a wallet transfer would invite a rupee figure onto a leg that never
+ * touched a rupee.
+ */
+export const SOURCE_CURRENCY_FEE_TYPES = [
+  'network_fee',
+  'platform_charge',
+] as const;
+
+export type SourceCurrencyFeeType = (typeof SOURCE_CURRENCY_FEE_TYPES)[number];
+
 export interface TransactionFeeProps {
   readonly id: TransactionFeeId;
   readonly transactionId: TransactionId;

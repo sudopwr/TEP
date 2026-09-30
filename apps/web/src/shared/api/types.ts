@@ -140,6 +140,18 @@ export interface ChainFields {
 export type FeeType =
   'tds' | 'exchange_fee' | 'gst' | 'network_fee' | 'platform_charge';
 
+/**
+ * The two a movement may be charged in its own currency (F32).
+ *
+ * `Extract` rather than a second list of strings: if the domain ever renames
+ * one, this stops compiling instead of quietly describing a fee type nothing
+ * accepts.
+ */
+export type SourceCurrencyFeeType = Extract<
+  FeeType,
+  'network_fee' | 'platform_charge'
+>;
+
 export interface TransactionFeeJson {
   readonly id: number;
   readonly transactionId: number;
@@ -366,6 +378,17 @@ export interface CreatePayoutCommand {
 }
 
 /** A movement. Amounts and rates are strings — N1 reaches the wire too. */
+/**
+ * What a leg kept, and which fee it was (F32).
+ *
+ * No currency: a charge is always in the currency the leg was sent in, which
+ * is where a network fee and a platform charge are taken from.
+ */
+export interface ChargeCommand {
+  readonly feeType: SourceCurrencyFeeType;
+  readonly amount: string;
+}
+
 export interface CreateMovementCommand extends ChainFields {
   readonly kind: Exclude<TransactionKind, 'sale'>;
   readonly code: string;
@@ -379,6 +402,7 @@ export interface CreateMovementCommand extends ChainFields {
   readonly toAmount: string;
   readonly toCurrencyCode: string;
   readonly rate?: string | null;
+  readonly charge?: ChargeCommand | null;
   readonly notes?: string | null;
 }
 

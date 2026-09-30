@@ -48,8 +48,17 @@ export { Payout } from './domain/payout';
 export type { TransactionKind, TransactionProps } from './domain/transaction';
 export { TRANSACTION_KINDS, Transaction } from './domain/transaction';
 
-export type { FeeType, TransactionFeeProps } from './domain/transaction-fee';
-export { FEE_TYPES, TransactionFee } from './domain/transaction-fee';
+export type {
+  FeeType,
+  SourceCurrencyFeeType,
+  TransactionFeeProps,
+} from './domain/transaction-fee';
+export {
+  FEE_TYPES,
+  SOURCE_CURRENCY_FEE_TYPES,
+  TransactionFee,
+} from './domain/transaction-fee';
+export { impliedCharge } from './domain/charge';
 
 export type { DocumentProps, DocumentType } from './domain/document';
 export { DOCUMENT_TYPES, Document } from './domain/document';

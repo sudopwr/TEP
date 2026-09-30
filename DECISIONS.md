@@ -229,3 +229,30 @@ Newest last. Never delete an entry — supersede it.
   Four prepared statements rather than one with `:search IS NULL`, because an FTS5
   `MATCH` on an empty string is a syntax error — a statement valid half the time is one
   nobody can read.
+- **The fee nobody writes down** (F32): almost every leg costs something, and the cost
+  is on no statement — it is the gap between two numbers already being typed. $226.81
+  leaves Rise, 222.78 USDT arrives, and the $4.03 between them is §8's flat fee. So the
+  form works it out (`impliedCharge`) and offers it for editing, rather than asking for
+  a figure the reader would have to subtract by hand. **Recorded in the source
+  currency**, as a `transaction_fees` row: that is where a network fee and a platform
+  charge are taken from, what the legacy sheet quotes them in (§9), and what
+  `v_data_quality` assumes when it reconciles `to_amount = (from_amount − fees in
+  from_currency) × rate` — a charge stored in the destination currency would make every
+  leg it touched look unreconciled. **Through the rate when the currencies differ**,
+  which is the normal case here: the real withdrawals are USD out and USDT in at
+  1.00000000, so the arrival is divided back before subtracting, half-up, the same
+  rounding `Money` uses. **Written with the leg, in UC2**, not through a second call: a
+  fee that can fail on its own is a fee the ledger cannot explain. **Only the two
+  source-currency types** are offerable — `gst` on a wallet transfer would be a rupee
+  figure on a leg that never touched a rupee — and the list has one home in the domain,
+  which the importer now shares. **Never on a sale**: §8 computes its exchange fee and
+  GST and the statement supplies its TDS, so a third box there invites a disagreement
+  with the exchange, exactly as a proceeds box would. **Null, never zero**, when the
+  answer would be a guess — a half-typed amount, a missing rate, nothing kept, or more
+  arriving than was sent (dust from an earlier hop, not a refund); a zero fee is a fact
+  somebody states on purpose. The arithmetic is a pure function in
+  `core/domain/charge.ts` over decimal **strings**, because a form holds what was typed
+  and the browser has no currency table to build `Money` with (§6) — exact `bigint`
+  integer arithmetic on a scale read off the digits, and the one place money is added up
+  outside `Money`. Notes were already accepted end to end and only the record form had
+  no box for them; it has one now, beside the edit dialog's.

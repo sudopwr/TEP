@@ -5,6 +5,7 @@ import { USD } from '../domain/currency';
 import {
   AccountNotFoundError,
   CurrencyNotAllowedError,
+  NonPositiveAmountError,
   ParentPayoutMismatchError,
   PayoutNotFoundError,
   RateOnSameCurrencyError,
@@ -320,5 +321,121 @@ describe('the chain fields (F28)', () => {
     );
 
     expect(leg.fromAddress).toBe('an address on a bank transfer');
+  });
+});
+
+describe('the charge it kept (F32)', () => {
+  it('records it as a fee in the currency the leg was sent in', async () => {
+    /*
+      §10's withdrawal, as the sheet has it: $226.81 leaves Rise, 222.78 USDT
+      arrives at the wallet at 1.00000000, and the $4.03 between them is the
+      flat network fee — in dollars, because dollars are what left. The fee
+      goes in the *source* currency, which is what `v_data_quality` assumes
+      when it reconciles `to_amount` against the rate.
+    */
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(
+      command({
+        code: 'Transaction110',
+        kind: 'withdrawal',
+        fromAccountId: 2,
+        toAccountId: 3,
+        fromAmount: '226.81',
+        fromCurrencyCode: 'USD',
+        toAmount: '222.78',
+        toCurrencyCode: 'USDT',
+        rate: 100000000n,
+        charge: { feeType: 'network_fee', amount: '4.03' },
+      }),
+    );
+
+    const fees = await world.transactions.listFeesByTransaction(leg.id);
+
+    expect(fees).toHaveLength(1);
+    expect(fees[0]?.feeType).toBe('network_fee');
+    expect(fees[0]?.amount.toString()).toBe('4.03 USD');
+  });
+
+  it('files it as a platform charge when that is what it was', async () => {
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(
+      command({
+        code: 'Transaction111',
+        kind: 'payout_credit',
+        fromAccountId: 1,
+        toAccountId: 2,
+        fromAmount: '1008.01',
+        fromCurrencyCode: 'USD',
+        toAmount: '907.22',
+        toCurrencyCode: 'USD',
+        charge: { feeType: 'platform_charge', amount: '100.79' },
+      }),
+    );
+
+    const fees = await world.transactions.listFeesByTransaction(leg.id);
+
+    expect(fees[0]?.amount.toString()).toBe('100.79 USD');
+    expect(fees[0]?.feeType).toBe('platform_charge');
+  });
+
+  it('records no fee at all when nothing was charged', async () => {
+    // A leg that cost nothing has no fee row. Absent is not zero.
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(command({ code: 'Transaction112' }));
+
+    await expect(
+      world.transactions.listFeesByTransaction(leg.id),
+    ).resolves.toEqual([]);
+  });
+
+  it('records a zero charge that somebody typed on purpose', async () => {
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(
+      command({
+        code: 'Transaction113',
+        charge: { feeType: 'network_fee', amount: '0' },
+      }),
+    );
+
+    const fees = await world.transactions.listFeesByTransaction(leg.id);
+
+    expect(fees).toHaveLength(1);
+    expect(fees[0]?.amount.isZero()).toBe(true);
+  });
+
+  it('refuses a negative charge, which is a refund in disguise', async () => {
+    const { useCase } = setup();
+
+    await expect(
+      useCase.execute(
+        command({
+          code: 'Transaction114',
+          charge: { feeType: 'network_fee', amount: '-1.00' },
+        }),
+      ),
+    ).rejects.toThrow(NonPositiveAmountError);
+  });
+
+  it('keeps the leg it charged, and charges the leg it kept', async () => {
+    // The fee hangs off this transaction and no other: the reference tree
+    // already has fees on other legs, and a charge must not join them.
+    const { world, useCase } = setup();
+
+    const leg = await useCase.execute(
+      command({
+        code: 'Transaction115',
+        charge: { feeType: 'network_fee', amount: '0.44' },
+      }),
+    );
+
+    const fees = await world.transactions.listFeesByTransaction(leg.id);
+
+    expect(fees).toHaveLength(1);
+    expect(fees[0]?.transactionId).toBe(leg.id);
+    expect(fees[0]?.amount.toString()).toBe('0.44000000 USDT');
   });
 });

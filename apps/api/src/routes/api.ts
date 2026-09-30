@@ -388,6 +388,11 @@ export function registerApiRoutes(app: FastifyInstance): void {
       toAmount: body.toAmount,
       toCurrencyCode: body.toCurrencyCode,
       rate: body.rate ?? null,
+      // F32 — what the leg kept, if anything did. One object or nothing, so a
+      // fee is never half-recorded.
+      ...(body.charge === undefined || body.charge === null
+        ? {}
+        : { charge: body.charge }),
       ...(body.fromAddress === undefined
         ? {}
         : { fromAddress: body.fromAddress }),

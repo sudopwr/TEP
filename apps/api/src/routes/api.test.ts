@@ -1245,6 +1245,148 @@ describe('/api routes', () => {
     });
   });
 
+  describe('what a leg kept (F32)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    const withdrawal = (overrides: Record<string, unknown> = {}) => ({
+      kind: 'withdrawal',
+      code: 'Transaction910',
+      payoutId: 1,
+      txnDate: '2025-03-15',
+      fromAccountId: 2,
+      toAccountId: 3,
+      fromAmount: '226.81',
+      fromCurrencyCode: 'USD',
+      toAmount: '222.78',
+      toCurrencyCode: 'USDT',
+      rate: '1',
+      ...overrides,
+    });
+
+    /** The fees the trail hangs on one leg, by code. */
+    const feesOn = async (code: string) => {
+      const trail = await get('/api/payouts/1/trail');
+      const nodes: { transaction: { code: string }; fees: unknown[] }[] = [];
+      const walk = (all: { children: unknown[] }[]): void => {
+        for (const node of all) {
+          nodes.push(node as never);
+          walk(node.children as { children: unknown[] }[]);
+        }
+      };
+      walk(trail.json().roots);
+
+      return nodes.find((node) => node.transaction.code === code)?.fees ?? [];
+    };
+
+    it('records the charge as a fee in the currency sent', async () => {
+      const created = await post(
+        '/api/transactions',
+        withdrawal({ charge: { feeType: 'network_fee', amount: '4.03' } }),
+      );
+
+      expect(created.statusCode).toBe(201);
+      await expect(feesOn('Transaction910')).resolves.toMatchObject([
+        { feeType: 'network_fee', amount: { currency: 'USD', amount: '4.03' } },
+      ]);
+    });
+
+    it('records a platform charge when that is what it was', async () => {
+      const created = await post(
+        '/api/transactions',
+        withdrawal({
+          code: 'Transaction911',
+          charge: { feeType: 'platform_charge', amount: '4.03' },
+        }),
+      );
+
+      expect(created.statusCode).toBe(201);
+      await expect(feesOn('Transaction911')).resolves.toMatchObject([
+        { feeType: 'platform_charge' },
+      ]);
+    });
+
+    it('records no fee when no charge was sent', async () => {
+      await post('/api/transactions', withdrawal({ code: 'Transaction912' }));
+
+      await expect(feesOn('Transaction912')).resolves.toEqual([]);
+    });
+
+    it('takes null for a charge, which is the same as saying nothing', async () => {
+      const created = await post(
+        '/api/transactions',
+        withdrawal({ code: 'Transaction913', charge: null }),
+      );
+
+      expect(created.statusCode).toBe(201);
+      await expect(feesOn('Transaction913')).resolves.toEqual([]);
+    });
+
+    it('400s a fee type a movement cannot be charged', async () => {
+      // GST on a wallet transfer would be a rupee figure on a leg that never
+      // touched a rupee; the exchange's own fees are the sale's to compute.
+      const refused = await post(
+        '/api/transactions',
+        withdrawal({ charge: { feeType: 'gst', amount: '4.03' } }),
+      );
+
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().details.issues[0].path).toBe('charge.feeType');
+    });
+
+    it('400s an amount that is not a decimal', async () => {
+      const refused = await post(
+        '/api/transactions',
+        withdrawal({ charge: { feeType: 'network_fee', amount: 'four' } }),
+      );
+
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().details.issues[0].path).toBe('charge.amount');
+    });
+
+    it('400s half a charge, since neither half means anything alone', async () => {
+      const noAmount = await post(
+        '/api/transactions',
+        withdrawal({ charge: { feeType: 'network_fee' } }),
+      );
+      const noType = await post(
+        '/api/transactions',
+        withdrawal({ code: 'Transaction914', charge: { amount: '4.03' } }),
+      );
+
+      expect(noAmount.statusCode).toBe(400);
+      expect(noType.statusCode).toBe(400);
+    });
+
+    it('refuses a negative charge, which is a refund in disguise', async () => {
+      // 400 from the domain rather than the parser: `decimalString` allows a
+      // minus, because some figures here are legitimately negative, and it is
+      // `TransactionFee` that knows a fee is not one of them.
+      const refused = await post(
+        '/api/transactions',
+        withdrawal({ charge: { feeType: 'network_fee', amount: '-4.03' } }),
+      );
+
+      expect(refused.statusCode).toBe(400);
+      expect(refused.json().message).toMatch(/network_fee/);
+    });
+
+    it('keeps the note written on the leg', async () => {
+      const created = await post(
+        '/api/transactions',
+        withdrawal({
+          code: 'Transaction915',
+          notes: 'Split into four because Rise caps a withdrawal at $250.',
+        }),
+      );
+
+      expect(created.json().transaction.notes).toBe(
+        'Split into four because Rise caps a withdrawal at $250.',
+      );
+    });
+  });
+
   describe('the chain fields on a leg (F28)', () => {
     beforeEach(async () => {
       await withSeed(seedReferencePayout);

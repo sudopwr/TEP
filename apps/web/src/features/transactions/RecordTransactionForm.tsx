@@ -4,6 +4,11 @@ import MenuItem from '@mui/material/MenuItem';
 import Paper from '@mui/material/Paper';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
+import {
+  SOURCE_CURRENCY_FEE_TYPES,
+  impliedCharge,
+  type SourceCurrencyFeeType,
+} from '@payout/core';
 import { useRef, useState, type FormEvent } from 'react';
 
 import { Link as RouterLink } from 'react-router-dom';
@@ -68,6 +73,27 @@ const KIND_OPTIONS = [
 
 type Kind = (typeof KIND_OPTIONS)[number]['value'];
 
+/**
+ * What a charge may be filed as (F32), keyed by the domain's own list.
+ *
+ * A `Record`, so adding a third source-currency fee type in the domain fails
+ * to compile here rather than quietly dropping out of the dropdown.
+ */
+const CHARGE_LABELS: Record<SourceCurrencyFeeType, string> = {
+  network_fee: 'Network fee',
+  platform_charge: 'Platform charge',
+};
+
+/**
+ * What the charge on this kind of leg usually is.
+ *
+ * The award arrives light because the firm charged for paying it (§10's
+ * $100.79); everything after that is a processor or a chain taking its cut.
+ */
+function chargeTypeFor(kind: Kind): SourceCurrencyFeeType {
+  return kind === 'payout_credit' ? 'platform_charge' : 'network_fee';
+}
+
 /** Today, as `YYYY-MM-DD` in local time, for the date field's default. */
 function today(): string {
   const now = new Date();
@@ -105,6 +131,22 @@ export function RecordTransactionForm({
   const [rate, setRate] = useState('');
   const [tds, setTds] = useState('');
   const [chain, setChain] = useState<ChainValues>(EMPTY_CHAIN);
+  const [notes, setNotes] = useState('');
+  /*
+    The charge, and whether anybody has touched it (F32).
+
+    Untouched, the field *shows* the difference between the two amounts rather
+    than holding a copy of it: derived, so it follows both amounts as they are
+    typed, with no effect to keep in step and nothing stale to clear. The first
+    keystroke in it — or in the type beside it — makes it the reader's, and
+    from then on their figure stands even when the amounts change under it.
+    Emptying it is an answer too, and means no charge.
+  */
+  const [charge, setCharge] = useState('');
+  const [chargeTouched, setChargeTouched] = useState(false);
+  const [chargeType, setChargeType] =
+    useState<SourceCurrencyFeeType>('network_fee');
+  const [chargeTypeTouched, setChargeTypeTouched] = useState(false);
 
   /*
     `useAccounts`, not `useAccountBalances`. Balances are derived from
@@ -142,6 +184,26 @@ export function RecordTransactionForm({
   const sameCurrency =
     !isSale && fromCurrency !== '' && fromCurrency === toCurrency;
   const errors = fieldErrors(mutation.error);
+
+  /*
+    F32 — what the leg kept.
+
+    Only on a movement: a sale's fees come off §8's schedule and its TDS off
+    the statement, so a box inviting a third figure there would be inviting a
+    disagreement with the exchange.
+
+    Across two currencies the rate goes with it, because the gap between the
+    amounts is then mostly the rate and the fee is what is left after taking
+    the arrival back through it — §10's withdrawals are USD out and USDT in at
+    1.00000000, and that is where the flat $4.03 hides. With no rate typed yet
+    there is nothing to divide by, and `impliedCharge` says so by answering
+    nothing rather than subtracting two different currencies.
+  */
+  const suggestedCharge = isSale
+    ? null
+    : impliedCharge(fromAmount, toAmount, sameCurrency ? null : rate);
+  const chargeValue = chargeTouched ? charge : (suggestedCharge ?? '');
+  const chargeTypeValue = chargeTypeTouched ? chargeType : chargeTypeFor(kind);
 
 
   /*
@@ -203,6 +265,7 @@ export function RecordTransactionForm({
       // from a kind the reader changed their mind about would be recorded
       // against a leg that never went near a chain (F28).
       ...(onChain ? toChainCommand(chain) : {}),
+      ...(notes.trim() === '' ? {} : { notes: notes.trim() }),
     };
 
     if (isSale) {
@@ -232,6 +295,11 @@ export function RecordTransactionForm({
       // is about the stored column, and being explicit here says the absence
       // was a decision rather than a forgotten field.
       ...(sameCurrency || rate.trim() === '' ? { rate: null } : { rate }),
+      // Omitted when the field is empty, which is a leg that cost nothing
+      // rather than one charged zero (F32).
+      ...(chargeValue.trim() === ''
+        ? {}
+        : { charge: { feeType: chargeTypeValue, amount: chargeValue.trim() } }),
     };
 
     recordMovement.mutate(command, {
@@ -486,6 +554,58 @@ export function RecordTransactionForm({
         )}
 
         {/*
+          F32 — the charge, filled in from the two amounts and editable.
+
+          Beside the type it will be filed as, because a `transaction_fees`
+          row needs one and "charges" is not a type: the difference on a
+          credit is what the firm charged for paying, and on everything after
+          it what a processor or a chain took.
+        */}
+        {isSale ? null : (
+          <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+            <AmountField
+              label="Charges"
+              value={chargeValue}
+              onChange={(value) => {
+                setChargeTouched(true);
+                setCharge(value);
+              }}
+              {...(fromCurrency === '' ? {} : { currency: fromCurrency })}
+              helperText={
+                suggestedCharge !== null
+                  ? 'What the leg kept, worked out from the two amounts. Change it if the fee was something else.'
+                  : sameCurrency
+                    ? 'Nothing was kept, so there is nothing to record.'
+                    : 'Record the rate and this fills itself, or type what the leg cost.'
+              }
+              {...(errors['charge.amount'] === undefined
+                ? {}
+                : { error: errors['charge.amount'] })}
+            />
+
+            <TextField
+              select
+              label="Charged as"
+              value={chargeTypeValue}
+              onChange={(event) => {
+                setChargeTypeTouched(true);
+                setChargeType(event.target.value as SourceCurrencyFeeType);
+              }}
+              fullWidth
+              size="small"
+              helperText={`Recorded in ${fromCurrency === '' ? 'the currency sent' : fromCurrency}, which is where it was taken from.`}
+              error={errors['charge.feeType'] !== undefined}
+            >
+              {SOURCE_CURRENCY_FEE_TYPES.map((feeType) => (
+                <MenuItem key={feeType} value={feeType}>
+                  {CHARGE_LABELS[feeType]}
+                </MenuItem>
+              ))}
+            </TextField>
+          </Box>
+        )}
+
+        {/*
           Only for a hop that went along a chain (F28) — a wallet on either
           side, or a token on either side. Asking a bank transfer for a wallet
           address is asking for a blank.
@@ -499,6 +619,25 @@ export function RecordTransactionForm({
             disabled={mutation.isPending}
           />
         ) : null}
+
+        <TextField
+          label="Notes"
+          value={notes}
+          onChange={(event) => {
+            setNotes(event.target.value);
+          }}
+          fullWidth
+          size="small"
+          multiline
+          minRows={2}
+          sx={{ mt: 2 }}
+          disabled={mutation.isPending}
+          error={errors['notes'] !== undefined}
+          helperText={
+            errors['notes'] ??
+            'Anything the statement does not say: why this hop, what the fee was for, who to ask.'
+          }
+        />
 
         {failure === null ? null : (
           <Box sx={{ mt: 2 }}>

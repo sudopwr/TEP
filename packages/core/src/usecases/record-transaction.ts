@@ -14,6 +14,7 @@ import type {
 } from '../domain/ids';
 import { Money } from '../domain/money';
 import type { Transaction, TransactionKind } from '../domain/transaction';
+import type { SourceCurrencyFeeType } from '../domain/transaction-fee';
 import type { AccountRepository } from '../ports/account-repository';
 import type { PayoutRepository } from '../ports/payout-repository';
 import type { TransactionRepository } from '../ports/transaction-repository';
@@ -43,10 +44,30 @@ export interface RecordTransactionCommand {
   readonly toAddress?: string | null;
   readonly explorerUrl?: string | null;
   readonly notes?: string | null;
+  /**
+   * What the leg kept, recorded as a fee in the **source** currency (F5).
+   *
+   * Optional because a leg that cost nothing has no fee row, and a zero one
+   * is a deliberate statement rather than a default. The two types it may be
+   * are the two a movement is charged in its own currency; the exchange's own
+   * fees are `RecordSale`'s to compute from §8.
+   */
+  readonly charge?: {
+    readonly feeType: SourceCurrencyFeeType;
+    readonly amount: string;
+  } | null;
 }
 
 /**
  * UC2 — record one movement between two accounts.
+ *
+ * A charge comes with it when there was one. Almost every leg costs
+ * something and the cost is not written down anywhere — it is the gap between
+ * the two amounts already being recorded (`impliedCharge`) — so it is entered
+ * with the leg and written with it, rather than through a second call that
+ * could fail on its own and leave a fee the ledger cannot explain. The
+ * currency is the leg's source currency, which is where a network fee and a
+ * platform charge are taken from and what `v_data_quality` reconciles against.
  *
  * The checks here are the ones that need more than the transaction itself:
  * that the payout and accounts exist, that a parent belongs to the same
@@ -95,7 +116,7 @@ export class RecordTransaction {
       }
     }
 
-    return transactions.insert({
+    const transaction = await transactions.insert({
       code: command.code,
       payoutId: command.payoutId,
       parentId: command.parentId,
@@ -111,6 +132,16 @@ export class RecordTransaction {
       explorerUrl: command.explorerUrl ?? null,
       notes: command.notes ?? null,
     });
+
+    if (command.charge !== undefined && command.charge !== null) {
+      await transactions.recordFee({
+        transactionId: transaction.id,
+        feeType: command.charge.feeType,
+        amount: Money.fromDecimalString(command.charge.amount, fromCurrency),
+      });
+    }
+
+    return transaction;
   }
 
   async #requireAccount(id: AccountId): Promise<Account> {
