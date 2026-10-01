@@ -10,7 +10,15 @@ import type { FeeType } from './transaction-fee';
  * the transaction, which is why GST cannot be computed in the same pass as
  * the fee it derives from.
  */
-export type FeeBasis = 'to_amount' | 'from_amount' | 'exchange_fee' | 'flat';
+export const FEE_BASES = [
+  'to_amount',
+  'from_amount',
+  'exchange_fee',
+  'flat',
+] as const;
+
+/** The runtime list above, with the type derived from it. See DOCUMENT_TYPES. */
+export type FeeBasis = (typeof FEE_BASES)[number];
 
 export interface FeeScheduleProps {
   readonly id: FeeScheduleId;

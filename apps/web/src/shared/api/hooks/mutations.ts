@@ -5,49 +5,53 @@ import {
   type UseMutationResult,
 } from '@tanstack/react-query';
 
+import type { DownloadedFile } from '../client';
 import {
   attachDocument,
   createAccount,
   createCompany,
-  createTrader,
-  lookUpChainTransfer,
-  updateTrader,
   createPayout,
+  createTrader,
   createTransaction,
   deleteAccount,
   deleteDocument,
   deletePayout,
-  detachDocument,
   deleteTransaction,
+  detachDocument,
+  exportLedger,
+  importLedger,
   linkDocument,
+  lookUpChainTransfer,
   updateAccount,
+  updateTrader,
   updateTransaction,
 } from '../endpoints';
 import { cachesAffectedByTransaction, queryKeys } from '../keys';
 import type {
   AccountJson,
+  ChainTransferJson,
   CompanyJson,
   CreateAccountCommand,
-  ChainTransferJson,
   CreateCompanyCommand,
-  CreateTraderCommand,
   CreatePayoutCommand,
   CreateSaleCommand,
+  CreateTraderCommand,
   CreateTransactionCommand,
   DocumentAttachedJson,
   DocumentDeletedJson,
   DocumentDetachedJson,
   DocumentJson,
   DocumentTargetJson,
+  ImportResultJson,
   LinkDocumentCommand,
   PayoutDeletedJson,
   PayoutJson,
   SaleRecordedJson,
   SettlementJson,
+  TraderJson,
   TransactionDeletedJson,
   TransactionJson,
   UpdateAccountCommand,
-  TraderJson,
   UpdateTraderCommand,
   UpdateTransactionCommand,
 } from '../types';
@@ -571,5 +575,47 @@ export function useAttachDocument(): UseMutationResult<
     mutationFn: ({ payoutId: _payoutId, ...input }) => attachDocument(input),
     onSuccess: (_result, { payoutId }) =>
       invalidateAll(client, cachesAffectedByAttachment(payoutId)),
+  });
+}
+
+// ---------- Export and import (F33) ----------
+
+/**
+ * Download the ledger as one file.
+ *
+ * A mutation rather than a query, because it is an *act*: it happens when the
+ * button is pressed, not when the screen appears, and nothing should cache a
+ * copy of somebody's entire ledger in memory in case they ask again.
+ *
+ * The saving itself is the caller's, which is the only part that needs a
+ * document: `shared/api` has no business creating anchor elements.
+ */
+export function useExportLedger(): UseMutationResult<
+  DownloadedFile,
+  Error,
+  void
+> {
+  return useMutation({ mutationFn: () => exportLedger() });
+}
+
+/**
+ * Replace the ledger with an archive.
+ *
+ * The one mutation that invalidates *everything*, and the exception that proves
+ * the rule above: every figure on every screen now comes from different rows,
+ * including the ones this file usually leaves alone. Naming a blast radius here
+ * would mean listing every key in the factory and being wrong the day a new one
+ * is added — so this clears the whole cache on purpose, and says why.
+ */
+export function useImportLedger(): UseMutationResult<
+  ImportResultJson,
+  Error,
+  { readonly file: File; readonly replace: boolean }
+> {
+  const client = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ file, replace }) => importLedger(file, { replace }),
+    onSuccess: () => client.invalidateQueries(),
   });
 }

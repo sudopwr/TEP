@@ -9,6 +9,7 @@ import {
   ISSUES,
   OTHER_PAYOUT,
   OTHER_TRADER,
+  LEDGER_COUNTS,
   PAYOUT,
   REGISTER,
   REPORT,
@@ -326,6 +327,38 @@ export const handlers = [
       linksRemoved: 2,
     });
   }),
+
+  /* ---------- Export and import (F33) ---------- */
+
+  http.get('/api/import/state', () =>
+    HttpResponse.json({ counts: LEDGER_COUNTS }),
+  ),
+
+  /**
+   * The archive, as bytes.
+   *
+   * Not a real tar — the browser never looks inside one — but a `Blob` with the
+   * headers the real route sends, because the filename the download gets comes
+   * out of `content-disposition` and that is worth testing.
+   */
+  http.get('/api/export', () =>
+    HttpResponse.arrayBuffer(new TextEncoder().encode('gzipped-archive').buffer, {
+      headers: {
+        'content-type': 'application/gzip',
+        'content-disposition':
+          'attachment; filename="payout-tracker-2026-10-01.tar.gz"',
+      },
+    }),
+  ),
+
+  http.post('/api/import', () =>
+    HttpResponse.json({
+      counts: { ...LEDGER_COUNTS, payouts: 2 },
+      filesRestored: 2,
+      replaced: LEDGER_COUNTS,
+      createdAt: '2026-09-30T18:00:00.000Z',
+    }),
+  ),
 
   /*
     Balances and checks, scoped like the server scopes them.

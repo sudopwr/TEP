@@ -52,6 +52,7 @@ two fees.
 | F30 | Read the token transfer itself — the "ERC-20 Tokens Transferred" row — so a bridge or a router fills the right two addresses, and the amount with them |
 | F31 | A Documents screen: the register, newest first, ten a page, narrowed by a name or by what is written inside |
 | F32 | A leg records what it kept: the charge, worked out from the two amounts and editable, plus a note about the leg |
+| F33 | Export the whole ledger and every document as one file, download it, and restore from it on another machine; the screen says how |
 
 ### Non-functional
 | # | Requirement |
@@ -61,7 +62,7 @@ two fees.
 | N3 | Domain layer has zero runtime dependencies |
 | N4 | Every use case a unit test; every route an integration test; core journeys e2e |
 | N5 | One command starts dev, one command builds, one command runs all tests |
-| N6 | Data lives in `data/` — `app.db` plus `files/`. Backup = copy that folder |
+| N6 | Data lives in `data/` — `app.db` plus `files/`. Backup = copy that folder, or F33's one file |
 | N7 | Binds `127.0.0.1` only. Sign-in gates every route except `/health` and auth |
 | N11 | One outbound request exists (F29's explorer lookup), made only when asked, carrying only a transaction hash, to a host in a compiled-in list |
 | N9 | Passwords stored only as an argon2id hash; plaintext never touches disk, logs, or an error |
@@ -99,7 +100,11 @@ explorer — in that order, so the adapter is handed a chain and a hash and neve
 pasted string. **UC27 — ListDocuments.** F31: the register, newest first by `doc_date`
 and the upload standing in for an undated one, counted and cut in the database; a blank
 search means everything, which is what makes it not UC9, and a page past the end answers
-the last one. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
+the last one. **Not a use case** (F33): `adapters/ledger-archive.ts`
+exports and imports the whole ledger as a `.tar.gz`, because it is SQL over
+whole tables, gzip and the filesystem with no rule of its own — `decorators.ts`
+names the shape, the container builds it, and `ledger-dump.ts` puts every row
+back through its own constructor on the way in. **UC24 — the scope** (`payout-scope.ts`): trader and range, both
 optional, honoured *identically* by UC7, UC8, UC10 and `ListPayouts`. **Not numbered**,
 because §3 assumed they existed: `RecordCompany`, `RecordAccount`, `EditAccount`,
 `DeleteAccount`, `ListCompanies`, `ListAccounts`, `ListPayouts`, `ListTransactions`,
@@ -137,7 +142,7 @@ apps/web/             React 18 + Vite + MUI v6 + react-router v7
   shared/layout/ feedback/   the rail and page frame / the toast
   features/ routes.tsx   one folder each, no cross-imports / the UI composition root, the one file that may build a screen out of several
 
-e2e/                  12 spec files, 38 journeys, each against a world of its own
+e2e/                  13 spec files, 40 journeys, each against a world of its own
 ```
 
 **The interface.** Ledger paper, not dashboard blue: ink `#1C1A17` on paper `#FAF7F2`,

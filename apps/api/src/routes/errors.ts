@@ -60,10 +60,28 @@ const STATUS_BY_ERROR: ReadonlyMap<string, number> = new Map([
   ['AccountCodeTakenError', 409],
   ['TraderCodeTakenError', 409],
   ['AccountInUseError', 409],
+  /*
+    The ledger is not empty and the import did not say to replace it (F33).
+
+    409 rather than 400 for exactly the reason the group above is: the request
+    is well-formed and the archive is readable. What disagrees is the world —
+    there is already data here — and the answer is to ask the owner and send it
+    again with `replace`.
+  */
+  ['LedgerNotEmptyError', 409],
 
   // 422 — the data on file cannot answer this, and no request can fix it.
   ['AmbiguousFeeScheduleError', 422],
   ['DocumentFileMissingError', 422],
+  /*
+    422 — the file in the request cannot be read as an archive (F33).
+
+    Not a 400: the request is shaped correctly and it is the *content* of the
+    upload that is wrong, which is the same distinction `DocumentFileMissing`
+    draws. The message says what is wrong with the file, and whether anything
+    was changed before it was noticed — which is always "nothing".
+  */
+  ['ArchiveUnreadableError', 422],
 
   /*
     503 — this application is fine and something it depends on is not.

@@ -3,6 +3,8 @@ import type {
   Company,
   CurrencyRegistry,
   Document,
+  DocumentId,
+  DocumentTarget,
   FeeSchedule,
   Payout,
   Trader,
@@ -18,6 +20,7 @@ import {
   toDocument,
   toFeeSchedule,
   toPayout,
+  toTrader,
   toTransaction,
   toTransactionFee,
   type AccountRow,
@@ -25,6 +28,7 @@ import {
   type DocumentRow,
   type FeeScheduleRow,
   type PayoutRow,
+  type TraderRow,
   type TransactionFeeRow,
   type TransactionRow,
 } from './mappers';
@@ -55,11 +59,11 @@ const SQL = {
   insertTransaction: `INSERT INTO transactions
       (id, code, payout_id, parent_id, txn_date, kind, from_account_id, to_account_id,
        from_amount, from_currency, to_amount, to_currency, rate_applied,
-       from_external_ref, to_external_ref, notes)
+       from_external_ref, to_external_ref, from_address, to_address, explorer_url, notes)
     VALUES
       (@id, @code, @payoutId, @parentId, @txnDate, @kind, @fromAccountId, @toAccountId,
        @fromAmount, @fromCurrency, @toAmount, @toCurrency, @rate,
-       @fromExternalRef, @toExternalRef, @notes)`,
+       @fromExternalRef, @toExternalRef, @fromAddress, @toAddress, @explorerUrl, @notes)`,
   insertFee: `INSERT INTO transaction_fees (id, transaction_id, fee_type, amount, currency_code)
     VALUES (@id, @transactionId, @feeType, @amount, @currencyCode)`,
   insertFeeSchedule: `INSERT INTO fee_schedules
@@ -70,7 +74,40 @@ const SQL = {
       (id, filename, stored_path, mime_type, byte_size, sha256, doc_type, doc_date, extracted_text)
     VALUES
       (@id, @filename, @storedPath, @mimeType, @byteSize, @sha256, @docType, @docDate, @extractedText)`,
+  insertDocumentLink: `INSERT INTO document_links
+      (id, document_id, company_id, payout_id, transaction_id, role)
+    VALUES
+      (@id, @documentId, @companyId, @payoutId, @transactionId, @role)`,
 } as const;
+
+/**
+ * What a document is attached to, as a row rather than a call (F6).
+ *
+ * The repository writes a link through `link(documentId, target, role)`, which
+ * lets SQLite pick the id — right for an attachment somebody makes, and wrong
+ * for a restore, which has to put back the same graph it took out. Core has no
+ * entity for this, because nothing in the domain needs one: a link is a fact
+ * about two ids, and `DocumentTarget` already says which two.
+ */
+export interface DocumentAttachment {
+  readonly id: number;
+  readonly documentId: DocumentId;
+  readonly target: DocumentTarget;
+  readonly role: string | null;
+}
+
+/** The three nullable columns, from the one target that is set. */
+function targetColumns(target: DocumentTarget): {
+  companyId: number | null;
+  payoutId: number | null;
+  transactionId: number | null;
+} {
+  return {
+    companyId: target.kind === 'company' ? target.id : null,
+    payoutId: target.kind === 'payout' ? target.id : null,
+    transactionId: target.kind === 'transaction' ? target.id : null,
+  };
+}
 
 export interface BulkLoad {
   /**
@@ -88,6 +125,13 @@ export interface BulkLoad {
   readonly fees?: readonly TransactionFee[];
   readonly feeSchedules?: readonly FeeSchedule[];
   readonly documents?: readonly Document[];
+  /**
+   * The attachments, which a restore must put back with the documents (F33).
+   *
+   * Without these a restored ledger holds every file and shows none of them:
+   * the rows survive and nothing points at them.
+   */
+  readonly documentLinks?: readonly DocumentAttachment[];
 }
 
 /**
@@ -109,6 +153,7 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
   const insertFee = database.prepare(SQL.insertFee);
   const insertFeeSchedule = database.prepare(SQL.insertFeeSchedule);
   const insertDocument = database.prepare(SQL.insertDocument);
+  const insertDocumentLink = database.prepare(SQL.insertDocumentLink);
 
   const load = database.transaction(() => {
     database.pragma('defer_foreign_keys = ON');
@@ -176,6 +221,11 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
         rate: transaction.rate,
         fromExternalRef: transaction.fromExternalRef,
         toExternalRef: transaction.toExternalRef,
+        // F28's three, which this statement used to leave out — so a restore
+        // kept every amount and quietly dropped every wallet address.
+        fromAddress: transaction.fromAddress,
+        toAddress: transaction.toAddress,
+        explorerUrl: transaction.explorerUrl,
         notes: transaction.notes,
       });
     }
@@ -217,9 +267,74 @@ export function bulkLoad(database: SqliteDatabase, data: BulkLoad): void {
         extractedText: document.extractedText,
       });
     }
+
+    for (const link of data.documentLinks ?? []) {
+      insertDocumentLink.run({
+        id: link.id,
+        documentId: link.documentId,
+        role: link.role,
+        ...targetColumns(link.target),
+      });
+    }
   });
 
   load();
+}
+
+/**
+ * Empty the ledger, leaving the installation behind.
+ *
+ * What goes: every trader, company, account, payout, leg, fee, schedule,
+ * document row and attachment. What stays: the `users` row and its sessions
+ * (§5a — a restore must not sign anybody in or out, and an archive carries no
+ * credential at all), the `currencies` table (§6's scales are seeded by the
+ * migrations and are the same in every install) and `schema_migrations`.
+ *
+ * Deepest first, so each `DELETE` only ever removes rows nothing points at.
+ * `ON DELETE CASCADE` would reach most of this from `payouts` alone, but a
+ * wipe that leans on cascades deletes whatever the schema happens to cascade
+ * today; naming the tables says what is being destroyed, in a function whose
+ * whole job is destroying it.
+ *
+ * Files are not touched. They are content-addressed and referenced by nothing
+ * but the rows just deleted, so leaving them costs some disk and no
+ * correctness — and an import that fails halfway has not thrown away the one
+ * copy of a statement. `data/files` is the owner's to prune.
+ */
+export function clearLedger(database: SqliteDatabase): void {
+  const TABLES = [
+    'document_links',
+    'transaction_fees',
+    'transactions',
+    'payouts',
+    'fee_schedules',
+    'account_currencies',
+    'accounts',
+    'documents',
+    'companies',
+    'traders',
+  ] as const;
+
+  const clear = database.transaction(() => {
+    /*
+      Deferred, for the same reason `bulkLoad` defers: `transactions.parent_id`
+      references `transactions(id)` ON DELETE RESTRICT, and RESTRICT is checked
+      row by row as the statement runs. So `DELETE FROM transactions` refuses
+      the first parent it reaches, because a child still points at it — even
+      though the same statement is about to delete that child too. Holding the
+      checks until commit asks the question once, of the finished state, where
+      the table is empty and nothing dangles. The checks still run: a reference
+      left behind by a wrong table order would still fail, and take the whole
+      wipe with it.
+    */
+    database.pragma('defer_foreign_keys = ON');
+
+    for (const table of TABLES) {
+      database.prepare(`DELETE FROM ${table}`).run();
+    }
+  });
+
+  clear();
 }
 
 /** The tables a row count is meaningful for. Not a free-text table name. */
@@ -254,6 +369,7 @@ export function countRows(
 
 /** The mirror of BulkLoad: every row, as entities, synchronously. */
 export interface LedgerSnapshot {
+  readonly traders: readonly Trader[];
   readonly companies: readonly Company[];
   readonly accounts: readonly Account[];
   readonly payouts: readonly Payout[];
@@ -261,6 +377,7 @@ export interface LedgerSnapshot {
   readonly fees: readonly TransactionFee[];
   readonly feeSchedules: readonly FeeSchedule[];
   readonly documents: readonly Document[];
+  readonly documentLinks: readonly DocumentAttachment[];
 }
 
 /**
@@ -280,6 +397,9 @@ export function snapshot(
     database.prepare<[], Row>(sql).all();
 
   return {
+    traders: rows<TraderRow>(
+      'SELECT id, code, name, notes FROM traders ORDER BY id',
+    ).map(toTrader),
     companies: rows<CompanyRow>(
       'SELECT id, code, name, notes FROM companies ORDER BY id',
     ).map(toCompany),
@@ -304,7 +424,8 @@ export function snapshot(
     transactions: rows<TransactionRow>(
       `SELECT id, code, payout_id, parent_id, txn_date, kind, from_account_id,
               to_account_id, from_amount, from_currency, to_amount, to_currency,
-              rate_applied, from_external_ref, to_external_ref, notes
+              rate_applied, from_external_ref, to_external_ref,
+              from_address, to_address, explorer_url, notes
          FROM transactions ORDER BY id`,
     ).map((row) => toTransaction(row, currencies)),
     fees: rows<TransactionFeeRow>(
@@ -318,7 +439,39 @@ export function snapshot(
       `SELECT id, filename, stored_path, mime_type, byte_size, sha256,
               doc_type, doc_date, extracted_text FROM documents ORDER BY id`,
     ).map(toDocument),
+    documentLinks: rows<DocumentLinkRow>(
+      `SELECT id, document_id, company_id, payout_id, transaction_id, role
+         FROM document_links ORDER BY id`,
+    ).map(toAttachment),
   };
+}
+
+/** The one target of the three nullable columns — §7's CHECK guarantees one. */
+function toAttachment(row: DocumentLinkRow): DocumentAttachment {
+  const target: DocumentTarget =
+    row.company_id !== null
+      ? { kind: 'company', id: Number(row.company_id) }
+      : row.payout_id !== null
+        ? { kind: 'payout', id: Number(row.payout_id) }
+        : { kind: 'transaction', id: Number(row.transaction_id) };
+
+  return {
+    id: Number(row.id),
+    documentId: Number(row.document_id),
+    target,
+    role: row.role,
+  };
+}
+
+/** Shaped like the other `*Row` types in `mappers.ts`, and local for the same
+ *  reason `document_links` has no entity: only this file reads these rows. */
+interface DocumentLinkRow {
+  readonly id: number | bigint;
+  readonly document_id: number | bigint;
+  readonly company_id: number | bigint | null;
+  readonly payout_id: number | bigint | null;
+  readonly transaction_id: number | bigint;
+  readonly role: string | null;
 }
 
 /**

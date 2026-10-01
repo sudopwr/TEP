@@ -179,3 +179,22 @@ export const REGISTER: readonly DocumentJson[] = [
     docDate: docDate as string | null,
   })),
 ];
+
+/**
+ * What the ledger holds, for F33's screen (and nothing else).
+ *
+ * §10's tree, counted: one payout, thirteen legs and the fees on them. The
+ * archive screen prints these back at the reader before offering to replace
+ * them, so they are the reference figures rather than round numbers.
+ */
+export const LEDGER_COUNTS: Readonly<Record<string, number>> = {
+  traders: 1,
+  companies: 2,
+  accounts: 5,
+  payouts: 1,
+  transactions: 13,
+  fees: 16,
+  feeSchedules: 3,
+  documents: 1,
+  documentLinks: 1,
+};

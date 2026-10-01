@@ -8,7 +8,11 @@ import {
   registerSessionGuard,
 } from './auth/guards';
 import { buildContainer, type ContainerOptions } from './container';
-import type { DocumentFileSource, UseCases } from './decorators';
+import type {
+  DocumentFileSource,
+  LedgerTransfer,
+  UseCases,
+} from './decorators';
 import type { SqliteDatabase } from './db/connection';
 import { registerApiRoutes } from './routes/api';
 import { registerAuthRoutes } from './routes/auth';
@@ -50,6 +54,7 @@ export interface ServerOptions extends ContainerOptions {
   /** Swap in fakes without a database. Tests only; the container wins if absent. */
   readonly useCases?: UseCases;
   readonly documentFiles?: DocumentFileSource;
+  readonly ledgerTransfer?: LedgerTransfer;
   /**
    * Where `apps/web/dist` is, when the interface is being served too.
    *
@@ -108,6 +113,10 @@ export async function buildServer(
   app.decorate(
     'documentFiles',
     options.documentFiles ?? container.documentFiles,
+  );
+  app.decorate(
+    'ledgerTransfer',
+    options.ledgerTransfer ?? container.ledgerTransfer,
   );
 
   await app.register(cookie, { secret: options.sessionSecret });

@@ -19,6 +19,7 @@ import {
   SignInScreen,
 } from './features/auth';
 import { DataQualityScreen } from './features/data-quality';
+import { LedgerTransferScreen } from './features/transfer';
 import {
   DocumentRegister,
   PayoutDocuments,
@@ -68,6 +69,7 @@ const DESTINATIONS: readonly Destination[] = [
   { label: 'Documents', to: '/documents' },
   { label: 'Data quality', to: '/data-quality' },
   { label: 'Report', to: '/reports' },
+  { label: 'Export & import', to: '/transfer' },
   { label: 'Account', to: '/account' },
 ];
 
@@ -359,6 +361,7 @@ export function AppRoutes() {
         <Route path="/documents" element={<DocumentRegister />} />
         <Route path="/data-quality" element={<DataQualityScreen />} />
         <Route path="/reports" element={<FinancialYearReport />} />
+        <Route path="/transfer" element={<LedgerTransferScreen />} />
         <Route path="/account" element={<AccountSettings />} />
         <Route path="*" element={<NotFound />} />
       </Route>

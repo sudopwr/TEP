@@ -1,6 +1,9 @@
+import { gunzipSync } from 'node:zlib';
+
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SqliteDocumentRepository } from '../adapters/sqlite-document-repository';
+import { unpackTar } from '../adapters/tar';
 
 import {
   asUser,
@@ -73,6 +76,8 @@ describe('/api routes', () => {
       '/api/transactions',
       '/api/documents/1',
       '/api/documents',
+      '/api/export',
+      '/api/import/state',
       '/api/documents/search?q=x',
       '/api/accounts/balances',
       '/api/data-quality',
@@ -1242,6 +1247,162 @@ describe('/api routes', () => {
 
       expect(response.statusCode).toBe(401);
       expect(response.json().code).toBe('authentication_required');
+    });
+  });
+
+  describe('export and import (F33)', () => {
+    beforeEach(async () => {
+      await withSeed(seedReferencePayout);
+    });
+
+    /** The archive the server just wrote, unpacked here. */
+    const exported = async () => {
+      const response = await get('/api/export');
+
+      expect(response.statusCode).toBe(200);
+
+      const entries = new Map(
+        unpackTar(new Uint8Array(gunzipSync(response.rawPayload))).map(
+          (entry) => [entry.name, entry.bytes],
+        ),
+      );
+
+      return { response, archive: new Uint8Array(response.rawPayload), entries };
+    };
+
+    /**
+     * A multipart body built as bytes rather than as a string.
+     *
+     * The other upload helper in this file concatenates text, which is fine for
+     * a fake PDF of ASCII. An archive is gzip: run it through a string and the
+     * bytes above 0x7f come out as replacement characters, and the failure looks
+     * like a corrupt archive rather than a corrupt test.
+     */
+    const importing = (
+      archive: Uint8Array,
+      fields: Record<string, string> = {},
+    ) => {
+      const boundary = '----payoutarchive';
+      const head = Object.entries(fields)
+        .map(
+          ([name, value]) =>
+            `--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`,
+        )
+        .join('') +
+        `--${boundary}\r\n` +
+        'Content-Disposition: form-data; name="file"; ' +
+        'filename="payout-tracker-2026-10-01.tar.gz"\r\n' +
+        'Content-Type: application/gzip\r\n\r\n';
+
+      const payload = Buffer.concat([
+        Buffer.from(head, 'utf8'),
+        Buffer.from(archive),
+        Buffer.from(`\r\n--${boundary}--\r\n`, 'utf8'),
+      ]);
+
+      return asUser(server, cookie, {
+        method: 'POST',
+        url: '/api/import',
+        headers: {
+          'content-type': `multipart/form-data; boundary=${boundary}`,
+        },
+        payload,
+      });
+    };
+
+    it('sends the whole ledger as a file to download', async () => {
+      const { response, entries } = await exported();
+
+      expect(response.headers['content-type']).toBe('application/gzip');
+      expect(response.headers['content-disposition']).toMatch(
+        /^attachment; filename="payout-tracker-\d{4}-\d{2}-\d{2}\.tar\.gz"$/,
+      );
+      // A whole ledger must not sit in a cache between here and the disk.
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect([...entries.keys()]).toContain('ledger.json');
+    });
+
+    it('reports the counts in a header, for a client that will not unpack it', async () => {
+      const { response } = await exported();
+
+      expect(
+        JSON.parse(String(response.headers['x-payout-export'])),
+      ).toMatchObject({ payouts: 1, transactions: 13 });
+    });
+
+    it('answers what is on file, for the screen that offers to replace it', async () => {
+      const response = await get('/api/import/state');
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json().counts).toMatchObject({
+        payouts: 1,
+        transactions: 13,
+      });
+    });
+
+    it('409s an import into a ledger that already holds data', async () => {
+      const { archive } = await exported();
+
+      const refused = await importing(archive);
+
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().code).toBe('ledger_not_empty');
+      expect(refused.json().message).toMatch(/replaces all of it/);
+    });
+
+    it('replaces the ledger when the request says so', async () => {
+      const { archive } = await exported();
+
+      const restored = await importing(archive, { replace: 'true' });
+
+      expect(restored.statusCode).toBe(200);
+      expect(restored.json()).toMatchObject({
+        counts: { payouts: 1, transactions: 13 },
+        replaced: { payouts: 1 },
+      });
+
+      /*
+        And the ledger still answers for itself afterwards.
+
+        §10's net, through the same route a screen would use: an import that
+        wrote every row and broke one amount would pass every assertion above
+        this line.
+      */
+      const settlement = await get('/api/payouts/1/settlement');
+      expect(settlement.json().netCredited.amount).toBe('84642.93');
+    });
+
+    it('422s a file that is not an archive, and changes nothing', async () => {
+      const refused = await importing(
+        new TextEncoder().encode('%PDF-1.4 a statement, not an export'),
+        { replace: 'true' },
+      );
+
+      expect(refused.statusCode).toBe(422);
+      expect(refused.json().code).toBe('archive_unreadable');
+      expect((await get('/api/payouts')).json().payouts).toHaveLength(1);
+    });
+
+    it('415s a body that is not multipart at all', async () => {
+      const refused = await post('/api/import', { replace: true });
+
+      expect(refused.statusCode).toBe(415);
+    });
+
+    it('400s a field nobody offers', async () => {
+      const { archive } = await exported();
+
+      const refused = await importing(archive, { mode: 'merge' });
+
+      expect(refused.statusCode).toBe(400);
+    });
+
+    it('answers 401 without a session, like every other data route', async () => {
+      // Named here as well as in the sweep above, because this is the one route
+      // that would hand over an entire ledger in a single request.
+      const open = await server.app.inject({ url: '/api/export' });
+
+      expect(open.statusCode).toBe(401);
     });
   });
 

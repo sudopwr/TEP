@@ -405,6 +405,17 @@ export const listDocumentsQuery = z
   })
   .strict();
 
+/**
+ * The non-file fields of F33's import.
+ *
+ * `'true'` as a string, because a multipart field is text — and spelled out
+ * rather than treated as a checkbox, so the request that destroys a ledger says
+ * so in full. Absent means no, which is the safe direction.
+ */
+export const importArchiveFields = z
+  .object({ replace: z.enum(['true', 'false']).optional() })
+  .strict();
+
 /** The non-file fields of the multipart upload. */
 export const attachDocumentFields = z
   .object({

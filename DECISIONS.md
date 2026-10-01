@@ -256,3 +256,38 @@ Newest last. Never delete an entry — supersede it.
   integer arithmetic on a scale read off the digits, and the one place money is added up
   outside `Money`. Notes were already accepted end to end and only the record form had
   no box for them; it has one now, beside the edit dialog's.
+- **One file, in plain text, that is not the database** (F33): `npm run backup` copies
+  `data/` and stays on the machine, which is no help when the machine is the thing that
+  failed. So the ledger also leaves as a downloadable `.tar.gz` holding `manifest.json`,
+  `ledger.json` and every document under `files/`. **Rows, not `app.db`**: a database
+  file carries the schema of the version that wrote it, whatever the WAL happened to
+  hold, and nothing a person can read — where JSON restores across a migration and can
+  be opened by somebody checking what they have. **No credential in it** (§5a): the
+  `users` row and its sessions never leave, so a copy in cloud storage is not a way in,
+  and a restore signs nobody in or out; currencies and `schema_migrations` stay too,
+  because §6's scales are seeded identically everywhere. **Tar by hand, not zip and not
+  a dependency**: tar is 512-byte headers and nothing else, gzip comes from `node:zlib`,
+  and `tar -tzf` in the test suite proves something that is not this code can read what
+  this code wrote — a zip writer that is subtly wrong produces an archive that looks
+  fine until the day it is needed. **Import replaces, and asks first**: merging two
+  ledgers that both number payouts from 1 means renumbering, and renumbering silently
+  breaks every reference in a note, so a non-empty ledger answers 409 `ledger_not_empty`
+  until the request says `replace`. **Nothing is touched until everything has been
+  checked**: unpack, parse, validate the shape, check every currency exists, build every
+  entity through its own constructor (so §7's invariants meet a tampered archive),
+  verify each document against the sha256 its row claims — *then* write the files,
+  *then* empty and load the tables in one transaction. Files are written before the
+  database because they are content-addressed and additive: a failure there leaves
+  unreferenced kilobytes, which is the mistake to prefer over deleting the only copy of
+  a statement. **`restore` sits on the store, beyond the port**, like `openReadStream`:
+  `put` derives the path from the hash, a restore must reproduce the path its row
+  already names, and the store's root guard is what stops an archive path walking out of
+  `data/files` — refused twice, once by name with a sentence for the reader. Two bugs
+  fell out of writing it: `bulkLoad` never wrote F28's `from_address`, `to_address` or
+  `explorer_url`, so a restore would have kept every amount and dropped every wallet
+  address; and `DELETE FROM transactions` fails on `parent_id`'s own ON DELETE RESTRICT
+  until the checks are deferred, because RESTRICT is evaluated row by row even when the
+  same statement is about to delete the child. The screen carries the instructions,
+  because restoring a backup is done once, under pressure, having forgotten everything —
+  including the two facts that surprise people: it replaces everything, and the password
+  is not in the file.

@@ -46,6 +46,11 @@ import {
   HttpChainLookup,
   type ChainLookupConfig,
 } from './adapters/http-chain-lookup';
+import {
+  exportLedger,
+  importLedger,
+  ledgerCounts,
+} from './adapters/ledger-archive';
 import { loadCurrencyRegistry } from './adapters/currency-registry';
 import { FileCsvReader } from './adapters/file-csv-reader';
 import { FileSystemDocumentStore } from './adapters/filesystem-document-store';
@@ -61,7 +66,11 @@ import { SqliteUserRepository } from './adapters/sqlite-user-repository';
 import { SystemClock } from './adapters/system-clock';
 import { Argon2PasswordHasher } from './auth/argon2-password-hasher';
 import type { SqliteDatabase } from './db/connection';
-import type { DocumentFileSource, UseCases } from './decorators';
+import type {
+  DocumentFileSource,
+  LedgerTransfer,
+  UseCases,
+} from './decorators';
 
 /**
  * The only file that imports both a use case and an adapter (CLAUDE.md §5).
@@ -75,6 +84,8 @@ import type { DocumentFileSource, UseCases } from './decorators';
 export interface Container {
   readonly useCases: UseCases;
   readonly documentFiles: DocumentFileSource;
+  /** F33. Built here because it needs the database, the registry and the store. */
+  readonly ledgerTransfer: LedgerTransfer;
   /** Kept for the bootstrap, which reads the must-change flag before listen. */
   readonly users: SqliteUserRepository;
   readonly hasher: Argon2PasswordHasher;
@@ -248,5 +259,38 @@ export function buildContainer(
     currencies,
   });
 
-  return { useCases, documentFiles: store, users, hasher, importLegacyCsv };
+  /*
+    F33 — the one place that has all three of the things an archive needs.
+
+    A closure rather than a class: there is no state to keep, only three
+    arguments that are the same on every call, and the route is handed exactly
+    the two verbs it is allowed to use.
+  */
+  const ledgerTransfer: LedgerTransfer = {
+    toArchive: (now) =>
+      exportLedger({
+        database,
+        currencies,
+        files: store,
+        ...(now === undefined ? {} : { now }),
+      }),
+    fromArchive: (archive, options) =>
+      importLedger({
+        database,
+        currencies,
+        files: store,
+        archive,
+        ...(options?.replace === undefined ? {} : { replace: options.replace }),
+      }),
+    counts: () => ledgerCounts(database),
+  };
+
+  return {
+    useCases,
+    documentFiles: store,
+    ledgerTransfer,
+    users,
+    hasher,
+    importLegacyCsv,
+  };
 }

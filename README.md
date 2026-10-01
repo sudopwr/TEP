@@ -111,6 +111,80 @@ One more file matters: **`.env`**, in the project root, holding
 nothing more — it signs the session cookie, it is not your password and it
 cannot be used to read anything.
 
+## Exporting and importing your data
+
+Two different jobs, and the application does both:
+
+| | **Export / Import** | **`npm run backup`** |
+|---|---|---|
+| What you get | one `.tar.gz` file you download | a folder under `backups/` |
+| Where it goes | wherever you save it | this same machine |
+| Good for | keeping a copy off the machine, moving to a new one | a quick snapshot before you change something |
+| Brings documents | yes | yes |
+| Brings your password | **no** | yes (it copies the database) |
+
+Use the screen for anything that leaves this computer. Use `npm run backup`
+before an experiment you might want to undo.
+
+### Exporting
+
+1. Sign in and open **Export & import** in the left-hand rail.
+2. The screen says what is on file — payouts, transactions, fees, documents and
+   so on. Check it looks like your ledger.
+3. Press **Export everything**. Your browser downloads
+   `payout-tracker-2026-10-01.tar.gz`, named for the day you made it.
+4. Put the file somewhere that is not this machine: another drive, or storage
+   you trust. A backup on the disk that fails is not a backup.
+
+The file holds everything the ledger knows — every trader, company, account,
+payout, leg, fee, fee schedule, document and attachment — **and the documents
+themselves**, byte for byte. It does **not** hold your username or password:
+those stay on this machine, so a copy of the archive in cloud storage is not a
+way into the application.
+
+To look inside it without importing anything:
+
+```bash
+tar -xzf payout-tracker-2026-10-01.tar.gz
+```
+
+Any unzip tool will open it too, including Windows Explorer. You will find:
+
+```
+manifest.json   what this is, when it was made, and what to expect
+ledger.json     every row, as readable JSON
+files/          every document, under the same content-addressed paths
+```
+
+`ledger.json` is plain text on purpose. An export made today can be read by a
+person in five years with no software at all, which a copy of `app.db` cannot.
+
+### Importing
+
+**Importing replaces everything in the ledger.** It is a restore, not a merge:
+two ledgers that both number their payouts from 1 cannot be put side by side
+without renumbering, and renumbering silently is how a reference in a note
+stops pointing at anything. Export first if there is anything on the machine
+you would miss.
+
+On a new machine, in order:
+
+1. Install and start the application (see **First run** above).
+2. Sign in with `admin` / `admin` and **change the password**. Nothing else
+   works until you do, including the import screen.
+3. Open **Export & import**, press **Choose a file**, and pick the `.tar.gz`
+   file an export produced. Nothing is read until you confirm.
+4. Press **Import and replace everything**, then confirm. The screen tells you
+   what came back and how many documents were written to `data/files`.
+5. Sign in afterwards with the password **you set in step 2**. The archive
+   carries no credentials, so this machine keeps its own.
+
+If the file is damaged, from a newer version, or not an export at all, the
+import refuses and says so — and **nothing is changed**. The checks all run
+before a single row is touched, including a checksum on every document: if the
+bytes of a statement do not match what the ledger recorded for it, the whole
+import stops rather than restoring evidence that has been altered.
+
 ## Backing up
 
 ```bash
@@ -119,6 +193,9 @@ npm run backup
 
 This writes `backups/2026-09-13T07-42-19Z/` containing `app.db` and `files/`.
 Run it while the application is running; nothing is locked and nothing stops.
+
+This stays on the machine. To keep a copy somewhere else, or to move to a new
+computer, use **Export & import** above instead.
 
 **Do not back up by copying `data/` yourself.** The database runs in
 write-ahead-log mode, which means your most recent transactions may be sitting
@@ -182,6 +259,8 @@ cabinet.
   with no rate, a leg that sends more than its parent delivered. These are
   questions, not errors; every one of them has a legitimate explanation.
 - Total a financial year by company: credited, TDS withheld, fees paid.
+- Export the whole ledger and every document to one file, and restore it on
+  another machine from that file.
 
 ## If something goes wrong
 

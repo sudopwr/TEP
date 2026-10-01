@@ -169,3 +169,49 @@ export async function request<T>(
 
   return body as T;
 }
+
+export interface DownloadedFile {
+  readonly blob: Blob;
+  /** What the server called it, from `content-disposition`. */
+  readonly filename: string;
+}
+
+/** The filename out of `attachment; filename="…"`, or a fallback. */
+function filenameFrom(header: string | null, fallback: string): string {
+  const quoted = /filename="([^"]+)"/.exec(header ?? '');
+
+  return quoted?.[1] ?? fallback;
+}
+
+/**
+ * Fetch a file rather than JSON, keeping the error handling (F33).
+ *
+ * `request` above assumes a JSON body and would hand back `null` for an
+ * archive. This is the same call with the same cookie and the same
+ * `ApiError` — so a 401 mid-download still routes to the sign-in screen, and a
+ * 403 while the shipped password is in place still says so — and a `Blob` at
+ * the end of it. A plain `<a download>` would be less code and would answer
+ * every failure with a downloaded file containing an error message.
+ */
+export async function requestFile(
+  path: string,
+  fallbackFilename: string,
+): Promise<DownloadedFile> {
+  const response = await fetch(absolute(path), {
+    method: 'GET',
+    credentials: 'same-origin',
+    headers: { accept: 'application/gzip, application/octet-stream' },
+  });
+
+  if (!response.ok) {
+    throw errorFrom(response.status, await parseBody(response));
+  }
+
+  return {
+    blob: await response.blob(),
+    filename: filenameFrom(
+      response.headers.get('content-disposition'),
+      fallbackFilename,
+    ),
+  };
+}

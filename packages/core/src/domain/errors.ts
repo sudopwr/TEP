@@ -454,3 +454,39 @@ export class DocumentFileMissingError extends DomainError {
     );
   }
 }
+
+/**
+ * An export archive that cannot be read (F33).
+ *
+ * Not a validation failure of a request the owner typed — the request was
+ * fine, the file in it is not — so the message says what is wrong with the
+ * file and, where it can, that nothing has been changed. `cause` carries the
+ * zod error or the zlib failure for the log; the sentence is for the reader.
+ */
+export class ArchiveUnreadableError extends DomainError {
+  constructor(
+    message: string,
+    /** `override`, because this is `Error.cause` — the same field, kept typed. */
+    override readonly cause?: unknown,
+  ) {
+    super('ArchiveUnreadableError', message);
+  }
+}
+
+/**
+ * The ledger already holds data and the import did not say to replace it.
+ *
+ * Not an error in the archive, and not a refusal: it is a question. An import
+ * is a replacement rather than a merge — two ledgers that both number their
+ * payouts from 1 cannot sit side by side without renumbering, and renumbering
+ * silently is how a reference in a note stops pointing at anything — so the
+ * owner is told what is there and asked once.
+ */
+export class LedgerNotEmptyError extends DomainError {
+  constructor(readonly counts: Readonly<Record<string, number>>) {
+    super(
+      'LedgerNotEmptyError',
+      'This ledger already holds data, and importing replaces all of it. Confirm the replacement to go ahead.',
+    );
+  }
+}

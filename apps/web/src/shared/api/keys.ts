@@ -141,6 +141,18 @@ export const queryKeys = {
       ['documents', 'forPayout', payoutId] as const,
   },
 
+  /**
+   * F33's "what is on file now", which an import is about to replace.
+   *
+   * Its own key rather than a count derived from the lists: this is the whole
+   * ledger counted in the database, including the tables no screen lists, and
+   * it has to be right when it is used to warn somebody.
+   */
+  ledger: {
+    all: () => ['ledger'] as const,
+    state: () => ['ledger', 'state'] as const,
+  },
+
   reports: {
     all: () => ['reports'] as const,
     financialYear: (filter: FinancialYearFilter) =>

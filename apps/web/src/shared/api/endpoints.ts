@@ -1,4 +1,4 @@
-import { request } from './client';
+import { request, requestFile, type DownloadedFile } from './client';
 import type {
   AccountJson,
   AccountsResponse,
@@ -25,6 +25,8 @@ import type {
   DocumentsResponse,
   FinancialYearFilter,
   FinancialYearReportJson,
+  ImportResultJson,
+  ImportStateJson,
   LinkDocumentCommand,
   PayoutDeletedJson,
   PayoutFilter,
@@ -497,4 +499,39 @@ function isUnauthenticated(error: unknown): boolean {
     'isUnauthenticated' in error &&
     (error as { isUnauthenticated: boolean }).isUnauthenticated
   );
+}
+
+// ---------- Export and import (F33) ----------
+
+/** The whole ledger as a file, with the name the server gave it. */
+export function exportLedger(): Promise<DownloadedFile> {
+  return requestFile('/api/export', 'payout-tracker-export.tar.gz');
+}
+
+export function fetchImportState(
+  signal?: AbortSignal,
+): Promise<ImportStateJson> {
+  return request<ImportStateJson>('/api/import/state', wrapSignal(signal));
+}
+
+/**
+ * Send an archive back.
+ *
+ * `replace` is a field in the same body as the file, not a query parameter, so
+ * the flag and the archive it applies to cannot be separated. The server
+ * refuses with 409 `ledger_not_empty` unless it is `'true'`, which is what lets
+ * the screen ask before anything is destroyed.
+ */
+export function importLedger(
+  file: File,
+  options: { readonly replace: boolean },
+): Promise<ImportResultJson> {
+  const form = new FormData();
+  form.set('file', file);
+  form.set('replace', options.replace ? 'true' : 'false');
+
+  return request<ImportResultJson>('/api/import', {
+    method: 'POST',
+    formData: form,
+  });
 }

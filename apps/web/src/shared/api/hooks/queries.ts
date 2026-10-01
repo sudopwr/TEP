@@ -7,6 +7,7 @@ import {
   fetchDataQuality,
   fetchDocuments,
   fetchFinancialYear,
+  fetchImportState,
   fetchPayoutDocuments,
   fetchPayoutTrail,
   fetchPayouts,
@@ -27,6 +28,7 @@ import type {
   DocumentPageJson,
   FinancialYearFilter,
   FinancialYearReportJson,
+  ImportStateJson,
   PayoutFilter,
   PayoutJson,
   PayoutTrailJson,
@@ -290,5 +292,20 @@ export function useFinancialYearReport(
     queryFn: ({ signal }) =>
       fetchFinancialYear(scoped as FinancialYearFilter, signal),
     enabled: scoped !== null,
+  });
+}
+
+/**
+ * F33 — what the ledger holds, for a screen about to offer to replace it.
+ *
+ * Counted in the database rather than added up from the lists this file also
+ * fetches: those are scoped to a trader and a period (F24), and a warning that
+ * says "this will replace 1 payout" when there are forty would be worse than no
+ * warning at all.
+ */
+export function useLedgerState(): UseQueryResult<ImportStateJson> {
+  return useQuery({
+    queryKey: queryKeys.ledger.state(),
+    queryFn: ({ signal }) => fetchImportState(signal),
   });
 }

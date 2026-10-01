@@ -11,20 +11,21 @@ import * as out from './serialize';
 import {
   attachDocumentFields,
   balancesQuery,
-  documentLinkParams,
+  chainLookupBody,
   createAccountBody,
   createCompanyBody,
   createPayoutBody,
-  chainLookupBody,
   createTraderBody,
   createTransactionBody,
   dataQualityQuery,
+  documentLinkParams,
   financialYearQuery,
   idParam,
+  importArchiveFields,
+  linkDocumentBody,
   listAccountsQuery,
   listDocumentsQuery,
   listPayoutsQuery,
-  linkDocumentBody,
   listTransactionsQuery,
   searchDocumentsQuery,
   settlementQuery,
@@ -60,6 +61,16 @@ function scopeOf(query: {
       : { range: { from: query.from, to: query.to } }),
   };
 }
+
+/**
+ * How large an import may be (F33).
+ *
+ * A ledger of four years with every statement attached, with room to spare.
+ * Not unlimited: the archive is held in memory while it is verified, and an
+ * unbounded body is a way to run a machine out of it from the one route that
+ * accepts the most data.
+ */
+const MAX_ARCHIVE_BYTES = 512 * 1024 * 1024;
 
 export function registerApiRoutes(app: FastifyInstance): void {
   // ---------- Companies (F1) ----------
@@ -711,6 +722,94 @@ export function registerApiRoutes(app: FastifyInstance): void {
     return { documents: documents.map(out.document) };
   });
 
+  // ---------- Export and import (F33) ----------
+
+  /**
+   * Everything, as one `.tar.gz` the browser downloads.
+   *
+   * A GET, so it can be reached by a plain link if the interface is ever
+   * unavailable — `curl` with the session cookie is a legitimate way to get
+   * your own data out, and a POST would make that needlessly awkward. Behind
+   * both guards like every other data route, which is what keeps the whole
+   * ledger from being one unauthenticated request away.
+   *
+   * Buffered and sent in one piece. The archive has to be packed before its
+   * length is known, so there is nothing to stream: `reply.send` gets the
+   * bytes, the header says what to call the file, and `no-store` keeps a copy
+   * of somebody's entire ledger out of any cache between here and the disk.
+   */
+  app.get('/api/export', async (_request, reply) => {
+    const archive = await app.ledgerTransfer.toArchive();
+
+    return reply
+      .header('content-type', 'application/gzip')
+      .header(
+        'content-disposition',
+        `attachment; filename="${archive.filename}"`,
+      )
+      .header('content-length', String(archive.bytes.byteLength))
+      .header('cache-control', 'no-store')
+      // The counts, for a client that wants to report what it just downloaded
+      // without unpacking it. A header, because the body is the archive.
+      .header('x-payout-export', JSON.stringify(archive.manifest.counts))
+      .send(Buffer.from(archive.bytes));
+  });
+
+  /**
+   * What is on file now — the question the import screen asks before offering
+   * to replace it.
+   */
+  app.get('/api/import/state', async () => {
+    return Promise.resolve({ counts: app.ledgerTransfer.counts() });
+  });
+
+  /**
+   * Replace the ledger with an archive (F33).
+   *
+   * `replace=true` is required when anything is on file, and the use of a
+   * *field* rather than a query parameter is deliberate: it arrives in the same
+   * body as the archive it applies to, so there is no way to send the file with
+   * one meaning and the flag with another.
+   *
+   * The size limit is this route's own. 25MB is right for a statement and
+   * nowhere near enough for a ledger with four years of them, and raising the
+   * global ceiling to this would mean every upload route accepting a 500MB
+   * body. `LedgerNotEmptyError` is a 409 through the error map: the archive is
+   * fine, the answer is "ask me again and say yes".
+   */
+  app.post('/api/import', async (request, reply) => {
+    const file = await readUploadedFile(request, {
+      limits: { fileSize: MAX_ARCHIVE_BYTES },
+    });
+
+    if (file === null) {
+      return reply.status(415).send({
+        code: 'unsupported_media_type',
+        message:
+          'Expected multipart/form-data with exactly one file field named "file".',
+      });
+    }
+
+    const archive = await file.toBuffer();
+    const fields = parseOrThrow(
+      importArchiveFields,
+      textFieldsOf(file.fields),
+      'body',
+    );
+
+    const restored = await app.ledgerTransfer.fromArchive(
+      new Uint8Array(archive),
+      { replace: fields.replace === 'true' },
+    );
+
+    return reply.status(200).send({
+      counts: restored.counts,
+      filesRestored: restored.filesRestored,
+      replaced: restored.replaced,
+      createdAt: restored.manifest.createdAt,
+    });
+  });
+
   // ---------- Balances, checks, reports (F10, F11, F13) ----------
 
   app.get('/api/accounts/balances', async (request) => {
@@ -766,12 +865,15 @@ type UploadedFile = NonNullable<Awaited<ReturnType<FastifyRequest['file']>>>;
 
 async function readUploadedFile(
   request: FastifyRequest,
+  options?: { readonly limits?: { readonly fileSize: number } },
 ): Promise<UploadedFile | null> {
   if (!request.isMultipart()) {
     return null;
   }
 
-  return (await request.file()) ?? null;
+  // Per-request limits, so F33's archive may be large without every document
+  // upload route being allowed to be.
+  return (await request.file(options)) ?? null;
 }
 
 /** The text parts of a multipart body, as a plain object zod can parse. */

@@ -54,6 +54,30 @@ export class FileSystemDocumentStore implements DocumentStore {
   }
 
   /**
+   * Write bytes at a path that already exists in the ledger (F33).
+   *
+   * Beyond the `DocumentStore` port, like `openReadStream` and for the same
+   * kind of reason. `put` *derives* the path from the hash of the bytes, which
+   * is what makes the store content-addressed and UC4's dedupe work; a restore
+   * has the opposite problem — the `documents` row it is about to write already
+   * names a path, and the file has to be at that path or the row points at
+   * nothing. Adding a "write it here" method to the port would hand every use
+   * case the ability to break the addressing scheme; this way only the import
+   * can, and the import is the one caller that needs to.
+   *
+   * `#resolve` is the point of doing it here rather than in the importer: an
+   * archive is a file from outside, and a `stored_path` of `../../.ssh/id_rsa`
+   * is the oldest trick there is. The guard refuses anything that resolves
+   * outside the root, so a malicious path fails loudly instead of escaping.
+   */
+  async restore(storedPath: string, bytes: Uint8Array): Promise<void> {
+    const absolute = this.#resolve(storedPath);
+
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, bytes);
+  }
+
+  /**
    * A stream of the file's bytes, for serving it without buffering it.
    *
    * Beyond the `DocumentStore` port on purpose: a `Readable` is `node:stream`,

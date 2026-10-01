@@ -64,6 +64,7 @@ export type { DocumentProps, DocumentType } from './domain/document';
 export { DOCUMENT_TYPES, Document } from './domain/document';
 
 export type { FeeBasis, FeeScheduleProps } from './domain/fee-schedule';
+export { FEE_BASES } from './domain/fee-schedule';
 export { FeeSchedule } from './domain/fee-schedule';
 
 export type { UserProps } from './domain/user';
@@ -114,6 +115,8 @@ export {
   ChainLookupUnavailableError,
   AccountNotFoundError,
   AmbiguousFeeScheduleError,
+  ArchiveUnreadableError,
+  LedgerNotEmptyError,
   AuthenticationFailedError,
   CompanyCodeTakenError,
   DocumentFileMissingError,

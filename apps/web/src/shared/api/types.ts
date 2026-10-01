@@ -333,6 +333,27 @@ export interface DocumentPageFilter {
   readonly perPage?: number;
 }
 
+/**
+ * How many rows of each kind a ledger holds (F33).
+ *
+ * Open-ended on purpose: the server names the tables, and a screen that only
+ * knows how to print `key: value` keeps working when one is added.
+ */
+export type LedgerCountsJson = Readonly<Record<string, number>>;
+
+export interface ImportStateJson {
+  readonly counts: LedgerCountsJson;
+}
+
+/** What an import did, in the words the toast needs. */
+export interface ImportResultJson {
+  readonly counts: LedgerCountsJson;
+  readonly filesRestored: number;
+  readonly replaced: LedgerCountsJson;
+  /** When the archive was written, not when it was imported. */
+  readonly createdAt: string;
+}
+
 // ---------- Command shapes ----------
 
 export interface CreateCompanyCommand {

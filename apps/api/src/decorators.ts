@@ -69,6 +69,54 @@ export interface DocumentFileSource {
   openReadStream(storedPath: string): Readable;
 }
 
+/** What an archive says about itself. `files` counts bytes, not rows. */
+export interface ArchiveSummary {
+  readonly format: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly counts: Readonly<Record<string, number>>;
+  readonly files: { readonly included: number; readonly missing: number };
+}
+
+export interface WrittenArchive {
+  /** What the download should be called. */
+  readonly filename: string;
+  readonly bytes: Uint8Array;
+  readonly manifest: ArchiveSummary;
+}
+
+export interface RestoredArchive {
+  readonly manifest: ArchiveSummary;
+  readonly counts: Readonly<Record<string, number>>;
+  readonly filesRestored: number;
+  /** What the ledger held before the import replaced it. */
+  readonly replaced: Readonly<Record<string, number>>;
+}
+
+/**
+ * F33 — the ledger in and out of one file, as the route sees it.
+ *
+ * Named here for the same reason `DocumentFileSource` is: the route needs to
+ * export a ledger without learning that there is a SQLite database and a
+ * `data/files` directory behind it, and `ledger-archive.ts` satisfies this
+ * shape structurally rather than either file importing the other.
+ *
+ * Not a use case, and not in core. It is three things core cannot have — SQL
+ * over whole tables, gzip, and the filesystem — with no domain rule of its own
+ * beyond the ones every entity already enforces on the way back in. Putting it
+ * on `UseCases` would mean a port whose only implementation is this one, which
+ * §5 says is not a port.
+ */
+export interface LedgerTransfer {
+  toArchive(now?: Date): Promise<WrittenArchive>;
+  fromArchive(
+    archive: Uint8Array,
+    options?: { readonly replace?: boolean },
+  ): Promise<RestoredArchive>;
+  /** What is on file now, for a screen that is about to offer to replace it. */
+  counts(): Readonly<Record<string, number>>;
+}
+
 export interface UseCases {
   readonly recordCompany: RecordCompany;
   readonly listCompanies: ListCompanies;
@@ -115,5 +163,7 @@ declare module 'fastify' {
     useCases: UseCases;
     /** Bytes on their way out, by stored path. */
     documentFiles: DocumentFileSource;
+    /** F33's export and import, as one object. */
+    ledgerTransfer: LedgerTransfer;
   }
 }
